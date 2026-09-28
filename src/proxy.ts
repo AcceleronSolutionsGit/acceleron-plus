@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionCookie } from "@/lib/session";
+import { BASE_PATH, COOKIE_PATH } from "@/lib/base-path";
 import { MANAGER_PATHS, PHASE2_PAGES, homeFor, isPhase1Restricted, matchesPrefix } from "@/lib/rollout";
 
 // Next.js 16 renamed the `middleware` file convention to `proxy`; Proxy
@@ -48,8 +49,29 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/**
+ * A URL inside this app. Cloning nextUrl keeps the base path when the
+ * app is served from a folder (apps.acceleronsolutions.io/acceleron-plus);
+ * building one from request.url would drop it and land on another app.
+ */
+function appUrl(request: NextRequest, path: string): URL {
+  const url = request.nextUrl.clone();
+  url.pathname = path;
+  url.search = "";
+  return url;
+}
+
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Without the base path — Next strips it — so the rules below compare
+  // against "/pmt", "/api/…" whether or not the app lives in a folder.
+  // The bare folder itself ("/acceleron-plus", no slash) arrives with the
+  // base path still on, so strip it here too, or "from" would point at
+  // /acceleron-plus/acceleron-plus after sign-in.
+  const raw = request.nextUrl.pathname;
+  const pathname =
+    BASE_PATH && (raw === BASE_PATH || raw.startsWith(`${BASE_PATH}/`))
+      ? raw.slice(BASE_PATH.length) || "/"
+      : raw;
 
   if (isPublic(pathname)) return NextResponse.next();
 
@@ -72,11 +94,11 @@ export async function proxy(request: NextRequest) {
     if (isApi) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = appUrl(request, "/login");
     loginUrl.searchParams.set("from", pathname);
     const response = NextResponse.redirect(loginUrl);
     // Clear a stale or tampered cookie so the browser stops sending it.
-    response.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
+    response.cookies.set(SESSION_COOKIE, "", { path: COOKIE_PATH, maxAge: 0 });
     return response;
   }
 
@@ -91,14 +113,14 @@ export async function proxy(request: NextRequest) {
         { status: 403 }
       );
     }
-    return NextResponse.redirect(new URL("/portal", request.url));
+    return NextResponse.redirect(appUrl(request, "/portal"));
   }
 
   // Phase 1: a regular member has My Projects, My Timesheet and My Skills.
   // The rest is greyed out in the sidebar; this is what stops a typed or
   // bookmarked URL from opening it anyway. Pages only — see rollout.ts.
   if (!isApi && isPhase1Restricted(payload.role) && matchesPrefix(pathname, PHASE2_PAGES)) {
-    return NextResponse.redirect(new URL(homeFor(payload.role), request.url));
+    return NextResponse.redirect(appUrl(request, homeFor(payload.role)));
   }
 
   // Timesheet approvals and allocation requests live under /admin but are
@@ -117,7 +139,7 @@ export async function proxy(request: NextRequest) {
         { status: 403 }
       );
     }
-    return NextResponse.redirect(new URL(homeFor(payload.role), request.url));
+    return NextResponse.redirect(appUrl(request, homeFor(payload.role)));
   }
 
   return NextResponse.next();

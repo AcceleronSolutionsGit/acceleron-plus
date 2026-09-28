@@ -16,6 +16,19 @@ const path = require("path");
 // Apache site's ProxyPass lines; deploy.sh reads APP_PORT too.
 const PORT = process.env.APP_PORT || "8099";
 
+// The folder the app is served from (NEXT_PUBLIC_BASE_PATH in .env.local,
+// e.g. /acceleron-plus). Every route, the sweep's included, lives under it.
+function readEnvLocal(key) {
+  try {
+    const text = require("fs").readFileSync(path.join(__dirname, ".env.local"), "utf8");
+    const line = text.split(/\r?\n/).find((l) => l.startsWith(`${key}=`));
+    return line ? line.slice(key.length + 1).trim().replace(/^["']|["']$/g, "") : "";
+  } catch {
+    return "";
+  }
+}
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || readEnvLocal("NEXT_PUBLIC_BASE_PATH")).replace(/\/+$/, "");
+
 module.exports = {
   apps: [
     {
@@ -66,7 +79,7 @@ module.exports = {
       cron_restart: "0 8 * * *", // 08:00 every day
       env: {
         NODE_ENV: "production",
-        SWEEP_URL: `http://127.0.0.1:${PORT}/api/notifications/sweep`,
+        SWEEP_URL: `http://127.0.0.1:${PORT}${BASE_PATH}/api/notifications/sweep`,
       },
       time: true,
       out_file: path.join(__dirname, "logs/sweep.out.log"),

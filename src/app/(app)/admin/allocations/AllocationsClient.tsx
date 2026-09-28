@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { StatCard, SectionHeading, EmptyState } from "@/components/ui/Card";
@@ -104,7 +105,7 @@ export function AllocationsClient() {
   const exportHref = (format: "xlsx" | "csv") => {
     const p = new URLSearchParams(params);
     p.set("format", format);
-    return `/api/reports/allocations/export?${p.toString()}`;
+    return withBase(`/api/reports/allocations/export?${p.toString()}`);
   };
 
   const s = report?.summary;

@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -577,7 +578,7 @@ export function MyProjectsClient({ userName }: { userName: string }) {
                   {isAllocated ? (
                     <>
                       <a
-                        href="/my-timesheet"
+                        href={withBase("/my-timesheet")}
                         className="text-[12px] font-semibold text-navy-900 hover:text-navy-600 transition-colors"
                       >
                         Log time →

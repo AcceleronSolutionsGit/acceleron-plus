@@ -1,3 +1,4 @@
+import { COOKIE_PATH } from "@/lib/base-path";
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { identityDb, describeSetupError } from "@/lib/db";
@@ -58,7 +59,7 @@ function challengeCookieOptions() {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
-    path: "/",
+    path: COOKIE_PATH,
     maxAge: OTP_TTL_SECONDS + 60,
   };
 }

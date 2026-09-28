@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { withBase, fetchBasePathScript } from "@/lib/base-path";
 
 // Fonts are self-hosted and imported from globals.css (@fontsource).
 //
@@ -13,8 +14,8 @@ export const metadata: Metadata = {
   description:
     "Professional services automation for Acceleron Solutions — projects, service desk, people and margin in one place.",
   icons: {
-    icon: "/favicon-64.png",
-    apple: "/apple-icon.png",
+    icon: withBase("/favicon-64.png"),
+    apple: withBase("/apple-icon.png"),
   },
 };
 
@@ -25,6 +26,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      {fetchBasePathScript() && (
+        <head>
+          {/* Sub-path hosting: fetch("/api/…") → fetch("/acceleron-plus/api/…"). */}
+          <script dangerouslySetInnerHTML={{ __html: fetchBasePathScript() }} />
+        </head>
+      )}
       <body className="antialiased">{children}</body>
     </html>
   );

@@ -10,6 +10,7 @@
 // Do not import `db.ts`, `crypto` (node) or anything Node-only here.
 // ═══════════════════════════════════════════════════════════════
 
+import { COOKIE_PATH } from "./base-path";
 import type { AppRole } from "./types";
 
 export const SESSION_COOKIE = "acceleron_session";
@@ -186,5 +187,6 @@ export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
-  path: "/",
+  // The app's own folder, so other apps on the same domain never see it.
+  path: COOKIE_PATH,
 };

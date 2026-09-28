@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useEffect, useRef, useState } from "react";
 
 /** Download menu for the plan. The server decides what goes in each file. */
@@ -28,7 +29,7 @@ export function ExportMenu({
     setOpen(false);
     // A plain navigation lets the browser handle Content-Disposition,
     // so the file lands in Downloads with the name the server chose.
-    window.location.href = `/api/pmt/projects/${projectId}/export?${query}`;
+    window.location.href = withBase(`/api/pmt/projects/${projectId}/export?${query}`);
     setTimeout(() => setBusy(""), 2500);
   };
 

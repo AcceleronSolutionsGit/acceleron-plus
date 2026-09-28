@@ -1,3 +1,4 @@
+import { COOKIE_PATH } from "@/lib/base-path";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { identityDb, describeSetupError } from "@/lib/db";
@@ -90,7 +91,7 @@ function clearChallenge(response: NextResponse): NextResponse {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/",
+    path: COOKIE_PATH,
     maxAge: 0,
   });
   return response;

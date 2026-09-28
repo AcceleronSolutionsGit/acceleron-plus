@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useState, useRef, useCallback } from "react";
 import type { ProjectDocument, DocumentType, DocumentCategory, DocumentAccessLevel } from "@/lib/types";
 import { formatDate, formatStatus } from "@/lib/utils";
@@ -291,10 +292,10 @@ function DocumentCard({ doc, canDelete, onDelete }: {
   const accessMeta = ACCESS_LEVELS.find(a => a.value === doc.accessLevel)!;
 
   const handleDownload = () => {
-    window.open(`/api/documents/${doc.id}/download`, "_blank");
+    window.open(withBase(`/api/documents/${doc.id}/download`), "_blank");
   };
   const handlePreview = () => {
-    window.open(`/api/documents/${doc.id}/download?mode=preview`, "_blank");
+    window.open(withBase(`/api/documents/${doc.id}/download?mode=preview`), "_blank");
   };
 
   const isPreviewable = ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(doc.mimeType);

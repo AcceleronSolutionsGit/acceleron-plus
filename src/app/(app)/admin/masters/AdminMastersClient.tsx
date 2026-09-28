@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useState, useEffect, useMemo, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
@@ -754,7 +755,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
           </button>
 
           <a
-            href="/admin/skills"
+            href={withBase("/admin/skills")}
             className="pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 border-transparent text-navy-500 hover:text-navy-700 transition-colors cursor-pointer"
             title="The skill catalogue, and who holds what"
           >

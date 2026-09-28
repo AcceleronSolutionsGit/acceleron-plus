@@ -1,3 +1,4 @@
+import { withBase } from "@/lib/base-path";
 import Image from "next/image";
 import React from "react";
 
@@ -83,7 +84,8 @@ export function Logo({
   animate?: boolean;
   className?: string;
 }) {
-  const wordmark = tone === "light" ? "/logo-wordmark-light.png" : "/logo-wordmark.png";
+  // next/image does not add basePath to a string src.
+  const wordmark = withBase(tone === "light" ? "/logo-wordmark-light.png" : "/logo-wordmark.png");
 
   if (variant === "mark") {
     return <Mark className={className || "h-8 w-8"} tone={tone} animate={animate} />;

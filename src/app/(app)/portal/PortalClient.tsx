@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/base-path";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
@@ -254,7 +255,7 @@ export function PortalClient() {
                           {project.documents.map((d) => (
                             <a
                               key={d.id}
-                              href={`/api/documents/${d.id}/download`}
+                              href={withBase(`/api/documents/${d.id}/download`)}
                               className="flex items-center gap-2 text-sm text-navy-700 hover:text-navy-900 underline"
                             >
                               {d.title}

@@ -186,7 +186,65 @@ pm2 set pm2-logrotate:retain 14
 pm2 set pm2-logrotate:compress true
 ```
 
-## 6. Apache + HTTPS
+## 6a. On APPLSRV: a folder of apps.acceleronsolutions.io (what production uses)
+
+Every app on APPLSRV is a folder of one site, `apps.acceleronsolutions.io`,
+defined in `/etc/apache2/default-server.conf` with its certificate.
+Acceleron Plus joins them at **`https://apps.acceleronsolutions.io/acceleron-plus/`**
+— no DNS change, no new certificate. (`/acceleron/` is already another app on
+port 5081, and `/itsm-backend/` owns port 3000 — hence port 8099.)
+
+The app lives in **`/srv/www/htdocs/acceleron-plus`**, alongside the others.
+That folder is inside the site's DocumentRoot, so the Apache block below also
+denies it as a file directory: `/acceleron-plus/…` is always proxied to the
+app (a request for `/acceleron-plus/.env.local` gets the app's 404, or 503
+while it is stopped — never the file).
+
+1. In the server's `.env.local`, **before building**:
+
+   ```
+   NEXT_PUBLIC_BASE_PATH=/acceleron-plus
+   NEXT_PUBLIC_APP_URL=https://apps.acceleronsolutions.io/acceleron-plus
+   ```
+
+   `NEXT_PUBLIC_BASE_PATH` is baked into the build (`next.config.ts` →
+   `basePath`), so change it only together with `./scripts/deploy.sh`.
+   Plain-string URLs that Next does not rewrite — `fetch("/api/…")`,
+   `window.location`, `<a href>`, cookie paths, `next/image` src, CSS fonts —
+   go through `src/lib/base-path.ts`; the hundred-odd `fetch` calls are
+   prefixed by one small script in `app/layout.tsx`. Cookies are scoped to
+   `/acceleron-plus`, so no other app on the domain receives them.
+
+2. Build and start: `./scripts/deploy.sh --no-pull` — the health check hits
+   `127.0.0.1:8099/acceleron-plus/login`.
+
+3. Apache — one include file, one line in the existing site:
+
+   ```bash
+   cp deploy/apache/acceleron-plus-subpath.conf /etc/apache2/acceleron-plus.inc
+   cp /etc/apache2/default-server.conf /etc/apache2/default-server.conf.bak
+   grep -q "acceleron-plus.inc" /etc/apache2/default-server.conf || \
+     sed -i '0,/^\([[:space:]]*\)ProxyPreserveHost On/s//&\n\1Include \/etc\/apache2\/acceleron-plus.inc/' /etc/apache2/default-server.conf
+   apachectl configtest && systemctl reload apache2
+   ```
+
+   The include proxies `/acceleron-plus/` to `127.0.0.1:8099/acceleron-plus/`
+   (the folder name is kept — Next expects it), drops a browser-sent
+   `X-Forwarded-For`, sets `X-Forwarded-Proto: https`, refuses uploads over
+   55 MB, and caches `/_next/static/`. Everything in it is scoped to
+   `/acceleron-plus`, so the other apps are untouched. `reload` (graceful)
+   rather than `restart`, so their open connections are not cut.
+
+Verified against a production build behind Apache 2.4.58 with this include in
+a copy of that site: `/acceleron-plus` and `/acceleron-plus/` both reach the app (a 301 to the trailing slash would loop — Next redirects it back); a
+signed-out `/acceleron-plus/pmt` → `/acceleron-plus/login?from=%2Fpmt`; every
+script, stylesheet, font, logo and favicon under `/acceleron-plus/…` answers
+200; in Chromium the sign-in form posted to `/acceleron-plus/api/auth/request-otp`;
+the session cookie is set with `Path=/acceleron-plus`; a forged
+`X-Forwarded-For` reached the app as the real address; 60 MB was refused;
+`/acceleron/` still went to its own backend.
+
+## 6. Apache + HTTPS (a site of its own — not used on APPLSRV)
 
 Point the domain's DNS A record at the server first. The site file
 `deploy/apache/acceleron-plus.conf` holds both halves: `:80` redirects to
