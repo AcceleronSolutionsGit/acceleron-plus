@@ -5,7 +5,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\db-export.ps1 -OutDir C:\temp\acceleron-db
 #
 # Reads host / port / user / password from .env.local (only the
-# DATABASE_* lines), writes one custom-format dump per database plus
+# DATABASE_* lines), writes one plain-SQL dump per database (or pg_dump's
+# archive format with -Format custom) plus
 # uploads.tgz (project documents) into the output folder, and prints
 # the scp command to copy it all to the server. Then run
 # scripts/db-import.sh on the server - see DEPLOY.md -> "Moving the data".
@@ -15,7 +16,12 @@
 # ===============================================================
 
 param(
-    [string]$OutDir = ""
+    [string]$OutDir = "",
+    # "sql" (default): plain SQL, loads into the same PostgreSQL version or an
+    #   OLDER one - e.g. a laptop on 17 into a server on 16.
+    # "custom": pg_dump's compressed archive, same-or-newer server only.
+    [ValidateSet("sql", "custom")]
+    [string]$Format = "sql"
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,8 +60,15 @@ if (-not $pgDump) {
 }
 if (-not $pgDump) { throw "pg_dump not found. Add PostgreSQL's bin folder to PATH, e.g. C:\Program Files\PostgreSQL\16\bin" }
 
+# pg_dump 18 can also write planner statistics, which only PostgreSQL 18
+# can load. Leave them out: the import runs ANALYZE on the server instead.
+$pgDumpVersion = & $pgDump --version
+$pgDumpMajor = [int](([regex]::Match($pgDumpVersion, '\d+')).Value)
+$extraArgs = @()
+if ($pgDumpMajor -ge 18) { $extraArgs += "--no-statistics" }
+
 Write-Host ""
-Write-Host "  Using $(& $pgDump --version)"
+Write-Host "  Using $pgDumpVersion"
 Write-Host "  From  $pgUser@${pgHost}:$pgPort"
 Write-Host "  Into  $OutDir"
 Write-Host ""
@@ -65,8 +78,13 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $env:PGPASSWORD = $vars["DATABASE_PASSWORD"]
 try {
     foreach ($db in $databases) {
-        $file = Join-Path $OutDir "$db.dump"
-        & $pgDump -h $pgHost -p $pgPort -U $pgUser -Fc --no-owner --no-privileges -f $file $db
+        if ($Format -eq "sql") {
+            $file = Join-Path $OutDir "$db.sql"
+            & $pgDump -h $pgHost -p $pgPort -U $pgUser -Fp --encoding=UTF8 --no-owner --no-privileges @extraArgs -f $file $db
+        } else {
+            $file = Join-Path $OutDir "$db.dump"
+            & $pgDump -h $pgHost -p $pgPort -U $pgUser -Fc --no-owner --no-privileges -f $file $db
+        }
         if ($LASTEXITCODE -ne 0) { throw "pg_dump failed for $db" }
         $size = "{0:N1} MB" -f ((Get-Item $file).Length / 1MB)
         Write-Host ("  OK {0,-14} {1}" -f $db, $size)

@@ -11,6 +11,11 @@
 
 const path = require("path");
 
+// The port Next listens on, on 127.0.0.1 only — Apache is what the
+// outside world talks to. Change it here (or set APP_PORT) and in the
+// Apache site's ProxyPass lines; deploy.sh reads APP_PORT too.
+const PORT = process.env.APP_PORT || "8099";
+
 module.exports = {
   apps: [
     {
@@ -20,7 +25,7 @@ module.exports = {
       // the real server process (signals, memory limit, restarts) and not
       // an npm wrapper around it.
       script: path.join(__dirname, "node_modules/next/dist/bin/next"),
-      args: "start --port 3000 --hostname 127.0.0.1",
+      args: `start --port ${PORT} --hostname 127.0.0.1`,
 
       // One instance. Uploaded documents and Next's cache sit on local
       // disk, and each instance opens its own pools to all four
@@ -31,7 +36,7 @@ module.exports = {
 
       env: {
         NODE_ENV: "production",
-        PORT: "3000",
+        PORT,
       },
 
       autorestart: true,
@@ -61,7 +66,7 @@ module.exports = {
       cron_restart: "0 8 * * *", // 08:00 every day
       env: {
         NODE_ENV: "production",
-        SWEEP_URL: "http://127.0.0.1:3000/api/notifications/sweep",
+        SWEEP_URL: `http://127.0.0.1:${PORT}/api/notifications/sweep`,
       },
       time: true,
       out_file: path.join(__dirname, "logs/sweep.out.log"),

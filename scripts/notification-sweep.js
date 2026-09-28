@@ -36,7 +36,7 @@ function loadEnvFile(filename) {
 loadEnvFile(".env.local");
 loadEnvFile(".env");
 
-const url = process.env.SWEEP_URL || "http://127.0.0.1:3000/api/notifications/sweep";
+const url = process.env.SWEEP_URL || "http://127.0.0.1:8099/api/notifications/sweep";
 const token = process.env.NOTIFICATION_SWEEP_TOKEN;
 const ATTEMPTS = 6;
 const WAIT_MS = 10_000; // the app may still be booting when pm2 starts us

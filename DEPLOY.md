@@ -1,11 +1,11 @@
 # Deploying Acceleron Plus with pm2 (Ubuntu)
 
 The app runs as one `next start` process under pm2, listening on
-`127.0.0.1:3000`. Apache sits in front as a reverse proxy and terminates
+`127.0.0.1:8099` (set in `ecosystem.config.js`; `APP_PORT` overrides). Apache sits in front as a reverse proxy and terminates
 HTTPS. A second pm2 entry fires the daily overdue-milestone sweep.
 
 ```
-browser ──https──▶ Apache :443 ──▶ 127.0.0.1:3000  pm2: acceleron-plus
+browser ──https──▶ Apache :443 ──▶ 127.0.0.1:8099  pm2: acceleron-plus
                                                   pm2: acceleron-sweep (08:00 daily)
                                    PostgreSQL: identity_db, project_db, itsm_db, execution_db
 ```
@@ -37,7 +37,7 @@ sudo npm install -g pm2
 # The sweep cron uses the server clock
 sudo timedatectl set-timezone Asia/Kolkata
 
-# Firewall: SSH + web only. Port 3000 is bound to 127.0.0.1 and stays closed.
+# Firewall: SSH + web only. Port 8099 is bound to 127.0.0.1 and stays closed.
 sudo ufw allow OpenSSH && sudo ufw allow 'Apache Full' && sudo ufw enable
 
 sudo mkdir -p /var/www/acceleron-plus && sudo chown $USER:$USER /var/www/acceleron-plus
@@ -118,10 +118,13 @@ scp -r ..\acceleron-db deploy@your-server:/tmp/
 ```
 
 `db-export.ps1` finds `pg_dump` (on PATH or under `C:\Program Files\PostgreSQL`),
-writes `identity_db.dump`, `project_db.dump`, `itsm_db.dump`,
-`execution_db.dump` and `uploads.tgz` to `..\acceleron-db`, and prints the
-`pg_dump` version it used. The dumps are taken without owners or grants, so
-the laptop's `postgres` user does not come across.
+writes `identity_db.sql`, `project_db.sql`, `itsm_db.sql`,
+`execution_db.sql` and `uploads.tgz` to `..\acceleron-db`, and prints the
+`pg_dump` version it used. The dumps are plain SQL without owners or grants,
+so the laptop's `postgres` user does not come across — and, unlike pg_dump's
+archive format, they load into an **older** PostgreSQL too (the laptop runs
+17, the SUSE server 16). `-Format custom` gives the archive format instead,
+which needs a server of the same version or newer.
 
 **On the server** — after step 1 (the four databases exist, owned by the
 `acceleron` login) and step 3 (`.env.local` points at them):
@@ -143,7 +146,7 @@ first if you want to see those changes before they happen.
 
 | It stops with | Do this |
 |---|---|
-| `dumped with pg_dump 17 but this server has pg_restore 16` | The server's PostgreSQL must be the same major version as the laptop's or newer. Install the newer one from apt.postgresql.org (`sudo apt install -y postgresql-17`) and create the databases there. |
+| `…dump comes from a newer PostgreSQL than this server's pg_restore can read` (or `unsupported version (1.16) in file header`) | Those are archive-format `.dump` files from an older export. Export again with the default SQL format and copy the `.sql` files — they load into an older server. |
 | `Cannot connect to project_db as acceleron` | Step 1 not done, or `.env.local` has a different user/password. |
 | `project_db already has N tables` | Something is already there — `--replace` wipes the app's tables and reloads. |
 | `uses the citext extension` | Extensions need a superuser; run the `CREATE EXTENSION` line it prints, then re-run. |
@@ -185,24 +188,45 @@ pm2 set pm2-logrotate:compress true
 
 ## 6. Apache + HTTPS
 
-Point the domain's DNS A record at the server first.
+Point the domain's DNS A record at the server first. The site file
+`deploy/apache/acceleron-plus.conf` holds both halves: `:80` redirects to
+`https://`, `:443` proxies to the app on `127.0.0.1:8099`. Replace
+`plus.example.com` (3 places) and point the two `SSLCertificate` lines at
+your certificate.
+
+**SUSE (SLES 15)**
 
 ```bash
-# Modules the site needs (proxy_wstunnel is not — production Next.js has no websockets)
-sudo a2enmod proxy proxy_http headers rewrite ssl
-
-sudo cp deploy/apache/acceleron-plus.conf /etc/apache2/sites-available/acceleron-plus.conf
-sudo sed -i 's/plus.example.com/plus.yourdomain.com/' /etc/apache2/sites-available/acceleron-plus.conf
-sudo a2ensite acceleron-plus
-sudo apache2ctl configtest && sudo systemctl reload apache2
-
-sudo apt install -y certbot python3-certbot-apache
-sudo certbot --apache -d plus.yourdomain.com --redirect
+a2enmod proxy; a2enmod proxy_http; a2enmod headers; a2enmod rewrite; a2enmod ssl
+a2enflag SSL                                   # makes Apache listen on 443
+cp deploy/apache/acceleron-plus.conf /etc/apache2/vhosts.d/acceleron-plus.conf
+sed -i 's/plus.example.com/plus.yourdomain.com/g' /etc/apache2/vhosts.d/acceleron-plus.conf
+# company certificate?  edit the two SSLCertificate lines to its .crt/.key
+apachectl configtest && systemctl restart apache2
+firewall-cmd --permanent --add-service=http --add-service=https && firewall-cmd --reload
 ```
 
-certbot writes `acceleron-plus-le-ssl.conf` (a copy of the site on :443 with
-the certificate) and turns the :80 site into a redirect. It renews itself
-(systemd timer). Open `https://plus.yourdomain.com`.
+`configtest` fails while the certificate files it names do not exist. For a
+Let's Encrypt certificate, comment out the :443 block, reload, get the
+certificate with `certbot certonly --webroot -w /srv/www/htdocs -d
+plus.yourdomain.com` (the :80 site leaves `/.well-known/acme-challenge/`
+alone for exactly this), then put the block back and restart.
+
+**Ubuntu**
+
+```bash
+sudo a2enmod proxy proxy_http headers rewrite ssl
+sudo cp deploy/apache/acceleron-plus.conf /etc/apache2/sites-available/acceleron-plus.conf
+sudo sed -i 's/plus.example.com/plus.yourdomain.com/g' /etc/apache2/sites-available/acceleron-plus.conf
+sudo a2ensite acceleron-plus
+sudo apache2ctl configtest && sudo systemctl reload apache2
+```
+
+**Changing the app's port** means three places agree: `PORT` in
+`ecosystem.config.js`, the two `ProxyPass` lines in the site, and nothing
+else — `deploy.sh` and the sweep job read it from there (`APP_PORT` overrides
+all of them). `deploy.sh` notices a changed port and recreates the pm2
+processes, because `pm2 reload` keeps the old arguments.
 
 **Apache already hosts other sites?** Leave them alone — this is a separate
 `VirtualHost` matched by `ServerName`, so only disable `000-default`
@@ -254,7 +278,7 @@ tar -czf "/var/backups/acceleron/uploads-$(date +%F).tgz" -C /var/www/acceleron-
 | Sign-in says a code was sent, nothing arrives | SMTP settings wrong — check `pm2 logs acceleron-plus` for the nodemailer error |
 | Signing in loops back to `/login` | browsing over plain `http://` — the session cookie is `Secure` in production; use the HTTPS URL |
 | `413 Request Entity Too Large` on upload | the file is over 55 MB — the `RewriteCond … Content-Length` rule in the site (Apache's `LimitRequestBody` does not apply to proxied requests, so the site uses a rewrite rule instead) |
-| `503 Service Unavailable` from Apache | the app isn't running on :3000 — `pm2 status`, then `pm2 logs acceleron-plus` |
+| `503 Service Unavailable` from Apache | the app isn't running on :8099 — `pm2 status`, then `pm2 logs acceleron-plus` |
 | `Invalid command 'RequestHeader'` / `ProxyPass` on `configtest` | a module isn't enabled — `sudo a2enmod proxy proxy_http headers` |
 | Exports cut off with `502`/`504` after ~60 s | `ProxyTimeout` missing from the site (the provided one sets 120) |
 | `acceleron-sweep` logs `token rejected` | `NOTIFICATION_SWEEP_TOKEN` empty or changed without `pm2 reload acceleron-plus --update-env` |

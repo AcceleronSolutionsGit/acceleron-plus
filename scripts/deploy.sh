@@ -14,6 +14,9 @@ APP_DIR="$(pwd)"
 
 MIGRATE=false
 PULL=true
+# Must match ecosystem.config.js and the ProxyPass lines in the Apache site.
+APP_PORT="${APP_PORT:-8099}"
+export APP_PORT
 for arg in "$@"; do
   case "$arg" in
     --migrate) MIGRATE=true ;;
@@ -84,6 +87,13 @@ npm run build
 
 # ── Run ──────────────────────────────────────────────────────────
 step "pm2"
+if pm2 describe acceleron-plus >/dev/null 2>&1 \
+   && ! pm2 describe acceleron-plus | grep -q -- "--port ${APP_PORT} "; then
+  # pm2 reload keeps a running process's old arguments, so a port change
+  # needs the processes recreated.
+  echo "Port changed to ${APP_PORT} — recreating the pm2 processes"
+  pm2 delete acceleron-plus acceleron-sweep >/dev/null 2>&1 || true
+fi
 if pm2 describe acceleron-plus >/dev/null 2>&1; then
   pm2 reload ecosystem.config.js --update-env
 else
@@ -94,9 +104,9 @@ pm2 save
 # ── Smoke test ───────────────────────────────────────────────────
 step "Health check"
 for i in $(seq 1 15); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:${APP_PORT}/login || true)
   if [ "$code" = "200" ]; then
-    echo "✔ Acceleron Plus is answering on 127.0.0.1:3000"
+    echo "✔ Acceleron Plus is answering on 127.0.0.1:${APP_PORT}"
     exit 0
   fi
   sleep 2
