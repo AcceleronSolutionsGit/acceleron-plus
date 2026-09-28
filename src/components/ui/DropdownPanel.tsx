@@ -31,6 +31,11 @@ interface DropdownPanelProps {
   className?: string;
   label?: string;
   role?: "menu" | "dialog" | "listbox";
+  /**
+   * Roughly how tall the panel gets. When set, the panel opens upwards
+   * if there is not that much room below the trigger but there is above.
+   */
+  estimatedHeight?: number;
 }
 
 export function DropdownPanel({
@@ -43,9 +48,10 @@ export function DropdownPanel({
   className,
   label,
   role = "menu",
+  estimatedHeight,
 }: DropdownPanelProps) {
   const [mounted, setMounted] = useState(false);
-  const [box, setBox] = useState<{ top: number; left: number } | null>(null);
+  const [box, setBox] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -59,8 +65,14 @@ export function DropdownPanel({
     // Never let it hang off the side of the window.
     left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
 
-    setBox({ top: rect.bottom + gap, left });
-  }, [anchorRef, align, width]);
+    const roomBelow = window.innerHeight - rect.bottom - gap - 8;
+    const roomAbove = rect.top - gap - 8;
+    if (estimatedHeight && roomBelow < estimatedHeight && roomAbove > roomBelow) {
+      setBox({ bottom: window.innerHeight - rect.top + gap, left });
+    } else {
+      setBox({ top: rect.bottom + gap, left });
+    }
+  }, [anchorRef, align, width, estimatedHeight]);
 
   // Measured before paint, so it never appears in the wrong place first.
   useLayoutEffect(() => {
@@ -93,12 +105,14 @@ export function DropdownPanel({
       <div
         role={role}
         aria-label={label}
-        style={{ top: box.top, left: box.left, width }}
+        style={{ top: box.top, bottom: box.bottom, left: box.left, width }}
         className={cn(
           "fixed z-[71] overflow-hidden rounded-xl",
           "border border-navy-900/8 bg-surface shadow-lg",
           "animate-[modal-in_180ms_var(--ease-out-soft)_both]",
-          align === "right" ? "origin-top-right" : "origin-top-left",
+          box.bottom !== undefined
+            ? align === "right" ? "origin-bottom-right" : "origin-bottom-left"
+            : align === "right" ? "origin-top-right" : "origin-top-left",
           className
         )}
       >

@@ -406,6 +406,27 @@
   }
 }
 
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A row that has just been created or changed glows once, then settles. */
+@keyframes row-flash {
+  0%, 35% {
+    background-color: rgb(37 99 168 / 0.09);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 @keyframes shimmer {
   to {
     background-position: -200% 0;

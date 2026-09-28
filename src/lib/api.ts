@@ -16,8 +16,9 @@ import type {
   Project, Ticket, ChangeRequest, Release,
   WBSItem, Milestone, Risk, GovernanceReview,
   TicketHistoryEntry, ActivityEntry,
-  User, ConsultantWorkloadItem,
+  User, ConsultantWorkloadItem, ProjectManagerRef,
 } from "./types";
+import { managersForProjects } from "./project-managers";
 import { mockUsers, mockRequesters, mockCompanies, mockDepartments, mockServiceGroups } from "./mock-data";
 
 // ─── Users & Employee Resolution ────────────────────────────────────
@@ -160,6 +161,8 @@ export async function getProjects(): Promise<Project[]> {
     if (c.project_code) ctxMap.set(c.project_code, c);
   });
 
+  const managers = await managersForProjects(rows, userMap);
+
   return rows.map((r: any) => {
     const p = mapProjectRow(r, userMap);
     const ctx = ctxMap.get(r.id) || ctxMap.get(r.code);
@@ -167,8 +170,20 @@ export async function getProjects(): Promise<Project[]> {
       p.currentPhase = ctx.current_phase || "Discovery";
       p.itsmContextId = ctx.id;
     }
+    p.managers = managers.get(r.id) ?? [];
     return p;
   });
+}
+
+/** One project's PMs, lead first — what the Projects list shows after a change. */
+export async function getProjectManagers(projectId: string): Promise<ProjectManagerRef[]> {
+  const [row, userMap] = await Promise.all([
+    projectDb("projects").where("id", projectId).first("id", "project_manager_user_id"),
+    getUserMap(),
+  ]);
+  if (!row) return [];
+  const managers = await managersForProjects([row], userMap);
+  return managers.get(row.id) ?? [];
 }
 
 /**

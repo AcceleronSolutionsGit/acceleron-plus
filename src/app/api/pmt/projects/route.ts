@@ -4,6 +4,7 @@ import { projectDb, itsmDb } from "@/lib/db";
 import { requireSession, requireCapabilityGlobally, projectsManagedBy } from "@/lib/auth";
 import { notifyAsync, events } from "@/lib/notifications";
 import { canSeeProjectFinancials, redactProjectFinancials } from "@/lib/permissions";
+import { setProjectManagers, ManagerInputError } from "@/lib/project-managers";
 
 export async function GET() {
   try {
@@ -37,10 +38,13 @@ export async function POST(req: Request) {
     }
 
     // Generate sequential project code
+    // The highest PRJ number, not the newest row — imported projects are
+    // not created in code order, and "newest + 1" can land on a code that
+    // already exists.
     const lastProject = await projectDb("projects")
-      .where("code", "like", "PRJ-%")
-      .orderBy("created_at", "desc")
-      .first();
+      .whereRaw("code ~ '^PRJ-[0-9]+$'")
+      .orderByRaw("cast(substring(code from 5) as integer) desc")
+      .first("code");
     const lastNum = lastProject?.code ? parseInt(lastProject.code.replace("PRJ-", "")) || 0 : 0;
     const projectCode = `PRJ-${String(lastNum + 1).padStart(4, "0")}`;
 
@@ -89,6 +93,20 @@ export async function POST(req: Request) {
       console.warn("ITSM project context sync failed (non-fatal):", itsmErr);
     }
 
+    // PMs picked in the New Project dialog — the first is the lead. The
+    // project exists either way; a bad pick is reported, not fatal.
+    let managersError: string | null = null;
+    if (Array.isArray(body.managers) && body.managers.length > 0) {
+      try {
+        await setProjectManagers(newProject.id, body.managers);
+        const refreshed = await projectDb("projects").where("id", newProject.id).first("project_manager_user_id");
+        newProject.project_manager_user_id = refreshed?.project_manager_user_id ?? null;
+      } catch (err) {
+        if (!(err instanceof ManagerInputError)) throw err;
+        managersError = err.message;
+      }
+    }
+
     // Tell the PM and sponsor the project (and its ITSM context) now exists.
     notifyAsync(
       events.projectCreated(newProject.id, newProject.name, newProject.code, auth.session.userId)
@@ -98,6 +116,7 @@ export async function POST(req: Request) {
       project: newProject,
       itsmContextId,
       itsmSynced: itsmContextId !== null,
+      managersError,
     }, { status: 201 });
   } catch (error) {
     console.error("Failed to create project:", error);

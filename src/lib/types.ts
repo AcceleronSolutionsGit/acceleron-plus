@@ -84,7 +84,35 @@ export interface Project {
   sponsor?: User;
   currentPhase?: string;
   itsmContextId?: string;
+  /** Every PM — the lead named on the project first, then the team PMs. */
+  managers?: ProjectManagerRef[];
 }
+
+/** One of a project's PMs, as the Projects list shows them. */
+export interface ProjectManagerRef {
+  /** `emp:<employee id>`, or `user:<user id>` for an account with no employee record. */
+  key: string;
+  employeeId: string | null;
+  userId: string | null;
+  fullName: string;
+  jobLevel: string | null;
+  /** The lead PM named on the project row. */
+  isLead: boolean;
+}
+
+/** Somebody who may be picked as a PM. */
+export interface PmCandidate {
+  key: string;
+  employeeId: string | null;
+  userId: string | null;
+  fullName: string;
+  email: string | null;
+  jobLevel: string | null;
+  designation: string | null;
+  department: string | null;
+  location: string | null;
+}
+
 
 export type WBSStatus = "not_started" | "in_progress" | "blocked" | "completed";
 
