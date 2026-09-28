@@ -44,6 +44,10 @@ function getTransport(): Transporter | null {
       port,
       // Port 465 is implicit TLS; 587 upgrades via STARTTLS.
       secure: process.env.SMTP_SECURE === "true" || port === 465,
+      // On 587 insist on STARTTLS, so the mailbox password is never sent
+      // in clear. Outlook / Microsoft 365 (smtp.office365.com) requires it.
+      requireTLS: port === 587,
+      tls: { minVersion: "TLSv1.2" },
       auth: user && pass ? { user, pass } : undefined,
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
@@ -93,8 +97,27 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[mail] Send failed:", error);
+    const hint = smtpHint(error);
+    if (hint) console.error(`[mail] ${hint}`);
     return { sent: false, error };
   }
+}
+
+/** Plain-language next step for the SMTP failures people actually hit. */
+export function smtpHint(error: string): string | null {
+  if (/5\.7\.139|SmtpClientAuthentication is disabled/i.test(error)) {
+    return "Microsoft 365 has SMTP sign-in (SMTP AUTH) switched off. An Exchange admin must enable \"Authenticated SMTP\" for this mailbox (Microsoft 365 admin → Users → the mailbox → Mail → Manage email apps).";
+  }
+  if (/SendAsDenied|5\.2\.252/i.test(error)) {
+    return "Microsoft 365 refused the sender. SMTP_FROM must use the same address as SMTP_USER (or a mailbox SMTP_USER has Send As rights on).";
+  }
+  if (/5\.7\.3|5\.7\.8|535|Invalid login|Authentication unsuccessful|BadCredentials/i.test(error)) {
+    return "The mail server rejected SMTP_USER / SMTP_PASS. For Outlook / Microsoft 365: SMTP_HOST=smtp.office365.com, SMTP_PORT=587, SMTP_USER = the full mailbox address, SMTP_PASS = its password (an app password if the account uses MFA). Run: node scripts/test-smtp.js you@acceleronsolutions.io";
+  }
+  if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|ECONNRESET/i.test(error)) {
+    return "Could not reach the mail server — check SMTP_HOST / SMTP_PORT and that the server may connect out on that port.";
+  }
+  return null;
 }
 
 // ─── Templating ────────────────────────────────────────────────────
