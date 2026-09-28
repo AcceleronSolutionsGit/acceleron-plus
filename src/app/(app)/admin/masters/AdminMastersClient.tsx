@@ -4,6 +4,7 @@ import { withBase } from "@/lib/base-path";
 import React, { useState, useEffect, useMemo, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
+import { DarwinboxAutosync } from "./DarwinboxAutosync";
 
 interface Employee {
   employee_id: string;
@@ -130,6 +131,8 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  // Bumped after a manual sync so the Auto-sync button's history refreshes.
+  const [syncRunCount, setSyncRunCount] = useState(0);
 
   // Employees tab state
   const [employees, setEmployees] = useState<Employee[]>(initialData.employees);
@@ -257,6 +260,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
       });
     } finally {
       setIsSyncing(false);
+      setSyncRunCount((n) => n + 1);
     }
   };
 
@@ -593,7 +597,8 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
         </div>
 
         {/* Action Header: Darwinbox Sync */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <DarwinboxAutosync refreshKey={syncRunCount} />
           <button
             onClick={handleDarwinboxSync}
             disabled={isSyncing}

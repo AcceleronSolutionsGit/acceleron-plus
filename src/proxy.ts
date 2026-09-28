@@ -23,6 +23,8 @@ const PUBLIC_PATHS = [
   // Scheduler entry point — the handler authenticates with a shared token,
   // because a cron job has no browser session to present.
   "/api/notifications/sweep",
+  // Darwinbox auto-sync scheduler — same shared token, checked in the handler.
+  "/api/integrations/darwinbox/autosync",
 ];
 
 /** Path prefixes only an admin may open. */
@@ -64,9 +66,8 @@ function appUrl(request: NextRequest, path: string): URL {
 export async function proxy(request: NextRequest) {
   // Without the base path — Next strips it — so the rules below compare
   // against "/pmt", "/api/…" whether or not the app lives in a folder.
-  // The bare folder itself ("/acceleron-plus", no slash) arrives with the
-  // base path still on, so strip it here too, or "from" would point at
-  // /acceleron-plus/acceleron-plus after sign-in.
+  // Defensive: if a proxy in front ever doubles the folder
+  // ("/acceleron-plus/acceleron-plus"), don't carry it into "from".
   const raw = request.nextUrl.pathname;
   const pathname =
     BASE_PATH && (raw === BASE_PATH || raw.startsWith(`${BASE_PATH}/`))

@@ -85,5 +85,25 @@ module.exports = {
       out_file: path.join(__dirname, "logs/sweep.out.log"),
       error_file: path.join(__dirname, "logs/sweep.err.log"),
     },
+
+    {
+      // Darwinbox employee auto-sync. Knocks every 15 minutes; the app
+      // runs a sync only when it is switched on and due (Master Data →
+      // Auto-sync). Most runs log "not run (not_due)" and exit.
+      name: "acceleron-darwinbox-sync",
+      cwd: __dirname,
+      script: path.join(__dirname, "scripts/darwinbox-autosync.js"),
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: false,
+      cron_restart: "*/15 * * * *",
+      env: {
+        NODE_ENV: "production",
+        AUTOSYNC_URL: `http://127.0.0.1:${PORT}${BASE_PATH}/api/integrations/darwinbox/autosync`,
+      },
+      time: true,
+      out_file: path.join(__dirname, "logs/darwinbox-sync.out.log"),
+      error_file: path.join(__dirname, "logs/darwinbox-sync.err.log"),
+    },
   ],
 };

@@ -169,6 +169,8 @@ const MIGRATION_FOR: Record<string, string> = {
   employee_master: "src/lib/migrations/migrate-employee-master.js",
   employee_rate_bands: "src/lib/migrations/migrate-project-db.js",
   project_team_members: "src/lib/migrations/migrate-project-db.js",
+  darwinbox_sync_settings: "src/lib/migrations/migrate-darwinbox-autosync.js",
+  darwinbox_sync_runs: "src/lib/migrations/migrate-darwinbox-autosync.js",
   wbs_assignments: "src/lib/migrations/migrate-assignments.js",
 };
 

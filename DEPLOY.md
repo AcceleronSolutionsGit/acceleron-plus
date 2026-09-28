@@ -2,19 +2,22 @@
 
 The app runs as one `next start` process under pm2, listening on
 `127.0.0.1:8099` (set in `ecosystem.config.js`; `APP_PORT` overrides). Apache sits in front as a reverse proxy and terminates
-HTTPS. A second pm2 entry fires the daily overdue-milestone sweep.
+HTTPS. A second pm2 entry fires the daily overdue-milestone sweep; a third
+knocks every 15 minutes to run the Darwinbox auto-sync when it is due.
 
 ```
 browser ──https──▶ Apache :443 ──▶ 127.0.0.1:8099  pm2: acceleron-plus
                                                   pm2: acceleron-sweep (08:00 daily)
+                                                  pm2: acceleron-darwinbox-sync (every 15 min check)
                                    PostgreSQL: identity_db, project_db, itsm_db, execution_db
 ```
 
 | File | Purpose |
 |---|---|
-| `ecosystem.config.js` | pm2 process definitions (app + sweep) |
+| `ecosystem.config.js` | pm2 process definitions (app + sweep + Darwinbox auto-sync) |
 | `scripts/deploy.sh` | install → migrate (optional) → build → pm2 reload → health check |
 | `scripts/notification-sweep.js` | calls `POST /api/notifications/sweep` with the sweep token |
+| `scripts/darwinbox-autosync.js` | calls `POST /api/integrations/darwinbox/autosync` with the same token; the app decides whether a sync is due |
 | `scripts/db-export.ps1` | (Windows) dumps the four databases + uploaded documents from the laptop |
 | `scripts/db-import.sh` | (server) loads those dumps into the server's PostgreSQL |
 | `deploy/apache/acceleron-plus.conf` | Apache reverse-proxy site (50 MB uploads, forwarded headers) |
@@ -312,6 +315,7 @@ load balancer or Cloudflare ever sits in front of Apache, revisit this (use
 | Live logs | `pm2 logs acceleron-plus` |
 | Restart | `pm2 reload acceleron-plus --update-env` (after editing `.env.local`) |
 | Run the sweep now | `pm2 restart acceleron-sweep` then `pm2 logs acceleron-sweep --lines 5` |
+| Darwinbox auto-sync | Master Data → **Auto-sync** button (on/off, how often, the hour in India time, recent runs). Default: every 24 h at 02:00 IST. `pm2 logs acceleron-darwinbox-sync --lines 20` shows each check |
 | Resource view | `pm2 monit` |
 
 `NEXT_PUBLIC_*` values need a rebuild, not just a restart — rerun `deploy.sh`.
@@ -333,6 +337,8 @@ tar -czf "/var/backups/acceleron/uploads-$(date +%F).tgz" -C /var/www/acceleron-
 | Symptom | Cause |
 |---|---|
 | pm2 shows `errored`, log says `SESSION_SECRET is missing` / `DATABASE_PASSWORD is not set` | `.env.local` missing or not in `/var/www/acceleron-plus` |
+| A 404 right after signing in | The bare `/acceleron-plus` line in Apache must be `ProxyPassMatch "^(/acceleron-plus)$" "http://127.0.0.1:8099$1"` — without the `$1` capture, ProxyPassMatch appends the path and the app receives `/acceleron-plus/acceleron-plus`. |
+| "We could not send your sign-in code" / `535 5.7.3 Authentication unsuccessful` | Run `node scripts/test-smtp.js you@acceleronsolutions.io` — it reads `.env.local` exactly as the app does. A value containing `#` must be in double quotes (`SMTP_PASS="abc#12"`): unquoted, everything from `#` on is a comment, so the app sends a shortened password. The script warns about this and prints the length the app sees. |
 | Sign-in says a code was sent, nothing arrives | SMTP settings wrong — check `pm2 logs acceleron-plus` for the nodemailer error |
 | Signing in loops back to `/login` | browsing over plain `http://` — the session cookie is `Secure` in production; use the HTTPS URL |
 | `413 Request Entity Too Large` on upload | the file is over 55 MB — the `RewriteCond … Content-Length` rule in the site (Apache's `LimitRequestBody` does not apply to proxied requests, so the site uses a rewrite rule instead) |
@@ -340,6 +346,9 @@ tar -czf "/var/backups/acceleron/uploads-$(date +%F).tgz" -C /var/www/acceleron-
 | `Invalid command 'RequestHeader'` / `ProxyPass` on `configtest` | a module isn't enabled — `sudo a2enmod proxy proxy_http headers` |
 | Exports cut off with `502`/`504` after ~60 s | `ProxyTimeout` missing from the site (the provided one sets 120) |
 | `acceleron-sweep` logs `token rejected` | `NOTIFICATION_SWEEP_TOKEN` empty or changed without `pm2 reload acceleron-plus --update-env` |
+| Auto-sync runs show `401 Unauthorized` or "not configured" | the Darwinbox variables in `.env.local` must use the exact names in section 3; then `pm2 reload acceleron-plus --update-env` |
+| `acceleron-darwinbox-sync` logs `token rejected` | same cause as the sweep row above — it uses `NOTIFICATION_SWEEP_TOKEN` too |
+| "A Darwinbox sync is already running" | one sync at a time; a lock older than 30 minutes (crashed run) is taken over automatically |
 | Build fails with `Cannot find module 'typescript'` / tailwind | devDependencies skipped — the script uses `npm ci --include=dev`; don't replace it with `npm ci --production` |
 
 ## More than one instance

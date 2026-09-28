@@ -75,6 +75,7 @@ if $MIGRATE; then
     migrate-phase-sync
     migrate-phase1
     migrate-team-roles
+    migrate-darwinbox-autosync
   )
   for m in "${MIGRATIONS[@]}"; do
     echo "  → $m"
@@ -94,10 +95,12 @@ if pm2 describe acceleron-plus >/dev/null 2>&1 \
   # pm2 reload keeps a running process's old arguments, so a port change
   # needs the processes recreated.
   echo "Port changed to ${APP_PORT} — recreating the pm2 processes"
-  pm2 delete acceleron-plus acceleron-sweep >/dev/null 2>&1 || true
+  pm2 delete acceleron-plus acceleron-sweep acceleron-darwinbox-sync >/dev/null 2>&1 || true
 fi
 if pm2 describe acceleron-plus >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.js --update-env
+  # startOrReload also starts any app added to ecosystem.config.js since
+  # the last deploy (e.g. acceleron-darwinbox-sync).
+  pm2 startOrReload ecosystem.config.js --update-env
 else
   pm2 start ecosystem.config.js
 fi
