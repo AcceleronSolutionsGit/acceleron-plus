@@ -12,23 +12,27 @@ import { NextResponse } from "next/server";
 import { projectDb, identityDb } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { readJson, serverError, validationError } from "@/lib/route-helpers";
+import { SELF_SELECTABLE_ROLES, PM, toTeamRole } from "@/lib/team-roles";
 
 export const runtime = "nodejs";
 
-const ALLOWED_ROLES = [
-  "Project Manager",
-  "Business Analyst",
-  "Solution Architect",
-  "Senior Consultant",
-  "Consultant",
-  "Junior Consultant",
-  "QA Engineer",
-  "Data Engineer",
-  "DevOps Engineer",
-  "Technical Lead",
-  "Functional Consultant",
-  "Other",
-] as const;
+// A project team has three roles: Developer, Team Lead and PM. Only the
+// first two can be picked for yourself — PM gives access to the project's
+// finances, so it is granted by an admin or one of the project's PMs from
+// the project's Team tab, never self-declared.
+const ALLOWED_ROLES = SELF_SELECTABLE_ROLES;
+
+/** PM is granted by an admin or the project's PMs, never self-declared. */
+function pmSelfRefused() {
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        "You can add yourself as Developer or Team Lead. To be a PM on a project, ask an administrator or one of that project's PMs to set it on the Team tab.",
+    },
+    { status: 403 }
+  );
+}
 
 /** Self-allocation is for employees; a client contact has their own portal. */
 function clientRefused() {
@@ -139,11 +143,14 @@ function readAllocationFields(body: Record<string, unknown>, partial: boolean) {
   const role = body.role ?? body.requestedRole;
   const pct = body.allocationPercent;
 
-  const requestedRole = role === undefined ? undefined : String(role).trim();
+  // Canonical "Developer" / "Team Lead" / "PM", or null when it is none.
+  const requestedRole =
+    role === undefined ? undefined : String(role).trim() ? toTeamRole(role) : "";
   const allocationPercent = pct === undefined ? undefined : Number(pct);
 
   if (!partial || requestedRole !== undefined) {
-    if (!requestedRole) errors.push("Which role?");
+    if (requestedRole === undefined || requestedRole === "") errors.push("Which role?");
+    else if (requestedRole === null) errors.push("Your role must be Developer or Team Lead.");
   }
   if (!partial || allocationPercent !== undefined) {
     const n = allocationPercent ?? 100;
@@ -186,6 +193,7 @@ export async function POST(req: Request) {
     if (errors.length > 0) return validationError(errors);
     const role = requestedRole!;
     const pct = allocationPercent ?? 100;
+    if (role === PM) return pmSelfRefused();
 
     const project = await projectDb("projects")
       .where("id", projectId)
@@ -288,6 +296,14 @@ export async function PATCH(req: Request) {
       errors.push("Nothing to change.");
     }
     if (errors.length > 0) return validationError(errors);
+
+    // Keeping PM is fine for somebody who already is one; becoming one is not.
+    if (requestedRole === PM) {
+      const current = await projectDb("project_team_members")
+        .where({ project_id: projectId, user_id: userId, is_active: true })
+        .first<{ role_in_project: string | null } | undefined>();
+      if (toTeamRole(current?.role_in_project) !== PM) return pmSelfRefused();
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (requestedRole !== undefined) updates.role_in_project = requestedRole;

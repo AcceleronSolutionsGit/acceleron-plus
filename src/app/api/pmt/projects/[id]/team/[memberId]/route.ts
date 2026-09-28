@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
 import { requireProjectCapability, can } from "@/lib/auth";
-import { readJson, validationError, serverError, withoutTeamCost } from "@/lib/route-helpers";
+import {
+  readJson,
+  validationError,
+  serverError,
+  withoutTeamCost,
+  pmAssignmentRefused,
+  TEAM_ROLE_REQUIRED,
+} from "@/lib/route-helpers";
+import { canAssignProjectManagers, normaliseProjectRole } from "@/lib/permissions";
+import { PM, toTeamRole } from "@/lib/team-roles";
 import { plannedCostFor, allocationPictureFor, describeOverallocation } from "@/lib/staffing";
 import { toDateInput } from "@/lib/dates";
 
@@ -35,10 +44,22 @@ export async function PATCH(req: Request, context: Params) {
     const updates: Record<string, unknown> = { updated_at: new Date() };
     const errors: string[] = [];
 
+    const wasPm = normaliseProjectRole(existing.role_in_project as string | null) === "manager";
+    let willBePm = wasPm;
     if (body.roleInProject !== undefined) {
-      const role = String(body.roleInProject).trim();
-      if (role.length > 120) errors.push("The project role is too long.");
-      updates.role_in_project = role || null;
+      const role = toTeamRole(body.roleInProject);
+      if (!role) errors.push(TEAM_ROLE_REQUIRED);
+      else {
+        updates.role_in_project = role;
+        willBePm = role === PM;
+      }
+    }
+
+    // Making somebody PM, taking PM away, or standing a PM down or back
+    // up all change who sees the money — admins and existing PMs only.
+    const togglesActivePm = wasPm && body.isActive !== undefined && Boolean(body.isActive) !== Boolean(existing.is_active);
+    if ((wasPm !== willBePm || togglesActivePm) && !canAssignProjectManagers(guard.access)) {
+      return pmAssignmentRefused();
     }
 
     if (body.allocationPercent !== undefined) {
@@ -189,6 +210,10 @@ export async function DELETE(_req: Request, context: Params) {
     // Time already booked against the project is a financial record.
     // Removing the row would orphan it and quietly change the cost
     // history, so somebody who has logged time is stood down instead.
+    if (normaliseProjectRole(existing.role_in_project as string | null) === "manager" && !canAssignProjectManagers(guard.access)) {
+      return pmAssignmentRefused();
+    }
+
     const logged = await projectDb("project_timesheets")
       .where({ project_id: project.id, user_id: String(existing.user_id) })
       .count("* as n")

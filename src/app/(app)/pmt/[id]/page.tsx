@@ -11,6 +11,7 @@ import {
 import { getSession, getProjectAccess } from "@/lib/auth";
 import { can, describeAccess, redactProjectFinancials } from "@/lib/permissions";
 import { getPreDeliveryStages } from "@/lib/lifecycle";
+import { projectDb } from "@/lib/db";
 import { ProjectDetailClient } from "./ProjectDetailClient";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -51,6 +52,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     getPreDeliveryStages(project),
   ]);
 
+  // A project can have several PMs: the one named on the project, and
+  // everyone holding the PM role on its team. The header lists them all.
+  const teamPmNames = (await projectDb("project_team_members")
+    .where({ project_id: project.id, is_active: true, role_in_project: "PM" })
+    .orderBy("user_name")
+    .pluck("user_name")
+    .catch(() => [])) as (string | null)[];
+  const projectManagers = [
+    ...new Set(
+      [project.projectManager?.fullName, ...teamPmNames].filter((n): n is string => Boolean(n))
+    ),
+  ];
+
   // The project is serialised into the page, so the money has to be
   // removed here — hiding it in the component would still ship it.
   const visibleProject = permissions.canViewFinancials ? project : redactProjectFinancials(project);
@@ -59,6 +73,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     <ProjectDetailClient
       project={visibleProject}
       preDelivery={preDelivery}
+      projectManagers={projectManagers}
       wbsItems={wbsItems}
       milestones={milestones}
       risks={risks}

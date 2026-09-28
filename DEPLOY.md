@@ -1,13 +1,13 @@
 # Deploying Acceleron Plus with pm2 (Ubuntu)
 
 The app runs as one `next start` process under pm2, listening on
-`127.0.0.1:3000`. nginx sits in front and terminates HTTPS. A second pm2
-entry fires the daily overdue-milestone sweep.
+`127.0.0.1:3000`. Apache sits in front as a reverse proxy and terminates
+HTTPS. A second pm2 entry fires the daily overdue-milestone sweep.
 
 ```
-browser ──https──▶ nginx :443 ──▶ 127.0.0.1:3000  pm2: acceleron-plus
-                                                 pm2: acceleron-sweep (08:00 daily)
-                                  PostgreSQL: identity_db, project_db, itsm_db, execution_db
+browser ──https──▶ Apache :443 ──▶ 127.0.0.1:3000  pm2: acceleron-plus
+                                                  pm2: acceleron-sweep (08:00 daily)
+                                   PostgreSQL: identity_db, project_db, itsm_db, execution_db
 ```
 
 | File | Purpose |
@@ -15,7 +15,8 @@ browser ──https──▶ nginx :443 ──▶ 127.0.0.1:3000  pm2: acceleron
 | `ecosystem.config.js` | pm2 process definitions (app + sweep) |
 | `scripts/deploy.sh` | install → migrate (optional) → build → pm2 reload → health check |
 | `scripts/notification-sweep.js` | calls `POST /api/notifications/sweep` with the sweep token |
-| `deploy/nginx/acceleron-plus.conf` | reverse-proxy site (50 MB uploads, forwarded headers) |
+| `deploy/apache/acceleron-plus.conf` | Apache reverse-proxy site (50 MB uploads, forwarded headers) |
+| `deploy/nginx/acceleron-plus.conf` | the same site for nginx, if a server ever uses that instead |
 
 Commands below assume the app lives at `/var/www/acceleron-plus` and runs
 as a normal user (`deploy` here) — not root.
@@ -25,7 +26,7 @@ as a normal user (`deploy` here) — not root.
 ## 1. Prepare the server (once)
 
 ```bash
-sudo apt update && sudo apt install -y git curl nginx build-essential
+sudo apt update && sudo apt install -y git curl apache2 build-essential
 # Node 22 LTS
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
@@ -35,7 +36,7 @@ sudo npm install -g pm2
 sudo timedatectl set-timezone Asia/Kolkata
 
 # Firewall: SSH + web only. Port 3000 is bound to 127.0.0.1 and stays closed.
-sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
+sudo ufw allow OpenSSH && sudo ufw allow 'Apache Full' && sudo ufw enable
 
 sudo mkdir -p /var/www/acceleron-plus && sudo chown $USER:$USER /var/www/acceleron-plus
 ```
@@ -131,22 +132,41 @@ pm2 set pm2-logrotate:retain 14
 pm2 set pm2-logrotate:compress true
 ```
 
-## 6. nginx + HTTPS
+## 6. Apache + HTTPS
 
 Point the domain's DNS A record at the server first.
 
 ```bash
-sudo cp deploy/nginx/acceleron-plus.conf /etc/nginx/sites-available/acceleron-plus
-sudo sed -i 's/plus.example.com/plus.yourdomain.com/' /etc/nginx/sites-available/acceleron-plus
-sudo ln -s /etc/nginx/sites-available/acceleron-plus /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+# Modules the site needs (proxy_wstunnel is not — production Next.js has no websockets)
+sudo a2enmod proxy proxy_http headers rewrite ssl
 
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d plus.yourdomain.com --redirect
+sudo cp deploy/apache/acceleron-plus.conf /etc/apache2/sites-available/acceleron-plus.conf
+sudo sed -i 's/plus.example.com/plus.yourdomain.com/' /etc/apache2/sites-available/acceleron-plus.conf
+sudo a2ensite acceleron-plus
+sudo apache2ctl configtest && sudo systemctl reload apache2
+
+sudo apt install -y certbot python3-certbot-apache
+sudo certbot --apache -d plus.yourdomain.com --redirect
 ```
 
-certbot renews itself (systemd timer). Open `https://plus.yourdomain.com`.
+certbot writes `acceleron-plus-le-ssl.conf` (a copy of the site on :443 with
+the certificate) and turns the :80 site into a redirect. It renews itself
+(systemd timer). Open `https://plus.yourdomain.com`.
+
+**Apache already hosts other sites?** Leave them alone — this is a separate
+`VirtualHost` matched by `ServerName`, so only disable `000-default`
+(`sudo a2dissite 000-default`) if nothing else relies on it. It needs its own
+domain or subdomain; serving it under a sub-path such as
+`example.com/acceleron` would also need `basePath` in `next.config.ts` and a
+rebuild.
+
+**Why the site unsets `X-Forwarded-For`.** Unlike nginx's
+`proxy_set_header`, Apache's `mod_proxy` *appends* the client address to any
+`X-Forwarded-For` the browser sent. The app takes the first entry for its
+sign-in audit log and rate limit, so without `RequestHeader unset
+X-Forwarded-For early` a client could put any address it liked there. If a
+load balancer or Cloudflare ever sits in front of Apache, revisit this (use
+`mod_remoteip` with that proxy's addresses as trusted).
 
 ---
 
@@ -182,7 +202,10 @@ tar -czf "/var/backups/acceleron/uploads-$(date +%F).tgz" -C /var/www/acceleron-
 | pm2 shows `errored`, log says `SESSION_SECRET is missing` / `DATABASE_PASSWORD is not set` | `.env.local` missing or not in `/var/www/acceleron-plus` |
 | Sign-in says a code was sent, nothing arrives | SMTP settings wrong — check `pm2 logs acceleron-plus` for the nodemailer error |
 | Signing in loops back to `/login` | browsing over plain `http://` — the session cookie is `Secure` in production; use the HTTPS URL |
-| `413 Request Entity Too Large` on upload | nginx `client_max_body_size` (set to 55m in the provided site) |
+| `413 Request Entity Too Large` on upload | the file is over 55 MB — the `RewriteCond … Content-Length` rule in the site (Apache's `LimitRequestBody` does not apply to proxied requests, so the site uses a rewrite rule instead) |
+| `503 Service Unavailable` from Apache | the app isn't running on :3000 — `pm2 status`, then `pm2 logs acceleron-plus` |
+| `Invalid command 'RequestHeader'` / `ProxyPass` on `configtest` | a module isn't enabled — `sudo a2enmod proxy proxy_http headers` |
+| Exports cut off with `502`/`504` after ~60 s | `ProxyTimeout` missing from the site (the provided one sets 120) |
 | `acceleron-sweep` logs `token rejected` | `NOTIFICATION_SWEEP_TOKEN` empty or changed without `pm2 reload acceleron-plus --update-env` |
 | Build fails with `Cannot find module 'typescript'` / tailwind | devDependencies skipped — the script uses `npm ci --include=dev`; don't replace it with `npm ci --production` |
 

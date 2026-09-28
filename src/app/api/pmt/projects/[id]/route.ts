@@ -48,7 +48,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       return NextResponse.json(
         {
           success: false,
-          error: "Only the project manager of this project or an administrator can change its budget.",
+          error: "Only a PM of this project or an administrator can change its budget.",
           required: "financials.view",
         },
         { status: 403 }
@@ -82,7 +82,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       return NextResponse.json(
         {
           success: false,
-          error: "Only an administrator or the current project manager can change who manages this project.",
+          error: "Only an administrator or one of this project's PMs can change who manages it.",
         },
         { status: 403 }
       );
@@ -180,10 +180,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
 
     const updatedProject = await getProject(projectId);
-    // The PM may just have handed over, so decide from the saved row.
+    // The named PM may just have handed over, so decide from the saved
+    // row — they still see it if they are PM on the team as well.
     const canSeeMoney =
       access.role === "admin" ||
-      (access.role !== "client" && updatedProject?.projectManagerUserId === session.userId);
+      (access.role !== "client" &&
+        (updatedProject?.projectManagerUserId === session.userId || access.projectRole === "manager"));
     return NextResponse.json({ project: updatedProject ? redactFinancials(updatedProject, canSeeMoney) : updatedProject, phaseSynced: Boolean(newPhase && newPhase !== previousPhase) }, { status: 200 });
   } catch (error) {
     console.error("Failed to update project:", error);

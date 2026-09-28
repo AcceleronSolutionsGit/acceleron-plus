@@ -58,12 +58,12 @@ project row, because their global role already reflects the job.
 | Raise a risk | ✓ | ✓ | ✓ | |
 | Record a stage gate | ✓ | ✓ | | |
 | Delete a stage gate | ✓ | | | |
-| Budget, cost summary, invoices | ✓ | named PM only | | |
+| Budget, cost summary, invoices | ✓ | PMs of that project only | | |
 | Approve timesheets | ✓ | ✓ | | |
 | See others' timesheets | ✓ | ✓ | | |
 | Employee master and roles | ✓ | | | |
 | Export the plan | ✓ | ✓ | ✓ | ✓ |
-| Export with money in it | ✓ | named PM only | | |
+| Export with money in it | ✓ | PMs of that project only | | |
 
 A client can download the plan. They can already read it on screen, so refusing
 the file was inconsistent rather than protective — what actually matters is
@@ -130,27 +130,72 @@ drift from the rules.
 
 ---
 
-## Project finances: admin and the project's own PM
+## Team roles: Developer, Team Lead, PM
+
+A project team has exactly three roles, and any number of each — several
+Developers, several Team Leads and several PMs on one project is normal.
+`src/lib/team-roles.js` holds them (CommonJS, so migrations and the import
+CLI can require it; `team-roles.d.ts` types it for the app).
+
+**On a project, the project role decides** what somebody can do there,
+whatever their account role. Outside the project the account role applies.
+
+| On this project | Plan, WBS, Gantt | Team | Progress, time, risks | Finances | Can make someone PM |
+|---|---|---|---|---|---|
+| **PM** | edit | manage | ✓ | ✓ | ✓ |
+| **Team Lead** | edit | view | ✓ | | |
+| **Developer** | view | view | own work | | |
+| Not on the team | account role | account role | account role | | admin only |
+
+So a `member` account made PM on a project runs that project, and a `pm`
+account added as a Developer is a Developer there. Admins are unaffected.
+Client contacts keep their own team row (for the portal); they are not one
+of the three roles and are never raised by it.
+
+**Who can make somebody PM.** Being PM is what unlocks a project's money,
+so only an **admin or one of that project's existing PMs** can add a PM,
+promote someone to PM, demote or remove a PM, or change the lead PM on the
+project row. Everyone else gets a 403 naming the rule, and the Team tab
+shows the PM option disabled with the reason. Self-allocation (My Projects)
+offers Developer and Team Lead only; approving an allocation request never
+produces a PM. The allocation import is admin-only, so it may set PM.
+
+The project header lists every PM — the lead PM on the project row plus the
+PMs on the team.
+
+**Existing data.** `node src/lib/migrations/migrate-team-roles.js --dry-run`
+shows what changes; run it without the flag to apply (`deploy.sh --migrate`
+includes it). Old titles map onto the three: "Project/Delivery/Program
+Manager" → PM, "Technical Lead", "Architect", "Scrum Master" → Team Lead,
+everything else → Developer. Because self-allocation used to offer "Project
+Manager" to anybody, an old PM-like title only becomes PM when the person is
+the named PM or their account is pm/admin; the rest become Team Lead and are
+listed for an admin to promote. Run it before people start using the build:
+until it runs, an old "Project Manager" row already counts as PM.
+
+## Project finances: admin and the project's PMs
 
 Money on a project — budget, cost summary, margin, invoices, team rates and
 planned cost, and the money columns in an export — is visible to exactly two
-kinds of people: **admins**, and **the project manager named on the project**
-(`projects.project_manager_user_id`). Nobody else, whatever their role:
+kinds of people: **admins**, and **the project's PMs** — the lead PM named on
+the project (`projects.project_manager_user_id`) and anyone with the PM role
+on its team. Nobody else, whatever their role:
 
 | | Sees the project's money |
 |---|---|
 | Admin | ✓ every project |
-| Named PM of this project | ✓ this project (even if their global role is member) |
-| Global `pm` on someone else's project | ✗ |
-| "PM" on the Team tab but not the named PM | ✗ |
+| PM of this project (lead PM or PM on the team) | ✓ this project, whatever their account role |
+| Team Lead, Developer | ✗ |
+| Global `pm` who is not a PM on this project | ✗ |
 | Sponsor | ✗ |
-| Member, client | ✗ |
+| Client | ✗ |
 
 This is not a layer question, so `can()` decides it before the two layers: the
 five capabilities in `FINANCIAL_CAPABILITIES` (`financials.view`,
 `invoice.view`, `invoice.manage`, `team.viewCost`, `export.financials`) pass
-only for an admin or `isProjectManager` whenever the context was resolved for
-one project (`projectScoped`). Every guard that already asked for those
+only for an admin or `isProjectManager` (lead PM or PM on the team) whenever
+the context was resolved for one project (`projectScoped`). Screens that list
+many projects use `projectsManagedBy(userId)` to answer it per row. Every guard that already asked for those
 capabilities — cost-summary, margin, invoices, billing, team cost, export —
 picks the rule up without changes. Questions asked without a project (the
 pre-sales pipeline) still fall to the global role.
@@ -167,8 +212,9 @@ What changed around it:
   logged timesheet only echoes its internal cost to the PM or an admin; the
   portfolio dashboard totals only the projects you manage (all of them for an
   admin).
-- **Naming the PM is protected**, because it is what unlocks the money. Only an
-  admin, or the current PM handing over, can change `projectManagerUserId`;
+- **Naming a PM is protected**, because it is what unlocks the money. Only an
+  admin or one of the project's PMs can change `projectManagerUserId` or the
+  PM role on the team;
   changing the budget needs `financials.view`. Both are refused with a 403 and
   a reason, not silently ignored.
 - **The pipeline is not a side door.** A converted lead's fee *is* the

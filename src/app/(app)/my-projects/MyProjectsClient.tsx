@@ -364,8 +364,15 @@ export function MyProjectsClient({ userName }: { userName: string }) {
                   className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none bg-white"
                 >
                   <option value="">— Select a role —</option>
+                  {/* Someone already made PM by an admin keeps seeing it. */}
+                  {selectedRole && !roles.includes(selectedRole) && (
+                    <option value={selectedRole}>{selectedRole}</option>
+                  )}
                   {roles.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
+                <p className="mt-1 text-[11px] text-navy-500">
+                  Developer or Team Lead. A PM is set by an administrator or the project&apos;s PMs.
+                </p>
               </div>
 
               <div>

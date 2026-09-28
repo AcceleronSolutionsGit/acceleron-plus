@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProjects } from "@/lib/api";
 import { projectDb, itsmDb } from "@/lib/db";
-import { requireSession, requireCapabilityGlobally } from "@/lib/auth";
+import { requireSession, requireCapabilityGlobally, projectsManagedBy } from "@/lib/auth";
 import { notifyAsync, events } from "@/lib/notifications";
 import { canSeeProjectFinancials, redactProjectFinancials } from "@/lib/permissions";
 
@@ -14,8 +14,9 @@ export async function GET() {
     // Budgets only on the projects this person manages (all of them for
     // an admin). The key is removed rather than blanked.
     const viewer = { role: auth.session.role, userId: auth.session.userId };
+    const managed = await projectsManagedBy(auth.session.userId);
     const visible = projects.map((project) =>
-      canSeeProjectFinancials(viewer, project) ? project : redactProjectFinancials(project)
+      canSeeProjectFinancials(viewer, project, managed) ? project : redactProjectFinancials(project)
     );
     return NextResponse.json({ projects: visible }, { status: 200 });
   } catch (error) {

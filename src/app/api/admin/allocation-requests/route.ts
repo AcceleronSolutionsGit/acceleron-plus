@@ -23,6 +23,18 @@ import { projectDb } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { readJson, serverError } from "@/lib/route-helpers";
 import { directReportUserIds } from "@/lib/reportees";
+import { DEVELOPER, PM, TEAM_LEAD, legacyToTeamRole } from "@/lib/team-roles";
+
+/**
+ * The role a request becomes on the team. A request is somebody speaking
+ * for themselves, so it is never PM — that is granted on the Team tab by
+ * an admin or the project's PMs.
+ */
+function teamRoleFromRequest(requested: unknown, fallback: unknown = DEVELOPER): string {
+  const raw = requested ?? fallback;
+  const role = legacyToTeamRole(raw);
+  return role === PM ? TEAM_LEAD : role;
+}
 
 export const runtime = "nodejs";
 
@@ -217,7 +229,7 @@ export async function POST(req: Request) {
             user_id: String(request.user_id),
             user_name: request.user_name ? String(request.user_name) : null,
             employee_id: request.employee_id ? String(request.employee_id) : null,
-            role_in_project: String(request.requested_role ?? "Consultant"),
+            role_in_project: teamRoleFromRequest(request.requested_role),
             allocation_percent: Number(request.requested_allocation_percent ?? 100),
             start_date: request.requested_start_date ? String(request.requested_start_date) : null,
             end_date: request.requested_end_date ? String(request.requested_end_date) : null,
@@ -234,7 +246,11 @@ export async function POST(req: Request) {
             })
             .update({
               is_active: true,
-              role_in_project: String(request.requested_role ?? existing.role_in_project),
+              // An existing PM row keeps PM; otherwise the requested role.
+              role_in_project:
+                legacyToTeamRole(existing.role_in_project) === PM && existing.is_active
+                  ? PM
+                  : teamRoleFromRequest(request.requested_role, existing.role_in_project),
               allocation_percent: Number(request.requested_allocation_percent ?? existing.allocation_percent),
               updated_at: new Date(),
             });

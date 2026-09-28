@@ -53,6 +53,8 @@ interface Props {
   userRole?: AppRole;
   /** Steps 1 and 2 of the lifecycle banner, read from the lead and its estimates. */
   preDelivery?: PreDeliveryStages;
+  /** Everyone who is PM: the named PM plus PMs on the team. */
+  projectManagers?: string[];
   permissions?: {
     canReschedule: boolean;
     canCreatePlan: boolean;
@@ -76,6 +78,7 @@ export function ProjectDetailClient({
   tickets: initialTickets = [],
   userRole = "member",
   preDelivery,
+  projectManagers = [],
   permissions = {
     canReschedule: false,
     canCreatePlan: false,
@@ -427,9 +430,9 @@ export function ProjectDetailClient({
         {/* Meta row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6 pt-5 border-t border-neutral-100">
           <MetaItem
-            label="Project Manager"
-            value={project.projectManager?.fullName || "Unassigned"}
-            subtext={project.projectManager?.jobLevel}
+            label={projectManagers.length > 1 ? "Project Managers" : "Project Manager"}
+            value={projectManagers.length > 0 ? projectManagers.join(", ") : "Unassigned"}
+            subtext={projectManagers.length > 1 ? undefined : project.projectManager?.jobLevel}
           />
           <MetaItem label="Client" value={project.clientCompanyName || "Internal"} />
           {permissions.canViewFinancials && (
@@ -665,7 +668,9 @@ export function ProjectDetailClient({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Project Manager</label>
+              <label className="block text-sm font-medium text-navy-700 mb-1">
+                Lead PM <span className="font-normal text-navy-400">(more PMs on the Team tab)</span>
+              </label>
               <select
                 value={editForm.projectManagerUserId}
                 disabled={!permissions.canChangeProjectManager}

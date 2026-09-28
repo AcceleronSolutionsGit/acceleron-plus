@@ -235,6 +235,21 @@ export function withoutTeamCost<T extends Record<string, unknown>>(row: T | null
   return copy as T;
 }
 
+/** "Role must be Developer, Team Lead or PM." — one wording everywhere. */
+export const TEAM_ROLE_REQUIRED = "The role must be Developer, Team Lead or PM.";
+
+/** 403 for anybody but an admin or one of the project's PMs touching a PM. */
+export function pmAssignmentRefused(): NextResponse {
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        "Only an administrator or one of this project's PMs can add, change or remove a PM — being PM gives access to the project's finances.",
+    },
+    { status: 403 }
+  );
+}
+
 export function serverError(context: string, err: unknown): NextResponse {
   console.error(`[${context}]`, err);
 

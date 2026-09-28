@@ -268,39 +268,66 @@ export async function getProjectAccess(
   if (current.role === "admin") return context;
 
   try {
-    const project = await projectDb("projects")
-      .where("id", projectId)
-      .select("project_manager_user_id", "sponsor_user_id")
-      .first<{ project_manager_user_id: string | null; sponsor_user_id: string | null } | undefined>();
-
-    if (project && project.project_manager_user_id === current.userId) {
-      context.isProjectManager = true;
-    }
-
-    if (
-      project &&
-      (project.project_manager_user_id === current.userId ||
-        project.sponsor_user_id === current.userId)
-    ) {
-      context.isProjectOwner = true;
-      return context;
-    }
-
-    const membership = await projectDb("project_team_members")
-      .where({ project_id: projectId, user_id: current.userId })
-      .andWhere("is_active", true)
-      .select("role_in_project")
-      .first<{ role_in_project: string | null } | undefined>();
+    const [project, membership] = await Promise.all([
+      projectDb("projects")
+        .where("id", projectId)
+        .select("project_manager_user_id", "sponsor_user_id")
+        .first<{ project_manager_user_id: string | null; sponsor_user_id: string | null } | undefined>(),
+      projectDb("project_team_members")
+        .where({ project_id: projectId, user_id: current.userId })
+        .andWhere("is_active", true)
+        .select("role_in_project")
+        .first<{ role_in_project: string | null } | undefined>(),
+    ]);
 
     if (membership) context.projectRole = normaliseProjectRole(membership.role_in_project);
+
+    // A project can have several PMs: the one named on the project row,
+    // and anyone holding the PM role on its team.
+    if (project?.project_manager_user_id === current.userId || context.projectRole === "manager") {
+      context.isProjectManager = true;
+    }
+    if (
+      project &&
+      (project.project_manager_user_id === current.userId || project.sponsor_user_id === current.userId)
+    ) {
+      context.isProjectOwner = true;
+    }
   } catch (err) {
     // A missing table must not silently grant access — fall back to the
     // most restrictive reading of their global role.
     console.error("[auth] Could not resolve project access:", err);
     context.projectRole = "viewer";
+    context.isProjectManager = false;
   }
 
   return context;
+}
+
+/**
+ * Ids of the projects this person is a PM on — named on the project row
+ * or PM on its team. For screens that list many projects at once (the
+ * portfolio dashboard, the project list, the pipeline) and have to decide
+ * the money question per row.
+ */
+export async function projectsManagedBy(userId: string | null | undefined): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!userId) return ids;
+  try {
+    const [named, team] = await Promise.all([
+      projectDb("projects").where("project_manager_user_id", userId).pluck("id"),
+      projectDb("project_team_members")
+        .where({ user_id: userId, is_active: true })
+        .select("project_id", "role_in_project"),
+    ]);
+    for (const id of named as string[]) ids.add(String(id));
+    for (const row of team as { project_id: string; role_in_project: string | null }[]) {
+      if (normaliseProjectRole(row.role_in_project) === "manager") ids.add(String(row.project_id));
+    }
+  } catch (err) {
+    console.error("[auth] Could not list managed projects:", err);
+  }
+  return ids;
 }
 
 export type ProjectGuardResult =

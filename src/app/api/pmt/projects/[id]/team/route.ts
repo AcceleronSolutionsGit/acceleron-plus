@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { projectDb, identityDb } from "@/lib/db";
 import { requireProjectCapability, can } from "@/lib/auth";
-import { readJson, validationError, serverError, withoutTeamCost } from "@/lib/route-helpers";
+import {
+  readJson,
+  validationError,
+  serverError,
+  withoutTeamCost,
+  pmAssignmentRefused,
+  TEAM_ROLE_REQUIRED,
+} from "@/lib/route-helpers";
+import { canAssignProjectManagers } from "@/lib/permissions";
+import { TEAM_ROLES, TEAM_ROLE_DESCRIPTIONS, PM, DEVELOPER, toTeamRole } from "@/lib/team-roles";
 import {
   getProjectTeam,
   teamTotals,
@@ -74,6 +83,10 @@ export async function GET(req: Request, context: Params) {
           })),
       canManage: can(guard.access, "team.manage"),
       canViewCost: includeCost,
+      // The three roles a team member can hold, and whether this person
+      // may hand out (or take away) the PM one.
+      roles: TEAM_ROLES.map((role) => ({ value: role, description: TEAM_ROLE_DESCRIPTIONS[role] })),
+      canAssignPm: canAssignProjectManagers(guard.access),
     });
   } catch (err) {
     return serverError("team.GET", err);
@@ -124,7 +137,12 @@ export async function POST(req: Request, context: Params) {
     }
 
     const validation = validateAssignment(body);
+    // Developer, Team Lead or PM — any number of each. Blank is Developer.
+    const roleRaw = String(body.roleInProject ?? "").trim();
+    const role = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
+    if (!role) validation.push(TEAM_ROLE_REQUIRED);
     if (validation.length > 0) return validationError(validation);
+    if (role === PM && !canAssignProjectManagers(guard.access)) return pmAssignmentRefused();
 
     let band = await resolveBand(body.rateBandId);
     if (body.rateBandId && !band) {
@@ -199,7 +217,7 @@ export async function POST(req: Request, context: Params) {
         user_name: employee.full_name ?? null,
         rate_band_id: band?.id || null,
         rate_band_name: band?.bandName ?? null,
-        role_in_project: String(body.roleInProject ?? "").trim() || null,
+        role_in_project: role,
         allocation_percent: allocationPercent,
         start_date: startDate,
         end_date: endDate,
@@ -259,9 +277,6 @@ function validateAssignment(body: Record<string, unknown>): string[] {
     }
   }
 
-  if (body.roleInProject !== undefined && String(body.roleInProject).length > 120) {
-    errors.push("The project role is too long.");
-  }
 
   return errors;
 }

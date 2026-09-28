@@ -22,6 +22,7 @@
 
 const ExcelJS = require("exceljs");
 const { Readable } = require("stream");
+const { toTeamRole, legacyToTeamRole } = require("../team-roles");
 
 // ─── The form ──────────────────────────────────────────────────────
 //
@@ -554,6 +555,23 @@ async function resolveAllocationRows(rawRows, options) {
       messages,
       warnings,
     };
+
+    // ── The role: Developer, Team Lead or PM ──
+    // The sheet may still carry the old dropdown ("Senior Consultant",
+    // "Technical Lead"…); those are read onto the three and said so. The
+    // import is admin-only, so PM is allowed here.
+    {
+      const given = row.role;
+      const canonical = toTeamRole(given);
+      row.role = canonical ?? legacyToTeamRole(given);
+      if (!canonical) {
+        warnings.push(
+          given
+            ? `Role "${given}" read as ${row.role} (roles are Developer, Team Lead or PM).`
+            : `No role given — added as ${row.role}.`
+        );
+      }
+    }
 
     // ── The person ──
     const employeeRef = splitLabelled(row.employeeRaw);

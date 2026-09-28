@@ -2,7 +2,7 @@ import React from "react";
 import { DashboardClient } from "./DashboardClient";
 import { projectDb } from "@/lib/db";
 import { mapProjectRow } from "@/lib/row-mapper";
-import { getSession } from "@/lib/auth";
+import { getSession, projectsManagedBy } from "@/lib/auth";
 import { canSeeProjectFinancials, redactProjectFinancials } from "@/lib/permissions";
 
 export const metadata = {
@@ -23,8 +23,9 @@ export default async function PMTDashboardPage() {
   // Money is per project: the named PM sees their own projects' budget
   // and burn, an admin sees all of them, everyone else sees none. The
   // budget is stripped from what reaches the browser, not just hidden.
+  const managed = await projectsManagedBy(session?.userId);
   const financeIds = new Set(
-    allProjects.filter((p) => canSeeProjectFinancials(viewer, p)).map((p) => p.id)
+    allProjects.filter((p) => canSeeProjectFinancials(viewer, p, managed)).map((p) => p.id)
   );
   const projects = allProjects.map((p) => (financeIds.has(p.id) ? p : redactProjectFinancials(p)));
 

@@ -69,6 +69,7 @@ if $MIGRATE; then
     migrate-scrap
     migrate-phase-sync
     migrate-phase1
+    migrate-team-roles
   )
   for m in "${MIGRATIONS[@]}"; do
     echo "  → $m"

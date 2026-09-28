@@ -113,7 +113,7 @@ function describeType(key) {
     case "project":
       return "Choice, drop-down (paste the list from the file below)";
     case "role":
-      return 'Choice — PM, BA, Developer, QA, DevOps, Designer, Architect, Support — with "Other" turned on';
+      return 'Choice — Developer, Team Lead, PM — with "Other" turned OFF (a project team has only these three roles)';
     case "allocation":
       return "Text, with **Restrictions → Number → Between 1 and 100**";
     case "startDate":

@@ -3,13 +3,14 @@
 //
 // The finalized fee on a converted lead IS the project budget, and the
 // opportunity value is copied from it. So for a converted lead the
-// project rule applies — the project's named PM and admins only — or the
+// project rule applies — the project's PMs and admins only — or the
 // pipeline would be a side door to every budget the project page hides.
 // Leads still in pre-sales are unaffected: they fall to the global role.
 // ═══════════════════════════════════════════════════════════════
 
 import { projectDb } from "./db";
 import { can, canSeeProjectFinancials } from "./permissions";
+import { projectsManagedBy } from "./auth";
 import type { AppRole } from "./types";
 
 type Viewer = { role: AppRole; userId?: string | null } | null | undefined;
@@ -22,13 +23,16 @@ export async function leadsWithHiddenFinancials(leadIds: string[], viewer: Viewe
   // Members and clients see no pre-sales money at all.
   if (!can({ role: viewer.role }, "financials.view")) return new Set(leadIds);
 
-  const projects = (await projectDb("projects")
-    .whereIn("lead_id", leadIds)
-    .select("lead_id", "project_manager_user_id")
-    .catch(() => [])) as { lead_id: string; project_manager_user_id: string | null }[];
+  const [projects, managed] = await Promise.all([
+    projectDb("projects")
+      .whereIn("lead_id", leadIds)
+      .select("id", "lead_id", "project_manager_user_id")
+      .catch(() => []) as Promise<{ id: string; lead_id: string; project_manager_user_id: string | null }[]>,
+    projectsManagedBy(viewer.userId),
+  ]);
 
   for (const p of projects) {
-    if (!canSeeProjectFinancials(viewer, { projectManagerUserId: p.project_manager_user_id })) {
+    if (!canSeeProjectFinancials(viewer, { id: String(p.id), projectManagerUserId: p.project_manager_user_id }, managed)) {
       hidden.add(p.lead_id);
     }
   }

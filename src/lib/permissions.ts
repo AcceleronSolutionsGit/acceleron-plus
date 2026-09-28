@@ -192,9 +192,11 @@ const PROJECT: Record<ProjectRole, Capability[]> = {
 };
 
 /**
- * Free text in project_team_members.role_in_project — "PM", "Tech Lead",
- * "Developer", "QA" — mapped onto the roles above. Anything unrecognised
- * is a contributor, which is the safe middle.
+ * project_team_members.role_in_project mapped onto the roles above. The
+ * column now only ever holds "PM", "Team Lead" or "Developer" (see
+ * team-roles.js); the patterns also cover rows written before that, and
+ * a client contact's row. Anything unrecognised is a contributor, the
+ * safe middle.
  */
 export function normaliseProjectRole(raw: string | null | undefined): ProjectRole {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -235,9 +237,10 @@ export interface AccessContext {
   /** True when this person is the named PM or sponsor on the project. */
   isProjectOwner?: boolean;
   /**
-   * True when this person is the named project manager on the project
-   * row (projects.project_manager_user_id). Narrower than isProjectOwner:
-   * a sponsor is an owner but not the PM.
+   * True when this person is a PM on the project: named on the project
+   * row (projects.project_manager_user_id), or an active team member with
+   * the PM role. A project can have several. A sponsor is an owner but
+   * not a PM.
    */
   isProjectManager?: boolean;
   /**
@@ -252,10 +255,10 @@ export interface AccessContext {
 //
 // Budget, cost, margin, invoices, rates and the money columns in an
 // export. These are not decided by the two layers above: holding the
-// global "pm" role is not enough, and neither is a "PM" line on the team
-// tab — both are too easy to acquire. What counts is being the project
-// manager named on the project itself, which only an admin (or the
-// outgoing PM) can change.
+// global "pm" role is not enough. What counts is being a PM on this
+// project — named on the project row, or holding the PM role on its team
+// — and only an admin or one of the project's existing PMs can make
+// somebody that.
 
 export const FINANCIAL_CAPABILITIES: readonly Capability[] = [
   "financials.view",
@@ -278,14 +281,17 @@ export function isFinancialCapability(capability: Capability): boolean {
  */
 export function canSeeProjectFinancials(
   viewer: { role: AppRole; userId?: string | null } | null | undefined,
-  project: { projectManagerUserId?: string | null } | null | undefined
+  project: { id?: string; projectManagerUserId?: string | null } | null | undefined,
+  /** Projects where the viewer is PM on the team (see projectsManagedBy). */
+  managedProjectIds?: ReadonlySet<string>
 ): boolean {
   if (!viewer) return false;
   if (viewer.role === "admin") return true;
   if (viewer.role === "client") return false;
-  return Boolean(
-    viewer.userId && project?.projectManagerUserId && project.projectManagerUserId === viewer.userId
-  );
+  if (viewer.userId && project?.projectManagerUserId && project.projectManagerUserId === viewer.userId) {
+    return true;
+  }
+  return Boolean(project?.id && managedProjectIds?.has(project.id));
 }
 
 /**
@@ -298,22 +304,46 @@ export function canSeeProjectFinancials(
 export function can(context: AccessContext, capability: Capability): boolean {
   if (context.role === "admin") return true;
 
-  // Money on a project: the named PM and admins only (see above). This
-  // is decided before the layers, because it is not a layer question.
+  // Money on a project: its PMs and admins only (see above). This is
+  // decided before anything else, because it is not a layer question.
   if (context.projectScoped && isFinancialCapability(capability)) {
     return context.role !== "client" && context.isProjectManager === true;
   }
 
+  // A client account is never raised by a project row, only narrowed.
+  if (context.role === "client") {
+    if (!GLOBAL.client.includes(capability)) return false;
+    if (!context.projectRole) return true;
+    return PROJECT[context.projectRole]?.includes(capability) ?? false;
+  }
+
+  // On a project team, the project role decides what they can do on
+  // that project — PM, Team Lead or Developer — whatever their account
+  // role. A PM (named on the project, or PM on the team) acts as manager.
+  const teamRole: ProjectRole | null = context.isProjectManager ? "manager" : (context.projectRole ?? null);
+  if (teamRole === "manager" || teamRole === "lead" || teamRole === "contributor") {
+    return PROJECT[teamRole].includes(capability);
+  }
+
+  // Not on the team (or asked without a project): the account role.
   if (!GLOBAL[context.role]?.includes(capability)) return false;
 
-  // Named PM or sponsor: their global role already reflects the project.
+  // Sponsor: their account role already reflects the project.
   if (context.isProjectOwner) return true;
 
-  // Not a member of this project, or not asking about one: the global
-  // role is the answer.
-  if (!context.projectRole) return true;
+  if (!teamRole) return true;
 
-  return PROJECT[context.projectRole]?.includes(capability) ?? false;
+  // A legacy viewer row only narrows.
+  return PROJECT[teamRole]?.includes(capability) ?? false;
+}
+
+/**
+ * May this person make somebody a PM on the project, or take a PM off it?
+ * Being PM is what unlocks the finances, so: admins, and the project's
+ * existing PMs. Nobody grants it to themselves.
+ */
+export function canAssignProjectManagers(context: AccessContext): boolean {
+  return context.role === "admin" || (context.role !== "client" && context.isProjectManager === true);
 }
 
 /** Every capability this context allows — handy for sending to the client. */
@@ -334,12 +364,12 @@ export const GLOBAL_ROLE_LABELS: Record<AppRole, { name: string; description: st
   pm: {
     name: "Project Manager",
     description:
-      "Creates and runs projects, owns plans, approves time. Sees budget, cost and invoices only on projects where they are the named PM.",
+      "Creates projects and runs the ones they are PM on. Sees budget, cost and invoices only on projects where they are a PM.",
   },
   member: {
     name: "Team Member",
     description:
-      "Updates their own work and logs time. No commercial visibility unless named PM of a project.",
+      "Updates their own work and logs time. On a project, their team role (Developer, Team Lead or PM) decides what they can do there.",
   },
   client: {
     name: "Client",
@@ -348,9 +378,9 @@ export const GLOBAL_ROLE_LABELS: Record<AppRole, { name: string; description: st
 };
 
 export const PROJECT_ROLE_LABELS: Record<ProjectRole, { name: string; description: string }> = {
-  manager: { name: "Project manager", description: "Owns this project's plan and delivery." },
-  lead: { name: "Lead", description: "Edits the plan. Cannot close the project or invoice." },
-  contributor: { name: "Contributor", description: "Updates progress on their work and logs time." },
+  manager: { name: "PM", description: "Runs this project — plan, team and finances." },
+  lead: { name: "Team Lead", description: "Edits the plan and work breakdown. No finances." },
+  contributor: { name: "Developer", description: "Updates progress on their work and logs time." },
   viewer: { name: "Viewer", description: "Reads the project. Changes nothing." },
   client: { name: "Client contact", description: "Reads the client-facing view and raises tickets." },
 };
@@ -360,9 +390,11 @@ export function describeAccess(context: AccessContext): string {
   if (context.role === "admin") return "Administrator — full access.";
 
   const globalLabel = GLOBAL_ROLE_LABELS[context.role]?.name ?? context.role;
-  if (context.isProjectOwner) return `${globalLabel} — you own this project.`;
-  if (!context.projectRole) return `${globalLabel} — you are not on this project's team.`;
-
-  const projectLabel = PROJECT_ROLE_LABELS[context.projectRole]?.name ?? context.projectRole;
-  return `${globalLabel}, ${projectLabel} on this project.`;
+  if (context.isProjectManager) return `PM on this project.`;
+  if (context.projectRole) {
+    const projectLabel = PROJECT_ROLE_LABELS[context.projectRole]?.name ?? context.projectRole;
+    return context.role === "client" ? `${globalLabel}, ${projectLabel} on this project.` : `${projectLabel} on this project.`;
+  }
+  if (context.isProjectOwner) return `${globalLabel} — sponsor of this project.`;
+  return `${globalLabel} — you are not on this project's team.`;
 }

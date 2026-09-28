@@ -111,6 +111,77 @@ interface CatalogueSkill {
   peopleCount: number;
 }
 
+// ─── Team roles: Developer, Team Lead, PM — any number of each ─────
+
+interface RoleOption {
+  value: string;
+  description: string;
+}
+
+const DEFAULT_ROLES: RoleOption[] = [
+  { value: "Developer", description: "Updates their own work and logs time." },
+  { value: "Team Lead", description: "Edits the plan and work breakdown. No finances." },
+  { value: "PM", description: "Runs the project — plan, team and finances." },
+];
+
+const ROLE_STYLE: Record<string, string> = {
+  PM: "bg-navy-900 text-white",
+  "Team Lead": "bg-blue-50 text-blue-700 border border-blue-200",
+  Developer: "bg-neutral-100 text-navy-700 border border-neutral-200",
+};
+
+function RoleBadge({ role }: { role: string | null }) {
+  if (!role) return <span className="text-sm text-navy-500">—</span>;
+  return (
+    <span
+      className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+        ROLE_STYLE[role] ?? "bg-amber-50 text-amber-700 border border-amber-200"
+      }`}
+      title={ROLE_STYLE[role] ? undefined : "Not one of the three team roles — edit to set Developer, Team Lead or PM."}
+    >
+      {role}
+    </span>
+  );
+}
+
+/** PM can only be handed out (or taken away) by an admin or an existing PM of the project. */
+function RoleSelect({
+  value,
+  onChange,
+  roles,
+  canAssignPm,
+  currentlyPm = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  roles: RoleOption[];
+  canAssignPm: boolean;
+  currentlyPm?: boolean;
+}) {
+  const locked = currentlyPm && !canAssignPm;
+  return (
+    <select
+      value={value}
+      disabled={locked}
+      onChange={(e) => onChange(e.target.value)}
+      title={
+        locked
+          ? "Only an administrator or one of this project's PMs can change a PM's role."
+          : roles.find((r) => r.value === value)?.description
+      }
+      className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-50 disabled:text-navy-500"
+    >
+      {!roles.some((r) => r.value === value) && <option value={value}>{value || "— choose —"}</option>}
+      {roles.map((r) => (
+        <option key={r.value} value={r.value} disabled={r.value === "PM" && !canAssignPm}>
+          {r.value}
+          {r.value === "PM" && !canAssignPm ? " (admin or a PM of this project only)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 const rupees = (value: number | null | undefined) =>
   value === null || value === undefined
     ? "—"
@@ -122,6 +193,8 @@ export function TeamTab({ projectId }: { projectId: string }) {
   const [rateBands, setRateBands] = useState<RateBand[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [canViewCost, setCanViewCost] = useState(false);
+  const [roles, setRoles] = useState<RoleOption[]>(DEFAULT_ROLES);
+  const [canAssignPm, setCanAssignPm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
@@ -139,6 +212,8 @@ export function TeamTab({ projectId }: { projectId: string }) {
       setRateBands(data.rateBands ?? []);
       setCanManage(Boolean(data.canManage));
       setCanViewCost(Boolean(data.canViewCost));
+      if (Array.isArray(data.roles) && data.roles.length > 0) setRoles(data.roles);
+      setCanAssignPm(Boolean(data.canAssignPm));
       setError("");
     } catch {
       setError("Could not reach the server.");
@@ -163,6 +238,10 @@ export function TeamTab({ projectId }: { projectId: string }) {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex gap-6 flex-wrap">
           <Stat label="People" value={String(team.length)} />
+          {(["PM", "Team Lead", "Developer"] as const).map((r) => {
+            const n = team.filter((m) => m.isActive && m.roleInProject === r).length;
+            return <Stat key={r} label={r === "PM" ? "PMs" : `${r}s`} value={String(n)} />;
+          })}
           {canViewCost && totals && (
             <>
               <Stat label="Planned days" value={String(totals.plannedDays ?? 0)} />
@@ -222,6 +301,8 @@ export function TeamTab({ projectId }: { projectId: string }) {
                 rateBands={rateBands}
                 canManage={canManage}
                 canViewCost={canViewCost}
+                roles={roles}
+                canAssignPm={canAssignPm}
                 onChanged={load}
               />
             ))}
@@ -234,6 +315,8 @@ export function TeamTab({ projectId }: { projectId: string }) {
           projectId={projectId}
           rateBands={rateBands}
           canViewCost={canViewCost}
+          roles={roles}
+          canAssignPm={canAssignPm}
           onClose={() => setAdding(false)}
           onAdded={() => {
             setAdding(false);
@@ -321,6 +404,8 @@ function MemberRow({
   rateBands,
   canManage,
   canViewCost,
+  roles,
+  canAssignPm,
   onChanged,
 }: {
   member: Member;
@@ -328,8 +413,13 @@ function MemberRow({
   rateBands: RateBand[];
   canManage: boolean;
   canViewCost: boolean;
+  roles: RoleOption[];
+  canAssignPm: boolean;
   onChanged: () => void;
 }) {
+  // A PM row can only be edited or removed by an admin or another PM.
+  const isPm = member.roleInProject === "PM";
+  const pmLocked = isPm && !canAssignPm;
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState("");
@@ -421,7 +511,7 @@ function MemberRow({
         {/* Role and dates */}
         <div className="min-w-[150px]">
           <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">Role</p>
-          <p className="text-sm text-navy-900">{member.roleInProject ?? "—"}</p>
+          <p className="mt-0.5"><RoleBadge role={member.roleInProject} /></p>
           <p className="text-[11px] text-navy-500">
             {member.startDate && member.endDate
               ? `${member.startDate} → ${member.endDate}`
@@ -475,7 +565,12 @@ function MemberRow({
             <Button variant="secondary" onClick={() => setEditing((v) => !v)} disabled={busy}>
               {editing ? "Cancel" : "Edit"}
             </Button>
-            <Button variant="secondary" onClick={remove} disabled={busy}>
+            <Button
+              variant="secondary"
+              onClick={remove}
+              disabled={busy || pmLocked}
+              title={pmLocked ? "Only an administrator or one of this project's PMs can remove a PM." : undefined}
+            >
               Remove
             </Button>
           </div>
@@ -508,7 +603,13 @@ function MemberRow({
       {editing && (
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-5 gap-3 bg-neutral-50/70 rounded-lg p-3">
           <Field label="Role">
-            <Input value={role} onChange={(e) => setRole(e.target.value)} />
+            <RoleSelect
+              value={role}
+              onChange={setRole}
+              roles={roles}
+              canAssignPm={canAssignPm}
+              currentlyPm={isPm}
+            />
           </Field>
           <Field label="Allocation %">
             <Input
@@ -570,12 +671,16 @@ function AddPersonModal({
   projectId,
   rateBands,
   canViewCost,
+  roles,
+  canAssignPm,
   onClose,
   onAdded,
 }: {
   projectId: string;
   rateBands: RateBand[];
   canViewCost: boolean;
+  roles: RoleOption[];
+  canAssignPm: boolean;
   onClose: () => void;
   onAdded: () => void;
 }) {
@@ -587,7 +692,7 @@ function AddPersonModal({
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState<Candidate | null>(null);
 
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState("Developer");
   const [allocation, setAllocation] = useState("100");
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState("");
@@ -724,11 +829,7 @@ function AddPersonModal({
               />
             </Field>
             <Field label="Role on this project">
-              <Input
-                value={role}
-                placeholder="e.g. Tech Lead"
-                onChange={(e) => setRole(e.target.value)}
-              />
+              <RoleSelect value={role} onChange={setRole} roles={roles} canAssignPm={canAssignPm} />
             </Field>
           </div>
 
