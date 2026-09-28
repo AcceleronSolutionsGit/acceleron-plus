@@ -51,3 +51,13 @@ auth-credentials*.csv
 
 # pm2 logs (ecosystem.config.js)
 /logs
+
+# local build/transfer artifacts and assistant scratch — never commit
+*.tgz
+*.tar.gz
+/Claude outputs/
+
+# env files (only .env.example belongs in git)
+.env*
+!.env.example
+env.local
