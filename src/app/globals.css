@@ -1,0 +1,426 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   Fonts — served from public/fonts, declared here.
+
+   These were pulled from Google at build time, then from @fontsource
+   in node_modules. Both were a mistake for the same reason: the build
+   depended on something outside the repository being intact. Google
+   meant a firewalled machine could not build at all; @fontsource meant
+   a half-finished `npm install` left the CSS referencing .woff2 files
+   that were never extracted, and the build failed pointing at a
+   Vietnamese subset nothing in this app will ever render.
+
+   The fourteen files this app actually uses are now committed under
+   public/fonts and declared below. Nothing resolves through
+   node_modules, so nothing can go missing without it being visible in
+   a diff. 280 KB, and the browser fetches only the ranges it needs.
+
+   latin-ext is not optional despite the name: U+20B9, the rupee sign,
+   sits in its U+20AD–20C0 range. Without it every ₹ falls back to a
+   system font — a different typeface at a different width, inside
+   columns that are supposed to line up.
+
+   League Spartan  display — geometric, echoes the wordmark
+   IBM Plex Sans   body    — characterful, and its numerals are
+                             properly tabular, which matters in an
+                             app that is mostly money and hours
+   IBM Plex Mono   codes   — PRJ-0001, WBS-003, ticket numbers
+   ═══════════════════════════════════════════════════════════════ */
+
+/* League Spartan — variable, display */
+@font-face {
+  font-family: "League Spartan Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/league-spartan-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "League Spartan Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/league-spartan-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* IBM Plex Sans — body */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/ibm-plex-sans-latin-ext-400-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/fonts/ibm-plex-sans-latin-ext-500-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("/fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("/fonts/ibm-plex-sans-latin-ext-600-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/fonts/ibm-plex-sans-latin-700-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/fonts/ibm-plex-sans-latin-ext-700-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* IBM Plex Mono — codes */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/fonts/ibm-plex-mono-latin-ext-400-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/fonts/ibm-plex-mono-latin-ext-500-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@theme {
+  /* ── Brand ──────────────────────────────────────────────────
+     Straight off the logo: the navy of the wordmark and the red of
+     the chevron. The chevron red is an accent and nothing else — it
+     marks what is live, what is now, and what is wrong. Used for
+     anything more it stops meaning any of those. */
+  --color-navy-900: #212f60;
+  --color-navy-800: #2a3a72;
+  --color-navy-700: #3a497f;
+  --color-navy-600: #43528a;
+  --color-navy-500: #4c5a8a;
+  --color-navy-400: #7280ab;
+  --color-navy-300: #9ea9c7;
+  --color-navy-200: #c7cddd;
+  --color-navy-100: #e3e7ef;
+  --color-navy-50: #f2f4f8;
+
+  --color-red-600: #de1e24;
+  --color-red-700: #c4161c;
+  --color-red-800: #b60f14;
+  --color-red-100: #fde4e5;
+
+  /* ── Surfaces ───────────────────────────────────────────────
+     Three levels, not one flat grey. The page sits back, cards come
+     forward, and anything raised above a card (a menu, a dialog)
+     reads as raised without needing a heavy shadow. */
+  --color-canvas: #eef0f5;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7f8fb;
+  --color-surface-3: #eff1f6;
+
+  --color-neutral-50: #f1f1f1;
+
+  /* ── State ──────────────────────────────────────────────────
+     Deliberately not the brand red for "danger": the chevron red is
+     an identity colour, and a form error should not look like the
+     logo. This one is warmer and reads as a warning. */
+  --color-success: #0f8a54;
+  --color-success-bg: #e6f5ee;
+  --color-warning: #b26a00;
+  --color-warning-bg: #fdf1dd;
+  --color-danger: #c0392b;
+  --color-danger-bg: #fbeae7;
+  --color-info: #2563a8;
+  --color-info-bg: #e5eefa;
+
+  /* ── Type ───────────────────────────────────────────────────── */
+  --font-display: "League Spartan Variable", "League Spartan", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Aliases kept for the ~40 places already written as
+     font-[family-name:var(--font-league-spartan)]. They now resolve to
+     the self-hosted faces, so nothing had to be touched page by page —
+     and --font-inter deliberately no longer means Inter. */
+  --font-league-spartan: var(--font-display);
+  --font-inter: var(--font-body);
+
+  /* ── Elevation ──────────────────────────────────────────────
+     Tinted with the brand navy rather than pure black, so shadows
+     sit in the same colour world as everything else. */
+  --shadow-xs: 0 1px 2px 0 rgb(33 47 96 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(33 47 96 / 0.06), 0 1px 2px -1px rgb(33 47 96 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(33 47 96 / 0.08), 0 2px 4px -2px rgb(33 47 96 / 0.04);
+  --shadow-lg: 0 12px 28px -6px rgb(33 47 96 / 0.12), 0 4px 10px -4px rgb(33 47 96 / 0.06);
+  --shadow-xl: 0 24px 56px -12px rgb(33 47 96 / 0.18);
+
+  /* ── Motion ─────────────────────────────────────────────────
+     One easing curve for everything that moves. Mixed curves are
+     what make an interface feel assembled rather than designed. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-canvas);
+    color: var(--color-navy-900);
+    /* A whisper of texture. Flat #eee is the most obviously
+       untouched thing an interface can do; this is barely visible
+       but stops the canvas reading as dead. */
+    background-image:
+      radial-gradient(circle at 12% 0%, rgb(33 47 96 / 0.035), transparent 42%),
+      radial-gradient(circle at 92% 8%, rgb(222 30 36 / 0.022), transparent 38%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  /* Numbers in this app sit in columns and get compared. Tabular
+     figures everywhere means a 1 takes the same space as a 7 and
+     the column actually lines up. */
+  table, [data-numeric], .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  input[type="number"], input[type="date"], time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One focus ring, everywhere, and it is visible. Keyboard users
+     should never have to guess where they are. */
+  :focus-visible {
+    outline: 2px solid var(--color-navy-700);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgb(33 47 96 / 0.14);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(33 47 96 / 0.18);
+    border-radius: 99px;
+    /* Inset with a transparent border so the bar looks slimmer than
+       its hit area — easier to grab, lighter to look at. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(33 47 96 / 0.34);
+    background-clip: content-box;
+  }
+}
+
+/* ── Utilities ────────────────────────────────────────────────── */
+@layer utilities {
+  .text-display {
+    font-family: var(--font-display);
+  }
+
+  .text-body {
+    font-family: var(--font-body);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* The chevron from the logo, as a left-hand marker. This is the
+     app's signature: it marks the active nav item, the current
+     phase, the row you are on. */
+  .chevron-mark {
+    position: relative;
+  }
+
+  .chevron-mark::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 0;
+    transform: translateY(-50%);
+    background: var(--color-red-600);
+    border-radius: 0 2px 2px 0;
+    transition: height 260ms var(--ease-out-soft);
+  }
+
+  .chevron-mark[data-active="true"]::before {
+    height: 60%;
+  }
+
+  /* A hairline that reads as a rule rather than a border. */
+  .rule {
+    border-color: rgb(33 47 96 / 0.08);
+  }
+
+  /* Page-load reveal. One orchestrated entrance beats a dozen
+     scattered micro-animations. */
+  .reveal {
+    animation: reveal 520ms var(--ease-out-soft) both;
+  }
+
+  .reveal-1 { animation-delay: 40ms; }
+  .reveal-2 { animation-delay: 90ms; }
+  .reveal-3 { animation-delay: 140ms; }
+  .reveal-4 { animation-delay: 190ms; }
+
+  /* The chevron leaning into its gap, once, on the sign-in screen. The
+     logo is the first thing on that page and the only thing worth
+     animating there. */
+  .logo-chevron {
+    animation: chevron-settle 900ms var(--ease-out-soft) both;
+    transform-origin: 86px 46px;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-surface-3) 0%,
+      var(--color-surface-2) 50%,
+      var(--color-surface-3) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes chevron-settle {
+  from {
+    opacity: 0;
+    transform: translateX(10px) scale(0.86);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-1px) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Somebody who has asked their system to stop moving things means
+   it. Nothing here is load-bearing, so it all goes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
