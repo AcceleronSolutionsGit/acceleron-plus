@@ -15,6 +15,8 @@ browser ──https──▶ Apache :443 ──▶ 127.0.0.1:3000  pm2: accelero
 | `ecosystem.config.js` | pm2 process definitions (app + sweep) |
 | `scripts/deploy.sh` | install → migrate (optional) → build → pm2 reload → health check |
 | `scripts/notification-sweep.js` | calls `POST /api/notifications/sweep` with the sweep token |
+| `scripts/db-export.ps1` | (Windows) dumps the four databases + uploaded documents from the laptop |
+| `scripts/db-import.sh` | (server) loads those dumps into the server's PostgreSQL |
 | `deploy/apache/acceleron-plus.conf` | Apache reverse-proxy site (50 MB uploads, forwarded headers) |
 | `deploy/nginx/acceleron-plus.conf` | the same site for nginx, if a server ever uses that instead |
 
@@ -100,6 +102,55 @@ Must be set:
 
 Leave `NODE_ENV` out of the file — pm2 sets it. `AUTH_OTP_DELIVERY=screen`
 has no effect in production.
+
+## 3½. Moving the data from the laptop (optional)
+
+Skip this for a clean start. To carry over what is already in the laptop's
+PostgreSQL — projects, teams, timesheets, users, and the uploaded
+documents — dump it on Windows and load it on the server. Two scripts do
+it; both read the connection settings from their own `.env.local`.
+
+**On the Windows laptop** (PowerShell, in the project folder):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\db-export.ps1
+scp -r ..\acceleron-db deploy@your-server:/tmp/
+```
+
+`db-export.ps1` finds `pg_dump` (on PATH or under `C:\Program Files\PostgreSQL`),
+writes `identity_db.dump`, `project_db.dump`, `itsm_db.dump`,
+`execution_db.dump` and `uploads.tgz` to `..\acceleron-db`, and prints the
+`pg_dump` version it used. The dumps are taken without owners or grants, so
+the laptop's `postgres` user does not come across.
+
+**On the server** — after step 1 (the four databases exist, owned by the
+`acceleron` login) and step 3 (`.env.local` points at them):
+
+```bash
+sudo apt install -y postgresql-client        # if psql / pg_restore are missing
+cd /var/www/acceleron-plus
+chmod +x scripts/db-import.sh
+./scripts/db-import.sh /tmp/acceleron-db
+```
+
+It checks everything before touching anything, restores each database in a
+single transaction as the app login (so every table ends up owned by it),
+runs `ANALYZE`, and unpacks the documents into `uploads/`. Then step 4
+(`deploy.sh --migrate`) brings the schema up to the current build — the
+migrations are idempotent, and they include the Developer / Team Lead / PM
+role conversion. Run `node src/lib/migrations/migrate-team-roles.js --dry-run`
+first if you want to see those changes before they happen.
+
+| It stops with | Do this |
+|---|---|
+| `dumped with pg_dump 17 but this server has pg_restore 16` | The server's PostgreSQL must be the same major version as the laptop's or newer. Install the newer one from apt.postgresql.org (`sudo apt install -y postgresql-17`) and create the databases there. |
+| `Cannot connect to project_db as acceleron` | Step 1 not done, or `.env.local` has a different user/password. |
+| `project_db already has N tables` | Something is already there — `--replace` wipes the app's tables and reloads. |
+| `uses the citext extension` | Extensions need a superuser; run the `CREATE EXTENSION` line it prints, then re-run. |
+
+To refresh the server from the laptop again later, repeat both commands and
+add `--replace` on the server. That overwrites whatever was entered on the
+server since, so do it only before people start using it.
 
 ## 4. First deploy
 
