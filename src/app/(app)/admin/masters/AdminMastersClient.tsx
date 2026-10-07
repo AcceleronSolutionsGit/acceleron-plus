@@ -2,6 +2,7 @@
 
 import { withBase } from "@/lib/base-path";
 import React, { useState, useEffect, useMemo, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { DarwinboxAutosync } from "./DarwinboxAutosync";
@@ -120,6 +121,7 @@ interface AdminMastersClientProps {
 }
 
 export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"employees" | "rates" | "companies">("employees");
   const [isMounted, setIsMounted] = useState(false);
 
@@ -154,8 +156,6 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
 
   // Modals for Employee
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [isEditEmpModalOpen, setIsEditEmpModalOpen] = useState(false);
   const [isAddEmpModalOpen, setIsAddEmpModalOpen] = useState(false);
   const [isSavingEmp, setIsSavingEmp] = useState(false);
   const [empFormData, setEmpFormData] = useState<Partial<Employee>>({});
@@ -266,33 +266,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
     }
   };
 
-  // Save edited employee
-  const handleSaveEmployee = async () => {
-    if (!editingEmployee) return;
-    setIsSavingEmp(true);
-    try {
-      const res = await fetch(`/api/admin/masters/employees/${editingEmployee.employee_id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(empFormData),
-      });
-      const data = await res.json();
 
-      if (data.success) {
-        setEmployees((prev) =>
-          prev.map((emp) => (emp.employee_id === editingEmployee.employee_id ? { ...emp, ...data.data } : emp))
-        );
-        setIsEditEmpModalOpen(false);
-        showToast(`Employee ${editingEmployee.employee_id} updated successfully!`);
-      } else {
-        alert(data.error || "Failed to update employee");
-      }
-    } catch (err: any) {
-      alert("Error saving employee: " + err.message);
-    } finally {
-      setIsSavingEmp(false);
-    }
-  };
 
   // Create new employee
   const handleCreateEmployee = async () => {
@@ -1035,21 +1009,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
                           <td className="px-4 py-3 text-right">
                             <button
                               onClick={() => {
-                                setEditingEmployee(emp);
-                                setEmpFormData({
-                                  full_name: emp.full_name || "",
-                                  company_email_id: emp.company_email_id || "",
-                                  job_level: emp.job_level || "",
-                                  designation: emp.designation || "",
-                                  department: emp.department || "",
-                                  internal_department: emp.internal_department || "",
-                                  office_location: emp.office_location || "",
-                                  employee_type: emp.employee_type || "Full Time",
-                                  direct_manager_employee_id: emp.direct_manager_employee_id || "",
-                                  direct_manager_name: emp.direct_manager_name || "",
-                                  group_company_code: emp.group_company_code || "ASPL",
-                                });
-                                setIsEditEmpModalOpen(true);
+                                router.push(`/admin/masters/employees/${emp.employee_id}`);
                               }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-navy-700 bg-neutral-100 hover:bg-navy-900 hover:text-white rounded-lg transition-colors cursor-pointer"
                             >
@@ -1350,142 +1310,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
-          MODAL: EDIT EMPLOYEE
-          ════════════════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={isEditEmpModalOpen}
-        onClose={() => setIsEditEmpModalOpen(false)}
-        title={`Edit Employee Record #${editingEmployee?.employee_id}`}
-        footer={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsEditEmpModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-navy-600 hover:text-navy-900 bg-neutral-100 rounded-xl"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveEmployee}
-              disabled={isSavingEmp}
-              className="px-4 py-2 text-sm font-medium text-white bg-navy-900 hover:bg-navy-800 rounded-xl disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSavingEmp && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
-              Save Changes
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-4 text-sm">
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1">Full Name</label>
-            <input
-              type="text"
-              value={empFormData.full_name || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, full_name: e.target.value })}
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-            />
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1">Company Email</label>
-            <input
-              type="email"
-              value={empFormData.company_email_id || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, company_email_id: e.target.value })}
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-            />
-          </div>
-
-          {/* ── Darwinbox Designation (editable for manual entries) ── */}
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1 flex items-center gap-1.5">
-              Designation
-              <span className="text-[10px] font-normal text-navy-400 normal-case">(from Darwinbox)</span>
-            </label>
-            <input
-              type="text"
-              value={empFormData.designation || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, designation: e.target.value })}
-              placeholder="e.g. Senior Consultant"
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none bg-navy-50/30"
-            />
-          </div>
-
-          {/* ── Internal Department Mapping ── */}
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1 flex items-center gap-1.5">
-              Internal Department
-              <span className="text-[10px] font-normal text-navy-400 normal-case">(Acceleron team — won't be overwritten by sync)</span>
-            </label>
-            <select
-              value={empFormData.internal_department || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, internal_department: e.target.value })}
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none bg-white"
-            >
-              <option value="">— Not assigned —</option>
-              {INTERNAL_DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-            {empFormData.department && !empFormData.internal_department && (
-              <p className="mt-1 text-[11px] text-navy-400">
-                Darwinbox department: <span className="font-medium text-navy-600">{empFormData.department}</span>
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">Job Level</label>
-              <input
-                type="text"
-                value={empFormData.job_level || ""}
-                onChange={(e) => setEmpFormData({ ...empFormData, job_level: e.target.value })}
-                placeholder="e.g. SRG2, G3"
-                className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">Employee Type</label>
-              <select
-                value={empFormData.employee_type || "Full Time"}
-                onChange={(e) => setEmpFormData({ ...empFormData, employee_type: e.target.value })}
-                className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none bg-white"
-              >
-                <option value="Full Time">Full Time</option>
-                <option value="Part Time">Part Time</option>
-                <option value="Contract">Contract</option>
-                <option value="Intern">Intern</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1">Office Location</label>
-            <input
-              type="text"
-              value={empFormData.office_location || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, office_location: e.target.value })}
-              placeholder="e.g. Kolkata, Panagarh"
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-navy-700 mb-1">
-              Reporting Manager
-            </label>
-            <input
-              type="text"
-              value={empFormData.direct_manager_name || ""}
-              onChange={(e) => setEmpFormData({ ...empFormData, direct_manager_name: e.target.value })}
-              placeholder="e.g. Anirban Dey Sarkar"
-              className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-            />
-          </div>
-        </div>
-      </Modal>
 
       {/* ════════════════════════════════════════════════════════════════
           MODAL: ADD EMPLOYEE
