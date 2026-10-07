@@ -57,29 +57,47 @@ export async function GET(req: Request) {
       );
     }
 
-    const [rows, roles] = await Promise.all([
+    const [rows, roles, allUserRoles] = await Promise.all([
       builder,
       identityDb("roles").select("id", "code", "name", "description").orderBy("code"),
+      identityDb("user_roles")
+        .join("roles", "roles.id", "user_roles.role_id")
+        .select("user_roles.user_id", "roles.code", "roles.name"),
     ]);
+
+    // Group user roles
+    const userRolesMap = new Map<string, { code: string; name: string }[]>();
+    for (const ur of allUserRoles) {
+      if (!userRolesMap.has(ur.user_id)) userRolesMap.set(ur.user_id, []);
+      userRolesMap.get(ur.user_id)!.push({ code: ur.code, name: ur.name });
+    }
 
     return NextResponse.json({
       success: true,
-      users: rows.map((row) => ({
-        id: row.id,
+      users: rows.map((row) => {
+        const uRoles = userRolesMap.get(row.id) || [];
+        // Fallback to row.role_code if user_roles is empty (migration issue safety)
+        const roleCodes = uRoles.length > 0 ? uRoles.map(r => r.code) : (row.role_code ? [row.role_code] : []);
+        const roleNames = uRoles.length > 0 ? uRoles.map(r => r.name) : (row.role_name ? [row.role_name] : []);
+        return {
+          id: row.id,
         email: row.email,
         fullName: row.full_name,
         isActive: row.is_active,
         darwinboxRef: row.darwinbox_ref,
         lastLoginAt: row.last_login_at,
-        roleCode: row.role_code,
-        roleName: row.role_name,
-        appRole: deriveAppRole(row.role_code),
+        roleCode: roleCodes[0] ?? null, // Primary role for legacy UI
+        roleName: roleNames[0] ?? null,
+        roleCodes,
+        roleNames,
+        appRole: deriveAppRole(roleCodes[0] ?? row.role_code),
         designation: row.designation,
         // Prefer the admin-assigned internal_department; fall back to Darwinbox raw value
         department: row.internal_department || row.darwinbox_department || null,
         officeLocation: row.office_location,
         jobLevel: row.job_level,
-      })),
+        };
+      }),
       roles,
       roleLabels: GLOBAL_ROLE_LABELS,
       employees: includeEmployees ? await employeeDirectory() : undefined,
@@ -131,15 +149,16 @@ export async function PATCH(req: Request) {
   const parsed = await readJson(req);
   if (!parsed.ok) return parsed.response;
 
-  const body = parsed.body as { userId?: unknown; roleCode?: unknown; isActive?: unknown };
+  const body = parsed.body as { userId?: unknown; roleCode?: unknown; roleCodes?: unknown; isActive?: unknown };
   const userId = typeof body.userId === "string" ? body.userId : "";
   const roleCode = typeof body.roleCode === "string" ? body.roleCode.trim() : undefined;
+  const roleCodes = Array.isArray(body.roleCodes) ? body.roleCodes.map(String) : undefined;
   const isActive = typeof body.isActive === "boolean" ? body.isActive : undefined;
 
   if (!userId) {
     return NextResponse.json({ error: "userId is required." }, { status: 400 });
   }
-  if (roleCode === undefined && isActive === undefined) {
+  if (roleCode === undefined && roleCodes === undefined && isActive === undefined) {
     return NextResponse.json({ error: "Nothing to change." }, { status: 400 });
   }
 
@@ -156,30 +175,39 @@ export async function PATCH(req: Request) {
 
     const update: Record<string, unknown> = {};
 
-    if (roleCode !== undefined) {
-      const role = await identityDb("roles").where("code", roleCode).first();
-      if (!role) {
-        return NextResponse.json({ error: `Unknown role "${roleCode}".` }, { status: 400 });
+    if (roleCode !== undefined || roleCodes !== undefined) {
+      const codesToApply = roleCodes ?? (roleCode ? [roleCode] : []);
+      const dbRoles = await identityDb("roles").whereIn("code", codesToApply);
+      if (dbRoles.length !== codesToApply.length) {
+        return NextResponse.json({ error: "One or more unknown roles." }, { status: 400 });
       }
 
-      // Don't let the last administrator remove their own access and
-      // lock everyone out of role management.
-      if (target.role_code === "admin" && roleCode !== "admin") {
-        const admins = await identityDb("users as u")
-          .join("roles as r", "r.id", "u.role_id")
-          .where("r.code", "admin")
+      // If user is admin and removes their own admin role
+      const isAdminNow = target.role_code === "admin" || (await identityDb("user_roles").join("roles", "roles.id", "user_roles.role_id").where("user_id", userId).where("code", "admin").first());
+      if (isAdminNow && !codesToApply.includes("admin")) {
+        const adminsCount = await identityDb("user_roles")
+          .join("roles", "roles.id", "user_roles.role_id")
+          .join("users as u", "u.id", "user_roles.user_id")
+          .where("roles.code", "admin")
           .andWhere("u.is_active", true)
           .count("* as n")
           .first<{ n: string }>();
 
-        if (Number(admins?.n ?? 0) <= 1) {
+        if (Number(adminsCount?.n ?? 0) <= 1) {
           return NextResponse.json(
             { error: "This is the only active administrator. Promote someone else first." },
             { status: 409 }
           );
         }
       }
-      update.role_id = role.id;
+      if (dbRoles.length > 0) {
+        update.role_id = dbRoles[0].id; // Keep legacy column updated with the primary role
+      }
+
+      await identityDb("user_roles").where("user_id", userId).delete();
+      if (dbRoles.length > 0) {
+        await identityDb("user_roles").insert(dbRoles.map(r => ({ user_id: userId, role_id: r.id })));
+      }
     }
 
     if (isActive !== undefined) {
@@ -233,17 +261,63 @@ export async function PATCH(req: Request) {
     return NextResponse.json({
       success: true,
       userId,
-      roleCode: roleCode ?? target.role_code,
-      isActive: isActive ?? target.is_active,
-      message:
-        roleCode !== undefined
-          ? `${target.full_name || target.email} is now ${GLOBAL_ROLE_LABELS[deriveAppRole(roleCode)]?.name ?? roleCode}.`
-          : `${target.full_name || target.email} is now ${isActive ? "active" : "inactive"}.`,
+      message: "User updated successfully.",
     });
   } catch (err) {
     const setup = describeSetupError(err);
     if (setup) return NextResponse.json({ error: setup, setup: true }, { status: 500 });
     console.error("[admin.users.PATCH]", err);
     return NextResponse.json({ error: "Could not update the user." }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
+
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body as any;
+
+  if (body.type === "role") {
+    // Create Role
+    if (!body.code || !body.name) return NextResponse.json({ error: "Code and name required" }, { status: 400 });
+    try {
+      const tenantId = process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001";
+      const [role] = await identityDb("roles").insert({
+        tenant_id: tenantId,
+        code: body.code.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+        name: body.name,
+        description: body.description || null,
+        is_active: true
+      }).returning("*");
+      return NextResponse.json({ success: true, role });
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json({ error: "Could not create role" }, { status: 500 });
+    }
+  } else {
+    // Create User
+    if (!body.email || !body.fullName) return NextResponse.json({ error: "Email and full name required" }, { status: 400 });
+    try {
+      // Find role for default
+      const defaultRole = await identityDb("roles").where("code", "member").first();
+      const [user] = await identityDb("users").insert({
+        tenant_id: process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001",
+        email: body.email.toLowerCase(),
+        full_name: body.fullName,
+        role_id: defaultRole?.id ?? null,
+        is_active: true,
+      }).returning("*");
+
+      if (defaultRole) {
+        await identityDb("user_roles").insert({ user_id: user.id, role_id: defaultRole.id });
+      }
+
+      return NextResponse.json({ success: true, user });
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json({ error: "Could not create user" }, { status: 500 });
+    }
   }
 }
