@@ -47,6 +47,7 @@ export function DashboardClient({
   monthlyTicketTrend = [],
   ticketPriorityBreakdown = [],
   projectStatusCounts = [],
+  userRole,
 }: {
   projects: any[];
   milestones: any[];
@@ -57,6 +58,7 @@ export function DashboardClient({
   monthlyTicketTrend?: MonthlyTicketTrend[];
   ticketPriorityBreakdown?: { name: string; value: number }[];
   projectStatusCounts?: ProjectStatusCount[];
+  userRole: string;
 }) {
   const scopeNote = financeScope === "all" ? "All active projects" : "Projects you manage";
   const activeCount = projects.filter(p => p.status === "active").length;
@@ -82,6 +84,7 @@ export function DashboardClient({
       <PmtHeaderTabs
         title="Portfolio Dashboard"
         subtitle="High-level view of active projects, delivery timeline, and portfolio burn rates"
+        userRole={userRole}
       />
 
       {/* ── KPI Cards with color-coded top accents ───────────────── */}

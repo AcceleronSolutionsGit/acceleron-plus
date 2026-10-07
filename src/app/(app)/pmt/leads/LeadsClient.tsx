@@ -28,7 +28,7 @@ const COLUMNS = [
   { id: "lost", label: "Closed Lost", color: "bg-red-50 text-red-700" },
 ];
 
-export function LeadsClient() {
+export function LeadsClient({ userRole }: { userRole: string }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -94,6 +94,7 @@ export function LeadsClient() {
       <PmtHeaderTabs
         title="Lead & Opportunity Pipeline"
         subtitle="Track pre-sales solutioning, Darwinbox rate-mapped effort estimation, and proposals"
+        userRole={userRole}
         action={
           <Link
             href="/pmt/leads/new"

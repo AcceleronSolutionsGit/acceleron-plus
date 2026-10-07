@@ -45,9 +45,10 @@ interface Props {
   initialReviews: GovernanceReviewItem[];
   initialStats: GovernanceStats;
   projects: ProjectOption[];
+  userRole: string;
 }
 
-export function GovernanceDashboardClient({ initialReviews, initialStats, projects }: Props) {
+export function GovernanceDashboardClient({ initialReviews, initialStats, projects, userRole }: Props) {
   const [reviews, setReviews] = useState<GovernanceReviewItem[]>(initialReviews);
   const [stats, setStats] = useState<GovernanceStats>(initialStats);
   const [outcomeFilter, setOutcomeFilter] = useState<string>("all");
@@ -207,6 +208,7 @@ export function GovernanceDashboardClient({ initialReviews, initialStats, projec
       <PmtHeaderTabs
         title="Stage-Gate Governance Center"
         subtitle="Cross-project audit readiness, stage-gate compliance, and steering committee approvals"
+        userRole={userRole}
         action={
           <Button onClick={openScheduleModal}>
             <svg className="w-4 h-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">

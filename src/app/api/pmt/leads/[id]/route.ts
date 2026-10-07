@@ -35,6 +35,9 @@ export async function GET(_req: Request, context: Params) {
   try {
     const auth = await requireSession();
     if (!auth.ok) return auth.response;
+    if (!["admin", "sales"].includes(auth.session.role)) {
+      return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+    }
 
     const { id } = await context.params;
     const lead = await findLead(id);
@@ -61,8 +64,11 @@ export async function GET(_req: Request, context: Params) {
 
 export async function PATCH(req: Request, context: Params) {
   try {
-    const auth = await requireCapabilityGlobally("project.create");
+    const auth = await requireSession();
     if (!auth.ok) return auth.response;
+    if (!["admin", "sales"].includes(auth.session.role)) {
+      return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+    }
 
     const { id } = await context.params;
     const lead = await findLead(id);
@@ -144,8 +150,11 @@ export async function PATCH(req: Request, context: Params) {
 
 export async function DELETE(_req: Request, context: Params) {
   try {
-    const auth = await requireCapabilityGlobally("project.delete");
+    const auth = await requireSession();
     if (!auth.ok) return auth.response;
+    if (!["admin", "sales"].includes(auth.session.role)) {
+      return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+    }
 
     const { id } = await context.params;
     const lead = await findLead(id);

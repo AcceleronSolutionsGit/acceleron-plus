@@ -22,6 +22,9 @@ export async function GET(
 ) {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
+  if (!["admin", "sales"].includes(auth.session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   const { id } = await params;
   const lead = await findLead(id);
@@ -133,6 +136,9 @@ export async function POST(
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   const session = auth.session;
+  if (!["admin", "sales"].includes(session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   const { id } = await params;
   const lead = await findLead(id);

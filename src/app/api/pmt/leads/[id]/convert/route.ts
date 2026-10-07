@@ -24,6 +24,9 @@ export async function POST(req: Request, context: Params) {
     const auth = await requireCapabilityGlobally("project.create");
     if (!auth.ok) return auth.response;
     const session = auth.session;
+    if (!["admin", "sales"].includes(session.role)) {
+      return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+    }
 
     const { id } = await context.params;
     const lead = await projectDb("leads")

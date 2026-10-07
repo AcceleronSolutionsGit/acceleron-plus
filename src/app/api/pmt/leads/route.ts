@@ -10,6 +10,9 @@ import { leadsWithHiddenFinancials, withoutLeadFinancials } from "@/lib/lead-fin
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ success: false, error: "UNAUTHORIZED" }, { status: 401 });
+  if (!["admin", "sales"].includes(session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -37,7 +40,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ success: false, error: "UNAUTHORIZED" }, { status: 401 });
-  if (!["pm", "admin"].includes(session.role)) {
+  if (!["admin", "sales"].includes(session.role)) {
     return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
   }
 

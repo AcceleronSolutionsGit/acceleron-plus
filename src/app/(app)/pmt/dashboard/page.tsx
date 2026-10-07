@@ -164,6 +164,7 @@ export default async function PMTDashboardPage() {
       monthlyTicketTrend={monthlyTicketTrend}
       ticketPriorityBreakdown={ticketPriorityBreakdown}
       projectStatusCounts={projectStatusCounts}
+      userRole={viewer?.role ?? "member"}
     />
   );
 }

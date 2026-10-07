@@ -9,6 +9,7 @@ interface PmtHeaderTabsProps {
   title?: string;
   subtitle?: string;
   action?: React.ReactNode;
+  userRole?: string;
 }
 
 const TABS = [
@@ -18,8 +19,15 @@ const TABS = [
   { label: "Enterprise Governance", href: "/pmt/governance", badge: "Stage-Gates", exact: false },
 ];
 
-export function PmtHeaderTabs({ title, subtitle, action }: PmtHeaderTabsProps) {
+export function PmtHeaderTabs({ title, subtitle, action, userRole }: PmtHeaderTabsProps) {
   const pathname = usePathname();
+
+  const tabs = TABS.filter((tab) => {
+    if (tab.href === "/pmt/leads") {
+      return userRole === "admin" || userRole === "sales";
+    }
+    return true;
+  });
 
   return (
     <div className="mb-6 space-y-5">
@@ -38,7 +46,7 @@ export function PmtHeaderTabs({ title, subtitle, action }: PmtHeaderTabsProps) {
       )}
 
       <div className="flex items-center gap-1 overflow-x-auto border-b border-navy-900/10">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const isActive = tab.exact
             ? pathname === tab.href
             : pathname.startsWith(tab.href);

@@ -1,10 +1,13 @@
 import React from "react";
 import { projectDb } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 import { GovernanceDashboardClient } from "./GovernanceDashboardClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function GovernancePage() {
+  const session = await getSession();
+
   // Fetch reviews with joined project info
   const reviews = await projectDb("governance_reviews")
     .join("projects", "governance_reviews.project_id", "projects.id")
@@ -53,6 +56,7 @@ export default async function GovernancePage() {
       initialReviews={formattedReviews}
       initialStats={initialStats}
       projects={projects}
+      userRole={session?.role ?? "member"}
     />
   );
 }

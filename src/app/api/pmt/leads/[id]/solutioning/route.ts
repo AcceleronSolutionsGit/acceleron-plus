@@ -14,6 +14,9 @@ export async function GET(
   // Solutioning carries day rates, so it is commercial data.
   const auth = await requireCapabilityGlobally("financials.view");
   if (!auth.ok) return auth.response;
+  if (!["admin", "sales"].includes(auth.session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   // A converted lead's estimate is that project's budget: its PM and
   // admins only, the same as the project's Financials tab.
@@ -76,6 +79,9 @@ export async function POST(
   const auth = await requireCapabilityGlobally("project.create");
   if (!auth.ok) return auth.response;
   const session = auth.session;
+  if (!["admin", "sales"].includes(session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   const body = await req.json();
   const { sessionName, riskBufferPercent = 15, lineItems = [], additionalCosts = [], overheadMarginPercent = 0, actualMarginPercent = 0 } = body;
@@ -162,6 +168,9 @@ export async function PATCH(
   const auth = await requireCapabilityGlobally("project.create");
   if (!auth.ok) return auth.response;
   const session = auth.session;
+  if (!["admin", "sales"].includes(session.role)) {
+    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  }
 
   let body: Record<string, unknown>;
   try {
