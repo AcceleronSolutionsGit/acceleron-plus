@@ -6,6 +6,11 @@ const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").trim().replace(/\/+$/
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['knex', 'pg', 'pdfkit'],
+  allowedDevOrigins: [
+    '10.239.0.15',
+    '10.239.0.*',
+    '127.0.0.1',
+  ],
   // On the server the app sits in /srv/www/htdocs/acceleron-plus, and
   // /srv/www/htdocs has another project's package-lock.json. Without this,
   // Next guesses the parent is the workspace root and warns on every start.

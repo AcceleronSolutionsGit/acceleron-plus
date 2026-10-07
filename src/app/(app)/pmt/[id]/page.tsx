@@ -43,14 +43,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     summary: describeAccess(access),
   };
 
-  const [wbsItems, milestones, risks, reviews, tickets, preDelivery] = await Promise.all([
+  const [wbsItems, milestones, risks, reviews, tickets, preDelivery, sprints, requirementsRaw, testCasesRaw] = await Promise.all([
     getProjectWBS(project.id),
     getProjectMilestones(project.id),
     getProjectRisks(project.id),
     getProjectGovernanceReviews(project.id),
     getTickets({ projectCode: project.code }),
     getPreDeliveryStages(project),
+    projectDb("sprints").where("project_id", project.id).orderBy("created_at", "asc").catch(() => []),
+    projectDb("requirements").where("project_id", project.id).orderBy("created_at", "asc").catch(() => []),
+    projectDb("test_cases").where("project_id", project.id).orderBy("created_at", "asc").catch(() => []),
   ]);
+
+  const requirements = requirementsRaw; // To cast or process as needed
+  const reqFolders = await projectDb("requirement_folders").where("project_id", project.id).orderBy("name", "asc").catch(() => []);
+  const testCases = testCasesRaw;
+  const testSuites = await projectDb("test_suites").where("project_id", project.id).orderBy("name", "asc").catch(() => []);
 
   // A project can have several PMs: the one named on the project, and
   // everyone holding the PM role on its team. The header lists them all.
@@ -79,6 +87,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       risks={risks}
       reviews={reviews}
       tickets={tickets}
+      sprints={sprints}
+      requirements={requirements}
+      reqFolders={reqFolders}
+      testCases={testCases}
+      testSuites={testSuites}
       userRole={userRole}
       permissions={permissions}
     />

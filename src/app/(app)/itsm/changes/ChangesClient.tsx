@@ -8,6 +8,7 @@ import { ColorBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
 import { formatDate, formatStatus, priorityColor, impactColor } from "@/lib/utils";
 
 const changeStatusColor = (status: string) => {
@@ -315,13 +316,13 @@ export function ChangesClient({ changes: initialChanges }: { changes: ChangeRequ
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateChange} disabled={isSubmitting || !newChange.subject}>
+            <Button type="submit" form="create-change-form" disabled={isSubmitting || !newChange.subject}>
               {isSubmitting ? "Submitting..." : "Submit Change"}
             </Button>
           </>
         }
       >
-        <form onSubmit={handleCreateChange} className="space-y-4">
+        <form id="create-change-form" onSubmit={handleCreateChange} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-navy-700 mb-1">
               Subject *
@@ -347,90 +348,91 @@ export function ChangesClient({ changes: initialChanges }: { changes: ChangeRequ
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Change Type</label>
-              <select
+              <Combobox
+                label="Change Type"
                 value={newChange.changeType}
-                onChange={(e) => setNewChange({ ...newChange, changeType: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="standard">Standard</option>
-                <option value="normal">Normal</option>
-                <option value="emergency">Emergency</option>
-                <option value="major">Major</option>
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, changeType: val })}
+                options={[
+                  { value: "standard", label: "Standard" },
+                  { value: "normal", label: "Normal" },
+                  { value: "emergency", label: "Emergency" },
+                  { value: "major", label: "Major" },
+                ]}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Priority</label>
-              <select
+              <Combobox
+                label="Priority"
                 value={newChange.priority}
-                onChange={(e) => setNewChange({ ...newChange, priority: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, priority: val })}
+                options={[
+                  { value: "low", label: "Low" },
+                  { value: "medium", label: "Medium" },
+                  { value: "high", label: "High" },
+                  { value: "urgent", label: "Urgent" },
+                ]}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Impact</label>
-              <select
+              <Combobox
+                label="Impact"
                 value={newChange.impact}
-                onChange={(e) => setNewChange({ ...newChange, impact: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, impact: val })}
+                options={[
+                  { value: "low", label: "Low" },
+                  { value: "medium", label: "Medium" },
+                  { value: "high", label: "High" },
+                ]}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Risk</label>
-              <select
+              <Combobox
+                label="Risk"
                 value={newChange.risk}
-                onChange={(e) => setNewChange({ ...newChange, risk: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, risk: val })}
+                options={[
+                  { value: "low", label: "Low" },
+                  { value: "medium", label: "Medium" },
+                  { value: "high", label: "High" },
+                ]}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Linked Project</label>
-              <select
+              <Combobox
+                label="Linked Project"
                 value={newChange.projectCode}
-                onChange={(e) => setNewChange({ ...newChange, projectCode: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">No Project (Infrastructure/Platform)</option>
-                {projects.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.code} — {p.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, projectCode: val })}
+                options={[
+                  { value: "", label: "No Project (Infrastructure/Platform)" },
+                  ...projects.map((p) => ({
+                    value: p.code,
+                    label: `${p.code} — ${p.name}`,
+                  })),
+                ]}
+                searchThreshold={0}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Assigned Agent</label>
-              <select
+              <Combobox
+                label="Assigned Agent"
                 value={newChange.agentUserId}
-                onChange={(e) => setNewChange({ ...newChange, agentUserId: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">Select Agent...</option>
-                {agents.map((ag) => (
-                  <option key={ag.id} value={ag.id}>
-                    {ag.fullName} {ag.jobLevel ? `(${ag.jobLevel})` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setNewChange({ ...newChange, agentUserId: val })}
+                options={[
+                  { value: "", label: "Select Agent..." },
+                  ...agents.map((ag) => ({
+                    value: ag.id,
+                    label: ag.fullName,
+                    detail: ag.jobLevel || undefined,
+                  })),
+                ]}
+                searchThreshold={0}
+              />
             </div>
           </div>
         </form>

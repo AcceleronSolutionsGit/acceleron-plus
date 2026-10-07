@@ -98,6 +98,7 @@ export function StatCard({
   trend,
   hint,
   tone = "default",
+  accentTop,
   className,
 }: {
   label: string;
@@ -107,6 +108,8 @@ export function StatCard({
   /** A line under the number — "of ₹42L budget", "3 overdue". */
   hint?: React.ReactNode;
   tone?: "default" | "positive" | "warning" | "critical";
+  /** A coloured hairline across the top edge — status, health, phase. */
+  accentTop?: string;
   className?: string;
 }) {
   const toneRing = {
@@ -126,6 +129,13 @@ export function StatCard({
         className
       )}
     >
+      {accentTop && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-[3px]"
+          style={{ background: accentTop }}
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-400">

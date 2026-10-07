@@ -39,20 +39,18 @@ export function calculateSlaDueDate(priority: Priority | undefined, createdAt: D
  * Auto-assigns a ticket to a member of the specified group using round-robin.
  * Fulfills REQ-ASN-01
  */
-export async function autoAssignTicket(ticketId: string, groupId: string, tenantId: string): Promise<string | null> {
-  // 1. Fetch group details to get members
-  const group = await itsmDb("service_groups")
-    .where({ id: groupId, tenant_id: tenantId })
-    .first();
+export async function autoAssignTicket(ticketId: string, groupId: string, tenantId?: string): Promise<string | null> {
+  // 1. Fetch group details to get the team lead
+  const query = itsmDb("service_groups").where({ id: groupId });
+  if (tenantId) query.andWhere({ tenant_id: tenantId });
+  const group = await query.first();
     
-  if (!group || !group.member_user_ids || group.member_user_ids.length === 0) {
-    return null; // Group doesn't exist or has no members
+  if (!group || !group.team_lead_user_id) {
+    return null; // Group doesn't exist or has no team lead
   }
 
-  // 2. Simple Round-Robin: Pick a random member for now
-  // In a full implementation, we'd query the number of open tickets per agent to balance load (REQ-ASN-03)
-  const members = group.member_user_ids;
-  const selectedAgentId = members[Math.floor(Math.random() * members.length)];
+  // 2. Assign to Team Lead as per user request
+  const selectedAgentId = group.team_lead_user_id;
 
   // 3. Update the ticket
   await itsmDb("tickets")

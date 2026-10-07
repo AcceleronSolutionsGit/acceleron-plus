@@ -28,7 +28,6 @@ import {
 } from "@/components/project/ManagerPicker";
 import { cn, formatCurrency, formatStatus, projectStatusColor } from "@/lib/utils";
 import { formatISODate, parseISODate, todayISO } from "@/lib/dates";
-import { NewProjectModal } from "./NewProjectModal";
 
 export const PHASES = [
   "Discovery",
@@ -88,11 +87,14 @@ interface Filters {
   q: string;
   status: StatusGroup;
   phase: string;
+  category: string;
+  classification: string;
+  client: string;
   manager: string; // "all" | "none" | a manager key
   sort: SortKey;
 }
 
-const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", manager: "all", sort: "recent" };
+const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", classification: "all", client: "all", manager: "all", sort: "recent" };
 const FILTER_STORAGE_KEY = "pmt.projects.filters.v1";
 const PAGE = 30;
 
@@ -172,7 +174,6 @@ export function ProjectListClient({
   const [restored, setRestored] = useState(false);
   const [visible, setVisible] = useState(PAGE);
   const [flashId, setFlashId] = useState<string | null>(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [today] = useState(() => parseISODate(todayISO())!);
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -210,7 +211,7 @@ export function ProjectListClient({
         searchRef.current?.focus();
       } else if (e.key === "n" || e.key === "N") {
         e.preventDefault();
-        setIsCreateOpen(true);
+        router.push("/pmt/new");
       }
     };
     document.addEventListener("keydown", onKey);
@@ -249,6 +250,9 @@ export function ProjectListClient({
     const list = projects.filter((p) => {
       if (filters.status !== "all" && !STATUS_GROUPS[filters.status].includes(p.status)) return false;
       if (filters.phase !== "all" && (p.currentPhase || "Discovery") !== filters.phase) return false;
+      if (filters.category !== "all" && (p.category || "Uncategorized") !== filters.category) return false;
+      if (filters.classification !== "all" && (p.classification || "non_group") !== filters.classification) return false;
+      if (filters.client !== "all" && (p.clientCompanyName || "Internal") !== filters.client) return false;
       const managers = p.managers ?? [];
       if (filters.manager === "none" && managers.length > 0) return false;
       if (filters.manager !== "all" && filters.manager !== "none" && !managers.some((m) => m.key === filters.manager)) {
@@ -350,30 +354,7 @@ export function ProjectListClient({
     [flash]
   );
 
-  // ── After creating ────────────────────────────────────────────
-  const onCreated = useCallback(
-    async (created: { id: string; code: string; name: string }, managersError: string | null) => {
-      setIsCreateOpen(false);
-      setFilters((f) => ({ ...f, q: "", status: "all", phase: "all", manager: "all" }));
-      try {
-        const res = await fetch("/api/pmt/projects");
-        const data = await res.json();
-        if (res.ok && Array.isArray(data.projects)) setProjects(data.projects);
-        else router.refresh();
-      } catch {
-        router.refresh();
-      }
-      flash(created.id);
-      // Newest sits at the top — bring it into view so the highlight is seen.
-      document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
-      toast.success(`${created.code} created`, {
-        description: created.name,
-        action: { label: "Open", onClick: () => router.push(`/pmt/${created.code}`) },
-      });
-      if (managersError) toast.error("The project was created, but its PMs were not set", { description: managersError });
-    },
-    [flash, router]
-  );
+
 
   const openProject = useCallback((p: Project) => router.push(`/pmt/${p.code || p.id}`), [router]);
   const prefetchProject = useCallback((p: Project) => router.prefetch(`/pmt/${p.code || p.id}`), [router]);
@@ -422,7 +403,7 @@ export function ProjectListClient({
                 Scrapped
               </Link>
             )}
-            <Button data-guide="project:new" onClick={() => setIsCreateOpen(true)}>
+            <Button data-guide="project:new" onClick={() => router.push('/pmt/new')}>
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
                 <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
               </svg>
@@ -539,6 +520,44 @@ export function ProjectListClient({
             ]}
           />
           <Combobox
+            className="w-[132px] xl:w-[150px]"
+            value={filters.category}
+            onChange={(v) => update("category", v)}
+            placeholder="All categories"
+            searchThreshold={99}
+            options={[
+              { value: "all", label: "All categories" },
+              { value: "Implementation", label: "Implementation" },
+              { value: "Support", label: "Support" },
+              { value: "Consulting", label: "Consulting" },
+              { value: "Uncategorized", label: "Uncategorized" },
+            ]}
+          />
+          <Combobox
+            className="w-[132px] xl:w-[150px]"
+            value={filters.classification}
+            onChange={(v) => update("classification", v)}
+            placeholder="All classifications"
+            searchThreshold={99}
+            options={[
+              { value: "all", label: "All types" },
+              { value: "group", label: "Group" },
+              { value: "non_group", label: "Non-Group" },
+            ]}
+          />
+          <Combobox
+            className="w-[132px] xl:w-[150px]"
+            value={filters.client}
+            onChange={(v) => update("client", v)}
+            placeholder="All clients"
+            searchThreshold={5}
+            options={[
+              { value: "all", label: "All clients" },
+              { value: "Internal", label: "Internal" },
+              ...clientNames.map(c => ({ value: c, label: c })),
+            ]}
+          />
+          <Combobox
             className="w-[172px] xl:w-[190px]"
             value={filters.manager}
             onChange={(v) => update("manager", v)}
@@ -598,7 +617,7 @@ export function ProjectListClient({
         <EmptyState
           title="No projects yet"
           description="Create the first one, or import sales orders and they will appear here."
-          action={<Button onClick={() => setIsCreateOpen(true)}>New project</Button>}
+          action={<Button onClick={() => router.push('/pmt/new')}>New project</Button>}
           icon={<svg viewBox="0 0 18 18" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 1.5H14a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13z" /></svg>}
         />
       ) : filtered.length === 0 ? (
@@ -614,17 +633,19 @@ export function ProjectListClient({
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs xl:overflow-x-visible">
-          <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-sm">
+          <table className="w-full table-fixed min-w-[1200px] border-separate border-spacing-0 text-sm">
             <thead>
-              <tr>
+               <tr>
                 {[
-                  ["Project", "w-[30%]"],
-                  ["Client", ""],
-                  ["Phase", ""],
-                  ["Status", ""],
-                  ["Project managers", "w-[210px]"],
-                  ["Timeline", "w-[200px]"],
-                  ["Budget", "text-right"],
+                  ["Project", "w-[280px]"],
+                  ["Client", "w-[160px]"],
+                  ["Phase", "w-[100px]"],
+                  ["Class", "w-[90px]"],
+                  ["Category", "w-[120px]"],
+                  ["Status", "w-[110px]"],
+                  ["Project managers", "w-[180px]"],
+                  ["Start & End Date", "w-[160px]"],
+                  ["Deal Value", "text-right w-[100px]"],
                 ].map(([label, cls], i, all) => (
                   <th
                     key={label}
@@ -682,14 +703,6 @@ export function ProjectListClient({
           <ManagersEditor project={editingProject} onCancel={closeManagers} onSave={saveManagers} />
         )}
       </DropdownPanel>
-
-      <NewProjectModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onCreated={onCreated}
-        phases={PHASES}
-        clientNames={clientNames}
-      />
 
       <Toaster />
     </div>
@@ -814,18 +827,18 @@ const ProjectRow = memo(function ProjectRow({
             <Link
               href={href}
               prefetch={false}
-              className="block truncate font-semibold text-navy-900 underline-offset-2 transition-colors hover:text-navy-700 hover:underline"
+              className="block font-semibold text-navy-900 break-words underline-offset-2 transition-colors hover:text-navy-700 hover:underline"
             >
               {p.name}
             </Link>
-            <p className="mt-0.5 line-clamp-1 text-[12px] text-navy-400">{p.description || "No description"}</p>
+            <p className="mt-0.5 line-clamp-2 text-[12px] text-navy-400">{p.description || "No description"}</p>
           </div>
         </div>
       </td>
 
       {/* Client */}
       <td className={cell}>
-        <span className={cn("block max-w-[180px] truncate text-[13px]", p.clientCompanyName ? "font-medium text-navy-700" : "text-navy-300")}>
+        <span className={cn("block max-w-[180px] break-words text-[13px]", p.clientCompanyName ? "font-medium text-navy-700" : "text-navy-300")}>
           {p.clientCompanyName || "Internal"}
         </span>
       </td>
@@ -843,6 +856,32 @@ const ProjectRow = memo(function ProjectRow({
             ))}
           </div>
         </div>
+      </td>
+
+      {/* Classification */}
+      <td className={cell}>
+        <span className={cn(
+          "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset",
+          p.classification === 'group' ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" : "bg-orange-50 text-orange-700 ring-orange-600/20"
+        )}>
+          {p.classification === 'group' ? 'Group' : 'Non-Group'}
+        </span>
+      </td>
+
+      {/* Category */}
+      <td className={cell}>
+        {p.category ? (
+          <span className={cn(
+            "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
+            p.category.toLowerCase().includes("support") ? "bg-blue-50 text-blue-700 ring-blue-700/10" :
+            p.category.toLowerCase().includes("implementation") ? "bg-purple-50 text-purple-700 ring-purple-700/10" :
+            "bg-gray-50 text-gray-700 ring-gray-600/20"
+          )}>
+            {p.category}
+          </span>
+        ) : (
+          <span className="text-navy-300">—</span>
+        )}
       </td>
 
       {/* Status */}

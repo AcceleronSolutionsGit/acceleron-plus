@@ -17,17 +17,21 @@
 const PM = "PM";
 const TEAM_LEAD = "Team Lead";
 const DEVELOPER = "Developer";
+const FUNCTIONAL_CONSULTANT = "Functional Consultant";
+const TECHNICAL_CONSULTANT = "Technical Consultant";
 
 /** In the order they are offered in a dropdown. */
-const TEAM_ROLES = [DEVELOPER, TEAM_LEAD, PM];
+const TEAM_ROLES = [DEVELOPER, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD, PM];
 
 /** Roles a person may give themselves. PM is granted, never self-declared. */
-const SELF_SELECTABLE_ROLES = [DEVELOPER, TEAM_LEAD];
+const SELF_SELECTABLE_ROLES = [DEVELOPER, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD];
 
 const DESCRIPTIONS = {
   [PM]: "Runs the project — plan, team and finances.",
   [TEAM_LEAD]: "Edits the plan and work breakdown. No finances.",
   [DEVELOPER]: "Updates their own work and logs time.",
+  [FUNCTIONAL_CONSULTANT]: "Handles functional requirements and design.",
+  [TECHNICAL_CONSULTANT]: "Handles technical architecture and implementation.",
 };
 
 function clean(raw) {
@@ -48,6 +52,8 @@ function toTeamRole(raw) {
   if (v === "pm" || v === "project manager") return PM;
   if (v === "team lead" || v === "teamlead" || v === "tl" || v === "lead") return TEAM_LEAD;
   if (v === "developer" || v === "dev") return DEVELOPER;
+  if (v === "functional consultant" || v === "fc") return FUNCTIONAL_CONSULTANT;
+  if (v === "technical consultant" || v === "tc") return TECHNICAL_CONSULTANT;
   return null;
 }
 
@@ -67,6 +73,8 @@ function legacyToTeamRole(raw) {
   const v = clean(raw);
   if (/(^|\b)(pm|project manager|delivery manager|program manager|programme manager|owner)(\b|$)/.test(v)) return PM;
   if (/(lead|architect|principal|scrum master)/.test(v)) return TEAM_LEAD;
+  if (/(functional)/.test(v)) return FUNCTIONAL_CONSULTANT;
+  if (/(technical|tech consultant)/.test(v)) return TECHNICAL_CONSULTANT;
   return DEVELOPER;
 }
 
@@ -74,6 +82,8 @@ module.exports = {
   PM,
   TEAM_LEAD,
   DEVELOPER,
+  FUNCTIONAL_CONSULTANT,
+  TECHNICAL_CONSULTANT,
   TEAM_ROLES,
   SELF_SELECTABLE_ROLES,
   TEAM_ROLE_DESCRIPTIONS: DESCRIPTIONS,

@@ -32,9 +32,13 @@ export async function GET(
   // delete documents is delivery-side but not running the project, so the
   // confidential shelf stays closed to them too.
   if (!can(access, "document.delete")) {
-    query = can(access, "document.upload")
-      ? query.whereIn("access_level", ["team", "client_visible"])
-      : query.where("access_level", "client_visible");
+    if (can(access, "document.upload")) {
+      query = query.where(function () {
+        this.where("access_level", "ilike", "%team%").orWhere("access_level", "ilike", "%client_visible%");
+      });
+    } else {
+      query = query.where("access_level", "ilike", "%client_visible%");
+    }
   }
 
   if (documentType) query = query.where("document_type", documentType);

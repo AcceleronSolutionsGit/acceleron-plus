@@ -1,0 +1,16 @@
+URGENT: Production Database Outage
+
+The primary database server in the production environment is currently unreachable. 
+We are seeing connection timeout errors across all web application nodes.
+
+Error sample:
+[2026-10-01 10:45:12] ERROR: DbConnectionError: Timeout while waiting for connection to 10.0.4.15
+[2026-10-01 10:45:15] FATAL: Connection pool exhausted
+
+This is a P0 issue and is actively blocking customers from logging in or completing checkout.
+Please investigate ASAP.
+
+Steps to reproduce:
+1. Go to production URL
+2. Attempt login
+3. Observe 504 Gateway Timeout after 30 seconds.

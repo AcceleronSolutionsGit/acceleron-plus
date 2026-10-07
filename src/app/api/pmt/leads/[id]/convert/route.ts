@@ -7,7 +7,7 @@
 // deal it came from.
 
 import { NextResponse } from "next/server";
-import { projectDb, itsmDb } from "@/lib/db";
+import { projectDb, itsmDb, identityDb } from "@/lib/db";
 import { requireCapabilityGlobally } from "@/lib/auth";
 import { readJson, validationError, serverError } from "@/lib/route-helpers";
 import { notifyAsync, events } from "@/lib/notifications";
@@ -17,7 +17,7 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: Request, context: Params) {
   try {
@@ -75,11 +75,15 @@ export async function POST(req: Request, context: Params) {
         ? Number(body.budgetInr)
         : Number(estimate?.proposed_fee_inr ?? lead.opportunity_value_inr ?? 0) || null;
 
-    const last = await projectDb("projects")
-      .where("code", "like", "PRJ-%")
-      .orderBy("created_at", "desc")
+    const scopeBaseline = body.scopeBaseline !== undefined ? body.scopeBaseline : (lead.scope_baseline ?? null);
+    const solutionApproach = body.solutionApproach !== undefined ? body.solutionApproach : (lead.solution_approach ?? null);
+
+    // Compute next project code safely
+    const lastProject = await projectDb("projects")
+      .whereRaw("code ~ '^PRJ-[0-9]+$'")
+      .orderByRaw("CAST(SUBSTRING(code FROM 5) AS INTEGER) DESC")
       .first();
-    const lastNum = last?.code ? parseInt(String(last.code).replace("PRJ-", "")) || 0 : 0;
+    const lastNum = lastProject?.code ? parseInt(String(lastProject.code).replace("PRJ-", ""), 10) || 0 : 0;
     const code = `PRJ-${String(lastNum + 1).padStart(4, "0")}`;
 
     const [project] = await projectDb("projects")
@@ -96,8 +100,22 @@ export async function POST(req: Request, context: Params) {
         start_date: startDate,
         planned_end_date: plannedEndDate,
         budget_inr: budget,
+        scope_baseline: scopeBaseline,
+        solution_approach: solutionApproach,
       })
       .returning("*");
+
+    // ── Carry over any documents uploaded to this lead to the newly created project ──
+    try {
+      await projectDb("project_documents")
+        .where("lead_id", lead.id as string)
+        .update({
+          project_id: project.id,
+          updated_at: new Date(),
+        });
+    } catch (docErr) {
+      console.warn("[leads.convert] Document transfer failed (non-fatal):", docErr);
+    }
 
     // ── The estimate's phases become the plan ──────────────────
     //
@@ -138,6 +156,57 @@ export async function POST(req: Request, context: Params) {
         await projectDb("wbs_items").insert(rows);
         wbsCreated = rows.length;
       }
+
+      // Fetch rate bands to get billable rate
+      const bandIds = lineItems.map((i: any) => i.rate_band_id).filter(Boolean) as string[];
+      const rateBands = bandIds.length > 0 ? (await projectDb("employee_rate_bands").whereIn("id", bandIds).select("id", "daily_billable_rate_inr") as Record<string, unknown>[]) : [];
+      const bandMap = new Map(rateBands.map((b) => [String(b.id), Number(b.daily_billable_rate_inr ?? 0)]));
+
+      // Resolve user_id from employee_master using employee_id (allocated_user_id)
+      const teamMembers = new Map<string, any>();
+      const empIds = lineItems.map((i: any) => i.allocated_user_id).filter(Boolean) as string[];
+      const employees = empIds.length > 0 ? (await identityDb("employee_master").whereIn("employee_id", empIds).select("employee_id", "user_id", "full_name") as Record<string, unknown>[]) : [];
+      const empMap = new Map(employees.map((e) => [String(e.employee_id), e]));
+
+      for (const item of lineItems) {
+        if (item.allocated_user_id) {
+          const empId = String(item.allocated_user_id);
+          if (!teamMembers.has(empId)) {
+            const emp = empMap.get(empId);
+            const actualUserId = emp?.user_id ? String(emp.user_id) : empId; // fallback
+            const plannedDays = Number(item.estimated_days ?? 0) * Number(item.quantity_resources ?? 1);
+            const dailyCost = Number(item.daily_rate_inr ?? 0);
+            const billableRate = item.rate_band_id ? (bandMap.get(String(item.rate_band_id)) ?? 0) : 0;
+
+            teamMembers.set(empId, {
+              project_id: project.id,
+              user_id: actualUserId,
+              employee_id: empId,
+              user_name: emp?.full_name ? String(emp.full_name) : null,
+              rate_band_id: item.rate_band_id ?? null,
+              rate_band_name: item.rate_band_name ?? null,
+              role_in_project: "Consultant",
+              allocation_percent: 100,
+              is_active: true,
+              daily_cost_inr: dailyCost,
+              daily_billable_rate_inr: billableRate,
+              planned_days: plannedDays,
+              planned_cost_inr: plannedDays * dailyCost,
+              planned_billable_inr: plannedDays * billableRate,
+            });
+          } else {
+            // Aggregate if same user is in multiple line items
+            const existing = teamMembers.get(empId);
+            const addedDays = Number(item.estimated_days ?? 0) * Number(item.quantity_resources ?? 1);
+            existing.planned_days += addedDays;
+            existing.planned_cost_inr += addedDays * Number(item.daily_rate_inr ?? 0);
+            existing.planned_billable_inr += addedDays * (item.rate_band_id ? (bandMap.get(String(item.rate_band_id)) ?? 0) : 0);
+          }
+        }
+      }
+      if (teamMembers.size > 0) {
+        await projectDb("project_team_members").insert(Array.from(teamMembers.values()));
+      }
     }
 
     // ── The ITSM context, same as a project created by hand ────
@@ -164,6 +233,8 @@ export async function POST(req: Request, context: Params) {
 
     await projectDb("leads").where("id", lead.id as string).update({
       status: "won",
+      scope_baseline: scopeBaseline,
+      solution_approach: solutionApproach,
       updated_at: new Date(),
     });
 

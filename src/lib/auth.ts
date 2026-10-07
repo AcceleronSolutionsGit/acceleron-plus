@@ -59,6 +59,7 @@ export interface AuthUserRow {
   locked_until: Date | string | null;
   created_at: Date | string | null;
   updated_at: Date | string | null;
+  user_roles?: Array<{ id: string; code: string; name: string }>;
 }
 
 /**
@@ -95,7 +96,16 @@ export async function findAuthUserById(id: string): Promise<AuthUserRow | undefi
  */
 const loadUser = cache(async (userId: string): Promise<AuthUserRow | undefined> => {
   try {
-    return await findAuthUserById(userId);
+    const user = await findAuthUserById(userId);
+    if (!user) return undefined;
+    
+    const additionalRoles = await identityDb("user_roles")
+      .join("roles", "roles.id", "user_roles.role_id")
+      .where("user_roles.user_id", userId)
+      .select("roles.id", "roles.code", "roles.name");
+      
+    user.user_roles = additionalRoles;
+    return user;
   } catch (err) {
     console.error("[auth] Failed to load user", userId, err);
     return undefined;
@@ -125,6 +135,24 @@ function rowToUser(row: AuthUserRow): User {
           updatedAt: toIso(row.updated_at),
         }
       : undefined,
+    roleIds: row.user_roles?.map((r) => r.id) ?? (row.role_id ? [row.role_id] : []),
+    roles: row.user_roles?.map((r) => ({
+      id: r.id,
+      tenantId: row.tenant_id,
+      code: r.code,
+      name: r.name,
+      isActive: true,
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    })) ?? (row.role_id ? [{
+      id: row.role_id,
+      tenantId: row.tenant_id,
+      code: row.role_code ?? "member",
+      name: row.role_name ?? "Member",
+      isActive: true,
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    }] : []),
     darwinboxRef: row.darwinbox_ref ?? undefined,
     isActive: row.is_active ?? true,
     mfaEnabled: false,
@@ -156,7 +184,16 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
   // Trust the database over the cookie for role, so a role change
   // applies on the next request instead of the next login.
   const roleCode = row.role_code ?? payload.roleCode;
-  return { ...payload, roleCode, role: deriveAppRole(roleCode) };
+  const additionalRoleCodes = row.user_roles?.map(r => r.code) || [];
+  const additionalRoles = additionalRoleCodes.map(c => deriveAppRole(c));
+  
+  return { 
+    ...payload, 
+    roleCode, 
+    role: deriveAppRole(roleCode),
+    additionalRoleCodes,
+    additionalRoles
+  };
 });
 
 /** The currently authenticated user, or null. */
@@ -226,6 +263,8 @@ export function sessionSeedFor(row: AuthUserRow): SessionSeed {
     fullName: row.full_name,
     roleCode,
     role: deriveAppRole(roleCode),
+    additionalRoleCodes: row.user_roles?.map(r => r.code) || [],
+    additionalRoles: (row.user_roles?.map(r => r.code) || []).map(deriveAppRole),
   };
 }
 
@@ -257,6 +296,7 @@ export async function getProjectAccess(
 
   const context: AccessContext & { userId: string | null } = {
     role: current.role,
+    additionalRoles: current.additionalRoles || [],
     projectRole: null,
     isProjectOwner: false,
     isProjectManager: false,
@@ -265,7 +305,7 @@ export async function getProjectAccess(
     userId: current.userId,
   };
 
-  if (current.role === "admin") return context;
+  if (current.role === "admin" || current.additionalRoles?.includes("admin")) return context;
 
   try {
     const [project, membership] = await Promise.all([
@@ -437,7 +477,7 @@ export async function requireCapabilityGlobally(
   const auth = await requireSession();
   if (!auth.ok) return auth;
 
-  const context: AccessContext = { role: auth.session.role };
+  const context: AccessContext = { role: auth.session.role, additionalRoles: auth.session.additionalRoles };
   if (!can(context, capability)) {
     return {
       ok: false,

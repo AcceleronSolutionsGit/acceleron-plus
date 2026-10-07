@@ -36,6 +36,8 @@ export async function GET(
     .where("lead_id", leadId)
     .orderBy("created_at", "desc");
 
+  const isPMOrAdmin = auth.session.role === "admin" || auth.session.userId === (await projectDb("leads").where("id", leadId).first())?.pm_owner_user_id;
+
   const enriched = await Promise.all(sessions.map(async (s: any) => {
     const [lineItems, additionalCosts] = await Promise.all([
       projectDb("solutioning_line_items").where("session_id", s.id).orderBy("sequence"),
@@ -43,16 +45,22 @@ export async function GET(
     ]);
     return {
       ...mapSolutioningSessionRow(s),
+      totalCostInr: isPMOrAdmin ? parseFloat(s.total_cost_inr) : 0,
+      totalAdditionalCostInr: isPMOrAdmin ? parseFloat(s.total_additional_cost_inr) : 0,
+      proposedFeeInr: isPMOrAdmin ? parseFloat(s.proposed_fee_inr) : 0,
+      marginPercent: isPMOrAdmin ? parseFloat(s.margin_percent) : 0,
+      overheadMarginPercent: isPMOrAdmin ? parseFloat(s.overhead_margin_percent) : 0,
+      actualMarginPercent: isPMOrAdmin ? parseFloat(s.actual_margin_percent) : 0,
       lineItems: lineItems.map((r: any) => ({
         id: r.id, sessionId: r.session_id, phaseName: r.phase_name,
         taskDescription: r.task_description, rateBandId: r.rate_band_id,
         rateBandName: r.rate_band_name, quantityResources: r.quantity_resources,
-        estimatedDays: parseFloat(r.estimated_days), dailyRateInr: parseFloat(r.daily_rate_inr || 0),
-        subtotalInr: parseFloat(r.subtotal_inr || 0), sequence: r.sequence,
+        estimatedDays: parseFloat(r.estimated_days), dailyRateInr: isPMOrAdmin ? parseFloat(r.daily_rate_inr || 0) : 0,
+        subtotalInr: isPMOrAdmin ? parseFloat(r.subtotal_inr || 0) : 0, sequence: r.sequence, allocatedUserId: r.allocated_user_id,
       })),
       additionalCosts: additionalCosts.map((r: any) => ({
         id: r.id, sessionId: r.session_id, description: r.description,
-        category: r.category, amountInr: parseFloat(r.amount_inr), sequence: r.sequence,
+        category: r.category, amountInr: isPMOrAdmin ? parseFloat(r.amount_inr) : 0, sequence: r.sequence,
       })),
     };
   }));
@@ -70,7 +78,7 @@ export async function POST(
   const session = auth.session;
 
   const body = await req.json();
-  const { sessionName, riskBufferPercent = 15, lineItems = [], additionalCosts = [] } = body;
+  const { sessionName, riskBufferPercent = 15, lineItems = [], additionalCosts = [], overheadMarginPercent = 0, actualMarginPercent = 0 } = body;
 
   if (!sessionName) {
     return NextResponse.json({ success: false, error: "VALIDATION_FAILED",
@@ -99,16 +107,20 @@ export async function POST(
   });
 
   const totalAdditionalCostInr = additionalCosts.reduce((s: number, c: any) => s + (parseFloat(c.amountInr) || 0), 0);
-  const costWithRisk = totalCostInr * (1 + riskBufferPercent / 100);
-  const proposedFeeInr = costWithRisk + totalAdditionalCostInr;
-  const marginPercent = proposedFeeInr > 0 ? ((proposedFeeInr - (totalCostInr + totalAdditionalCostInr)) / proposedFeeInr) * 100 : 0;
+  const totalBaseCost = totalCostInr + totalAdditionalCostInr;
+  const overheadAmount = totalBaseCost * ((Number(overheadMarginPercent) || 0) / 100);
+  const costWithOverhead = totalBaseCost + overheadAmount;
+  const profitAmount = costWithOverhead * ((Number(actualMarginPercent) || 0) / 100);
+  const proposedFeeInr = costWithOverhead + profitAmount;
 
   const [session_row] = await projectDb("solutioning_sessions").insert({
     lead_id: leadId, tenant_id: "acceleron", session_name: sessionName,
     status: "draft", risk_buffer_percent: riskBufferPercent,
     total_effort_days: totalEffortDays, total_cost_inr: totalCostInr,
     total_additional_cost_inr: totalAdditionalCostInr,
-    proposed_fee_inr: proposedFeeInr, margin_percent: marginPercent,
+    proposed_fee_inr: proposedFeeInr, margin_percent: 0,
+    overhead_margin_percent: Number(overheadMarginPercent) || 0,
+    actual_margin_percent: Number(actualMarginPercent) || 0,
     created_by_user_id: session.userId,
   }).returning("*");
 
@@ -118,6 +130,7 @@ export async function POST(
       rate_band_id: li.rateBandId ?? null, rate_band_name: li.rateBandName ?? null,
       quantity_resources: li.quantityResources ?? 1, estimated_days: li.estimatedDays,
       daily_rate_inr: li.dailyRateInr, subtotal_inr: li.subtotalInr, sequence: li.sequence,
+      allocated_user_id: li.allocatedUserId ?? null,
     })));
   }
 

@@ -32,6 +32,8 @@ export interface User {
   fullName: string;
   roleId?: string;
   role?: UserRole;
+  roleIds?: string[];
+  roles?: UserRole[];
   mobilePhone?: string;
   avatarUrl?: string;
   darwinboxRef?: string;
@@ -69,6 +71,7 @@ export interface Project {
   zohoSalesOrderRef?: string;
   sponsorUserId?: string;
   projectManagerUserId?: string;
+  deliveryManagerUserId?: string;
   status: ProjectStatus;
   startDate?: string;
   plannedEndDate?: string;
@@ -77,6 +80,10 @@ export interface Project {
   budgetInr?: number | string;
   clientCompanyName?: string;
   leadId?: string;
+  solutionApproach?: string;
+  scopeBaseline?: string;
+  category?: string;
+  classification?: 'group' | 'non_group';
   createdAt: string;
   updatedAt: string;
   // Joined/computed
@@ -136,11 +143,85 @@ export interface WBSItem {
   // package and how many hours they carry between them.
   assignedCount?: number;
   assignedHours?: number;
+  sprintId?: string;
   createdAt: string;
   updatedAt: string;
   // Client-side tree
   children?: WBSItem[];
   level?: number;
+}
+
+export interface Sprint {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string;
+  startDate?: string;
+  endDate?: string;
+  status: "planned" | "active" | "completed" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequirementFolder {
+  id: string;
+  projectId: string;
+  parentId?: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RequirementState = "draft" | "in_review" | "approved" | "rejected";
+export type RequirementPriority = "low" | "medium" | "high" | "critical";
+export type RequirementType = "functional" | "non_functional" | "business" | "technical";
+
+export interface Requirement {
+  id: string;
+  projectId: string;
+  folderId?: string;
+  title: string;
+  description?: string;
+  state: RequirementState;
+  priority: RequirementPriority;
+  type: RequirementType;
+  ownerUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined
+  owner?: User;
+}
+
+export interface TestSuite {
+  id: string;
+  projectId: string;
+  parentId?: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TestCaseType = "manual" | "api" | "automated";
+export type TestCaseStatus = "not_run" | "passed" | "failed" | "blocked" | "skipped";
+
+export interface TestCase {
+  id: string;
+  projectId: string;
+  suiteId?: string;
+  requirementId?: string;
+  wbsId?: string;
+  title: string;
+  steps?: string;
+  expectedResult?: string;
+  type: TestCaseType;
+  status: TestCaseStatus;
+  ownerUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined
+  owner?: User;
+  requirement?: Requirement;
+  wbsItem?: WBSItem;
 }
 
 export type MilestoneStatus = "pending" | "at_risk" | "completed" | "missed";
@@ -484,10 +565,14 @@ export interface ActivityEntry {
   changedBy?: User;
   // For email
   sender?: string;
-  recipients?: string[];
+  recipients?: string[];       // To: field
+  toRecipients?: string[];     // explicit To: header
+  ccRecipients?: string[];     // CC: header
   subject?: string;
   body?: string;
   direction?: EmailDirection;
+  // Inline attachments on an activity entry
+  attachments?: { originalName: string; storedFileName: string; mimeType: string; fileSizeBytes: number; filePath: string }[];
 }
 
 export interface ConsultantWorkloadItem {
@@ -545,6 +630,8 @@ export interface SolutioningSession {
   totalAdditionalCostInr: number;
   proposedFeeInr: number;
   marginPercent: number;
+  overheadMarginPercent?: number;
+  actualMarginPercent?: number;
   createdByUserId?: string;
   finalizedByUserId?: string;
   finalizedAt?: string;
@@ -567,6 +654,7 @@ export interface SolutioningLineItem {
   dailyRateInr?: number;
   subtotalInr?: number;
   sequence: number;
+  allocatedUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -939,7 +1027,7 @@ export interface ProjectCostSummary {
 
 // ─── App-level user roles ───────────────────────────────────────────
 
-export type AppRole = "admin" | "pm" | "member" | "client";
+export type AppRole = "admin" | "pm" | "member" | "client" | "sales" | "ticket_handler" | "functional_consultant" | "technical_consultant";
 
 // ─── Project Document Vault ─────────────────────────────────────────
 

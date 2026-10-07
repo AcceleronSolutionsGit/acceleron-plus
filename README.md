@@ -36,6 +36,7 @@ script reads `src/lib/db-config.js`.
 |---|---|
 | `AUTH.md` | Sign-in by one-time code, sessions, password mode, admin tasks |
 | `PMT-ITSM.md` | The PMT ↔ ITSM loop, editable plans, the fourteen notification events |
+| `AGILE-QUALITY.md` | Sprint planning, Requirements, Test Cases, Traceability, and ITSM Kanban |
 | `ACCESS-AND-EXPORTS.md` | Who can do what, the editable Gantt, plan exports |
 | `RESOURCING-AND-PIPELINE.md` | Staffing with costs and skills, allotting work, and the lead-to-project pipeline |
 | `ROLES-AND-MARGIN.md` | Project margin, the skill catalogue, the client portal and the member views |

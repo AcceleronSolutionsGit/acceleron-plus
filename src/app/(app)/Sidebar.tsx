@@ -145,11 +145,27 @@ const UploadCloudIcon = icon(
   </>
 );
 
+const ActivityIcon = icon(
+  <>
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+  </>
+);
+
+const SettingsIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </>
+);
+
 const COLLAPSE_KEY = "acceleron.sidebar.collapsed";
 
 export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDirectReports?: boolean }) {
   const appRole = deriveAppRole(user.role?.code);
-  const isAdmin = appRole === "admin";
+  const allRoles = [appRole, ...(user.roles?.map(r => deriveAppRole(r.code)) || [])];
+  const isAdmin = allRoles.includes("admin");
+  const canManageItsmMasters = isAdmin || allRoles.includes("sales") || allRoles.includes("ticket_handler");
+
   // Phase 1 rollout: a regular member gets My Projects, My Timesheet and
   // My Skills. Delivery, the service desk and My Tasks stay visible but
   // greyed out. Admins and PMs see everything. (See lib/rollout.ts.)
@@ -380,6 +396,16 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               comingSoon={phase1}
               onComingSoonClick={setComingSoonNotice}
             />
+            {canManageItsmMasters && (
+              <NavItem
+                href="/itsm/masters/groups"
+                icon={<DatabaseIcon />}
+                label="Assignment Groups"
+                isCollapsed={isCollapsed}
+                comingSoon={phase1}
+                onComingSoonClick={setComingSoonNotice}
+              />
+            )}
           </>
         )}
 
@@ -393,6 +419,8 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavItem href="/admin/masters" icon={<DatabaseIcon />} label="Master Data" isCollapsed={isCollapsed} />
             <NavItem href="/admin/roles" icon={<PeopleIcon />} label="People & Roles" isCollapsed={isCollapsed} />
             <NavItem href="/admin/skills" icon={<SkillIcon />} label="Skills" isCollapsed={isCollapsed} />
+            <NavItem href="/admin/audit-logs" icon={<ActivityIcon />} label="Audit Logs" isCollapsed={isCollapsed} />
+            <NavItem href="/admin/settings" icon={<SettingsIcon />} label="Settings" isCollapsed={isCollapsed} />
           </>
         )}
       </nav>

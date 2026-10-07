@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Priority, Impact, TicketStatus, ProjectStatus, MilestoneStatus, RiskStatus } from "./types";
+import type { Priority, Impact, TicketStatus, ProjectStatus, MilestoneStatus, RiskStatus, TicketType } from "./types";
 
 /** Merge Tailwind classes with conflict resolution */
 export function cn(...inputs: ClassValue[]) {
@@ -136,14 +136,96 @@ export function impactColor(impact: Impact | undefined): string {
 /** Map ticket status to badge color classes */
 export function ticketStatusColor(status: TicketStatus): string {
   switch (status) {
-    case "new": return TINT.info;
-    case "open": return "bg-navy-900/10 text-navy-800";
-    case "pending": return TINT.warning;
-    case "on_hold": return TINT.navy;
-    case "resolved": return TINT.success;
-    case "closed": return TINT.muted;
-    case "cancelled": return TINT.muted;
-    default: return TINT.muted;
+    case "new": return "bg-sky-50 text-sky-700 border border-sky-200/90";
+    case "open": return "bg-blue-50 text-blue-700 border border-blue-200/90";
+    case "pending": return "bg-amber-50 text-amber-800 border border-amber-200/90";
+    case "on_hold": return "bg-purple-50 text-purple-700 border border-purple-200/90";
+    case "resolved": return "bg-emerald-50 text-emerald-700 border border-emerald-200/90";
+    case "closed": return "bg-slate-100 text-slate-700 border border-slate-300";
+    case "cancelled": return "bg-rose-50 text-rose-700 border border-rose-200/90";
+    default: return "bg-neutral-100 text-neutral-600 border border-neutral-200";
+  }
+}
+
+/** Map ticket status to a colored indicator dot class */
+export function ticketStatusDotColor(status: TicketStatus): string {
+  switch (status) {
+    case "new": return "bg-sky-500";
+    case "open": return "bg-blue-500";
+    case "pending": return "bg-amber-500";
+    case "on_hold": return "bg-purple-500";
+    case "resolved": return "bg-emerald-500";
+    case "closed": return "bg-slate-500";
+    case "cancelled": return "bg-rose-500";
+    default: return "bg-neutral-400";
+  }
+}
+
+/** Map ticket status to a solid color badge/button class */
+export function ticketStatusSolidColor(status: TicketStatus): string {
+  switch (status) {
+    case "new": return "bg-sky-600 text-white";
+    case "open": return "bg-blue-600 text-white";
+    case "pending": return "bg-amber-600 text-white";
+    case "on_hold": return "bg-purple-600 text-white";
+    case "resolved": return "bg-emerald-600 text-white";
+    case "closed": return "bg-slate-700 text-white";
+    case "cancelled": return "bg-rose-600 text-white";
+    default: return "bg-neutral-700 text-white";
+  }
+}
+
+/** Map ticket/request type to badge color classes */
+export function ticketTypeColor(type: TicketType | string | undefined | null): string {
+  switch (type) {
+    case "incident":
+      return "bg-rose-50 text-rose-700 border border-rose-200/90";
+    case "service_request":
+      return "bg-purple-50 text-purple-700 border border-purple-200/90";
+    case "problem":
+      return "bg-amber-50 text-amber-800 border border-amber-200/90";
+    case "query":
+      return "bg-sky-50 text-sky-700 border border-sky-200/90";
+    case "change_request":
+      return "bg-teal-50 text-teal-700 border border-teal-200/90";
+    default:
+      return "bg-neutral-100 text-neutral-700 border border-neutral-200";
+  }
+}
+
+/** Map ticket/request type to indicator dot color class */
+export function ticketTypeDotColor(type: TicketType | string | undefined | null): string {
+  switch (type) {
+    case "incident":
+      return "bg-rose-500";
+    case "service_request":
+      return "bg-purple-500";
+    case "problem":
+      return "bg-amber-500";
+    case "query":
+      return "bg-sky-500";
+    case "change_request":
+      return "bg-teal-500";
+    default:
+      return "bg-neutral-400";
+  }
+}
+
+/** Map ticket/request type to a solid badge class */
+export function ticketTypeSolidColor(type: TicketType | string | undefined | null): string {
+  switch (type) {
+    case "incident":
+      return "bg-rose-600 text-white";
+    case "service_request":
+      return "bg-purple-600 text-white";
+    case "problem":
+      return "bg-amber-600 text-white";
+    case "query":
+      return "bg-sky-600 text-white";
+    case "change_request":
+      return "bg-teal-600 text-white";
+    default:
+      return "bg-neutral-700 text-white";
   }
 }
 

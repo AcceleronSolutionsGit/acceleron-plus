@@ -122,9 +122,11 @@ const DEFAULT_ROLES: RoleOption[] = [
   { value: "Developer", description: "Updates their own work and logs time." },
   { value: "Team Lead", description: "Edits the plan and work breakdown. No finances." },
   { value: "PM", description: "Runs the project — plan, team and finances." },
+  { value: "Delivery Manager", description: "Oversees delivery, escalations, and timeline adherence." },
 ];
 
 const ROLE_STYLE: Record<string, string> = {
+  "Delivery Manager": "bg-purple-900 text-white",
   PM: "bg-navy-900 text-white",
   "Team Lead": "bg-blue-50 text-blue-700 border border-blue-200",
   Developer: "bg-neutral-100 text-navy-700 border border-neutral-200",

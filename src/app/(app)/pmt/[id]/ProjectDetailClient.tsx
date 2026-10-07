@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Project, WBSItem, Milestone, Risk, GovernanceReview, Ticket, User, AppRole } from "@/lib/types";
+import type { Project, WBSItem, Milestone, Risk, GovernanceReview, Ticket, User, AppRole, Sprint, Requirement, RequirementFolder, TestCase, TestSuite } from "@/lib/types";
 import { Card } from "@/components/ui/Card";
 import { ColorBadge, Badge } from "@/components/ui/Badge";
-import { Tabs } from "@/components/ui/Tabs";
+import { Tabs, SegmentedControl } from "@/components/ui/Tabs";
 import { DataTable, type Column } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -14,7 +14,9 @@ import { Input } from "@/components/ui/Input";
 import {
   formatDate, formatStatus, formatCurrency,
   projectStatusColor, milestoneStatusColor, riskStatusColor, impactColor, ticketStatusColor, priorityColor,
+  ticketTypeColor, ticketTypeDotColor, cn,
 } from "@/lib/utils";
+import { toDateInput } from "@/lib/dates";
 import { phaseColorClass } from "../ProjectListClient";
 import { DocumentsTab } from "./DocumentsTab";
 import { FinancialsTab } from "./FinancialsTab";
@@ -26,10 +28,14 @@ import { WBSCommentsModal } from "./WBSCommentsModal";
 import { ScopeAndSolutionModals } from "./ScopeAndSolutionModals";
 import { WBSEditorTab, MilestonesEditorTab } from "./PlanEditors";
 import { GanttEditor } from "./GanttEditor";
+import { SprintPlanningBoard } from "./SprintPlanningBoard";
+import { TaskKanbanBoard } from "./TaskKanbanBoard";
+import { RequirementsTab } from "./RequirementsTab";
+import { TestCasesTab } from "./TestCasesTab";
+import { TraceabilityTab } from "./TraceabilityTab";
 import { ExportMenu } from "./ExportMenu";
 import { TeamTab } from "./TeamTab";
-import { toDateInput } from "@/lib/dates";
-import { ScrapProjectDialog } from "@/components/project/ScrapProjectDialog";
+import { ClientAccessTab } from "./ClientAccessTab";
 import type { PreDeliveryStages, LifecycleStatus } from "@/lib/lifecycle";
 
 const PHASES = [
@@ -50,6 +56,11 @@ interface Props {
   risks: Risk[];
   reviews: GovernanceReview[];
   tickets?: Ticket[];
+  sprints?: Sprint[];
+  requirements?: Requirement[];
+  reqFolders?: RequirementFolder[];
+  testCases?: TestCase[];
+  testSuites?: TestSuite[];
   userRole?: AppRole;
   /** Steps 1 and 2 of the lifecycle banner, read from the lead and its estimates. */
   preDelivery?: PreDeliveryStages;
@@ -76,6 +87,11 @@ export function ProjectDetailClient({
   risks,
   reviews,
   tickets: initialTickets = [],
+  sprints: initialSprints = [],
+  requirements = [],
+  reqFolders = [],
+  testCases = [],
+  testSuites = [],
   userRole = "member",
   preDelivery,
   projectManagers = [],
@@ -92,34 +108,21 @@ export function ProjectDetailClient({
   },
 }: Props) {
   const router = useRouter();
-  const [isScrapOpen, setIsScrapOpen] = useState(false);
   const [scrapNotice, setScrapNotice] = useState("");
 
   const [project, setProject] = useState<Project>(initialProject);
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
+  const [localWbsItems, setLocalWbsItems] = useState<WBSItem[]>(wbsItems);
+  const [sprints, setSprints] = useState<Sprint[]>(initialSprints);
   const [currentPhase, setCurrentPhase] = useState(project.currentPhase || "Discovery");
   const [isUpdatingPhase, setIsUpdatingPhase] = useState(false);
   const [phaseSyncSuccess, setPhaseSyncSuccess] = useState(false);
 
-  // Edit Project Modal state
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: project.name,
-    description: project.description || "",
-    clientCompanyName: project.clientCompanyName || "",
-    status: project.status,
-    currentPhase: project.currentPhase || "Discovery",
-    projectManagerUserId: project.projectManagerUserId || "",
-    budgetInr: project.budgetInr ? String(project.budgetInr) : "",
-    startDate: toDateInput(project.startDate),
-    plannedEndDate: toDateInput(project.plannedEndDate),
-  });
-
-  const [employees, setEmployees] = useState<User[]>([]);
-
   // WBS Comments Modal state
   const [activeCommentWbsItem, setActiveCommentWbsItem] = useState<WBSItem | null>(null);
+
+  // Tab grouping
+  const [activeGroup, setActiveGroup] = useState<string>("all");
 
   // Scope & Solution Approach Modal states
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
@@ -129,23 +132,6 @@ export function ProjectDetailClient({
   // Resolved on the server from the global role AND the project team row.
   const canManage = permissions.canEditPlan;
 
-  // Load employees for PM select
-  useEffect(() => {
-    async function loadEmployees() {
-      try {
-        const res = await fetch("/api/itsm/agents");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.data) {
-            setEmployees(data.data);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load employees:", err);
-      }
-    }
-    loadEmployees();
-  }, []);
 
   // Quick Phase Change handler with ITSM sync
   const handlePhaseChange = async (newPhase: string) => {
@@ -183,75 +169,40 @@ export function ProjectDetailClient({
     }
   };
 
-  // Edit Project Submit
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingEdit(true);
-
-    try {
-      const payload: Record<string, unknown> = {
-        name: editForm.name,
-        description: editForm.description || null,
-        clientCompanyName: editForm.clientCompanyName || null,
-        status: editForm.status,
-        currentPhase: editForm.currentPhase,
-        startDate: editForm.startDate || null,
-        plannedEndDate: editForm.plannedEndDate || null,
-      };
-      // Only sent by people allowed to change them; the API refuses a
-      // budget or a new PM from anyone else rather than ignoring it.
-      if (permissions.canChangeProjectManager) {
-        payload.projectManagerUserId = editForm.projectManagerUserId || null;
-      }
-      if (permissions.canViewFinancials) {
-        payload.budgetInr = editForm.budgetInr ? Number(editForm.budgetInr) : null;
-      }
-
-      const res = await fetch(`/api/pmt/projects/${project.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.project) {
-          setProject(data.project);
-          setCurrentPhase(data.project.currentPhase || editForm.currentPhase);
-        }
-        setIsEditModalOpen(false);
-        setPhaseSyncSuccess(true);
-        setTimeout(() => setPhaseSyncSuccess(false), 4000);
-        router.refresh();
-      } else {
-        const err = await res.json();
-        alert(`Failed to update project: ${err.error || res.statusText}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update project due to network error.");
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
 
   // Invoices and Financials are money: they are not rendered at all for
   // anyone but the project's named PM and admins (and their APIs 403).
-  const tabs = [
-    { id: "gantt",         label: "Gantt Timeline",       count: undefined },
-    { id: "wbs",           label: "WBS Deliverables",      count: wbsItems.length },
-    { id: "tickets",       label: "Linked ITSM Tickets",  count: tickets.length },
-    { id: "milestones",    label: "Milestones",            count: milestones.length },
-    { id: "invoices",      label: "Invoices",              count: undefined, finance: true },
-    { id: "notifications", label: "Notifications Sent",    count: undefined },
-    { id: "governance",    label: "Stage-Gates",           count: reviews.length },
-    { id: "team",          label: "Team & Resources",      count: undefined },
-    { id: "timesheets",    label: "Timesheets",            count: undefined },
-    { id: "financials",    label: "Financials",            count: undefined, finance: true },
-    { id: "risks",         label: "Risks & Issues",        count: risks.length },
-    { id: "documents",     label: "Docs & Files",          count: undefined },
-  ]
+  const ALL_TABS = [
+    // 1. Planning & Scope
+    { id: "requirements",  label: "Requirements",          count: requirements.length, group: "planning" },
+    { id: "wbs",           label: "WBS Deliverables",      count: localWbsItems.length, group: "planning" },
+    { id: "gantt",         label: "Gantt Timeline",       count: undefined, group: "planning" },
+    { id: "milestones",    label: "Milestones",            count: milestones.length, group: "planning" },
+    // 2. Resourcing
+    { id: "team",          label: "Team & Resources",      count: undefined, group: "planning" },
+    // 3. Execution (Agile)
+    { id: "sprints",       label: "Sprint Planning",       count: sprints.length, group: "execution" },
+    { id: "board",         label: "Sprint Board",          count: undefined, group: "execution" },
+    { id: "timesheets",    label: "Timesheets",            count: undefined, group: "execution" },
+    // 4. Quality & Tracking
+    { id: "tests",         label: "Test Cases",            count: testCases.length, group: "quality" },
+    { id: "traceability",  label: "Traceability Matrix",   count: undefined, group: "quality" },
+    { id: "tickets",       label: "Linked ITSM Tickets",  count: tickets.length, group: "quality" },
+    { id: "risks",         label: "Risks & Issues",        count: risks.length, group: "quality" },
+    // 5. Governance & Docs
+    { id: "governance",    label: "Stage-Gates",           count: reviews.length, group: "governance" },
+    { id: "documents",     label: "Docs & Files",          count: undefined, group: "governance" },
+    // 6. Financials
+    { id: "financials",    label: "Financials",            count: undefined, finance: true, group: "financials" },
+    { id: "invoices",      label: "Invoices",              count: undefined, finance: true, group: "financials" },
+    // 7. External Facing
+    { id: "client_access", label: "Client Access",         count: undefined, group: "governance" },
+    { id: "notifications", label: "Notifications Sent",    count: undefined, group: "governance" },
+  ];
+
+  const tabs = ALL_TABS
     .filter((tab) => !tab.finance || permissions.canViewFinancials)
+    .filter((tab) => activeGroup === "all" || tab.group === activeGroup)
     .map((tab) => ({ id: tab.id, label: tab.label, count: tab.count }));
 
   // Lifecycle steps. 1 and 2 come from the lead and its estimates (see
@@ -264,24 +215,14 @@ export function ProjectDetailClient({
     detail?: string;
     href?: string;
   }[] = [
-    {
-      id: "lead",
-      title: "1. Lead & Pipeline",
-      ...(preDelivery?.lead ?? { status: "pending" as const, desc: "No lead linked" }),
-    },
-    {
-      id: "solutioning",
-      title: "2. Solutioning & Effort",
-      ...(preDelivery?.solutioning ?? { status: "pending" as const, desc: "No estimate" }),
-    },
-    { id: "wbs", title: "3. WBS & Scope", status: "active", desc: `${wbsItems.length} Deliverable Work Packages` },
-    { id: "execution", title: "4. Execution & Timesheets", status: "active", desc: "Time Logging & Sprint Burndown" },
-    { id: "governance", title: "5. Stage-Gate Audits", status: "active", desc: `${reviews.length} Compliance Reviews` },
-    { id: "billing", title: "6. Billing & Closure", status: "active", desc: "Tax Invoices & Client Sign-off" },
+    { id: "wbs", title: "1. WBS & Scope", status: "active", desc: `${wbsItems.length} Deliverable Work Packages` },
+    { id: "execution", title: "2. Execution & Timesheets", status: "active", desc: "Time Logging & Sprint Burndown" },
+    { id: "governance", title: "3. Stage-Gate Audits", status: "active", desc: `${reviews.length} Compliance Reviews` },
+    { id: "billing", title: "4. Billing & Closure", status: "active", desc: "Tax Invoices & Client Sign-off" },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Breadcrumb */}
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
@@ -377,29 +318,15 @@ export function ProjectDetailClient({
             >
               Governance Center
             </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setEditForm({
-                  name: project.name,
-                  description: project.description || "",
-                  clientCompanyName: project.clientCompanyName || "",
-                  status: project.status,
-                  currentPhase: currentPhase,
-                  projectManagerUserId: project.projectManagerUserId || "",
-                  budgetInr: project.budgetInr ? String(project.budgetInr) : "",
-                  startDate: toDateInput(project.startDate),
-                  plannedEndDate: toDateInput(project.plannedEndDate),
-                });
-                setIsEditModalOpen(true);
-              }}
+            <Link
+              href={`/pmt/${project.id}/edit`}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-200 transition-colors"
             >
               <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
               Edit Project
-            </Button>
+            </Link>
 
             {/* Scrapping is destructive-adjacent, so it sits apart from
                 the rest and is styled as such. A member never sees it. */}
@@ -408,7 +335,7 @@ export function ProjectDetailClient({
                 data-guide="project:scrap"
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsScrapOpen(true)}
+                onClick={() => router.push(`/pmt/${project.code || project.id}/scrap`)}
                 className="text-danger hover:bg-danger-bg hover:text-danger"
               >
                 <svg className="mr-1 h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -504,8 +431,25 @@ export function ProjectDetailClient({
         </div>
       </div>
 
+      {/* Parent Navbar Grouping */}
+      <div className="flex items-center gap-4 mb-4">
+        <span className="text-xs font-bold text-navy-500 uppercase">View:</span>
+        <SegmentedControl
+          options={[
+            { value: "all", label: "All Tabs" },
+            { value: "planning", label: "1. Planning & Setup" },
+            { value: "execution", label: "2. Execution" },
+            { value: "quality", label: "3. Quality & Risk" },
+            { value: "governance", label: "4. Governance & Docs" },
+            { value: "financials", label: "5. Financials" }
+          ]}
+          value={activeGroup}
+          onChange={setActiveGroup}
+        />
+      </div>
+
       {/* Tabs */}
-      <Tabs tabs={tabs} defaultTab="gantt">
+      <Tabs key={activeGroup} tabs={tabs} defaultTab={tabs[0]?.id}>
         {(activeTab) => {
           switch (activeTab) {
             case "gantt":
@@ -529,6 +473,107 @@ export function ProjectDetailClient({
                   initialItems={wbsItems}
                   canManage={canManage}
                   onOpenComments={(item) => setActiveCommentWbsItem(item)}
+                />
+              );
+            case "sprints":
+              return (
+                <SprintPlanningBoard
+                  sprints={sprints}
+                  wbsItems={localWbsItems}
+                  onSprintCreate={async (sprintData) => {
+                    const res = await fetch(`/api/pmt/projects/${project.id}/sprints`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(sprintData),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setSprints(prev => [...prev, data.sprint]);
+                    }
+                  }}
+                  onSprintUpdate={async (sprintId, updates) => {
+                    const res = await fetch(`/api/pmt/projects/${project.id}/sprints/${sprintId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(updates),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setSprints(prev => prev.map(s => s.id === sprintId ? data.sprint : s));
+                    }
+                  }}
+                  onWbsAssignToSprint={async (wbsId, sprintId) => {
+                    const res = await fetch(`/api/pmt/projects/${project.id}/wbs/${wbsId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ sprint_id: sprintId || null }),
+                    });
+                    if (res.ok) {
+                      setLocalWbsItems(prev => prev.map(w => w.id === wbsId ? { ...w, sprintId: sprintId || undefined } : w));
+                    }
+                  }}
+                  onWbsUpdate={async () => {}}
+                  onCreateWbsItem={async (name) => {
+                    const res = await fetch(`/api/pmt/projects/${project.id}/wbs`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.wbsItem) {
+                        setLocalWbsItems(prev => [...prev, data.wbsItem]);
+                      }
+                    }
+                  }}
+                />
+              );
+            case "board":
+              return (
+                <TaskKanbanBoard
+                  sprints={sprints}
+                  wbsItems={localWbsItems}
+                  onWbsUpdate={async (wbsId, updates) => {
+                    const res = await fetch(`/api/pmt/projects/${project.id}/wbs/${wbsId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(updates),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.wbsItem) {
+                        setLocalWbsItems(prev => prev.map(w => w.id === wbsId ? data.wbsItem : w));
+                      }
+                    }
+                  }}
+                />
+              );
+            case "requirements":
+              return (
+                <RequirementsTab
+                  projectId={project.id}
+                  initialRequirements={requirements}
+                  initialFolders={reqFolders}
+                  canManage={canManage}
+                />
+              );
+            case "traceability":
+              return (
+                <TraceabilityTab
+                  requirements={requirements}
+                  testCases={testCases}
+                  wbsItems={localWbsItems}
+                />
+              );
+            case "tests":
+              return (
+                <TestCasesTab
+                  projectId={project.id}
+                  initialTestCases={testCases}
+                  initialSuites={testSuites}
+                  requirements={requirements}
+                  wbsItems={localWbsItems}
+                  canManage={canManage}
                 />
               );
             case "tickets":
@@ -582,146 +627,16 @@ export function ProjectDetailClient({
             case "risks":
               return <RisksTab risks={risks} />;
             case "documents":
-              return <DocumentsTab projectId={project.id} userRole={userRole} />;
+              return <DocumentsTab projectId={project.id} userRole={userRole as any} />;
+            case "client_access":
+              return <ClientAccessTab projectId={project.id} canManage={userRole === "admin" || userRole === "pm"} />;
             default:
               return null;
           }
         }}
       </Tabs>
 
-      {/* Edit Project Modal */}
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        title={`Edit Project: ${project.code}`}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditSubmit} disabled={isSavingEdit || !editForm.name}>
-              {isSavingEdit ? "Saving..." : "Save Changes"}
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleEditSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">
-              Project Name *
-            </label>
-            <Input
-              value={editForm.name}
-              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              required
-            />
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Description</label>
-            <textarea
-              value={editForm.description}
-              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Status</label>
-              <select
-                value={editForm.status}
-                onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="initiated">Initiated</option>
-                <option value="planning">Planning</option>
-                <option value="active">Active</option>
-                <option value="on_hold">On Hold</option>
-                <option value="closed">Closed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Delivery Phase</label>
-              <select
-                value={editForm.currentPhase}
-                onChange={(e) => setEditForm({ ...editForm, currentPhase: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {PHASES.map((ph) => (
-                  <option key={ph} value={ph}>
-                    {ph}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Client Company</label>
-              <Input
-                value={editForm.clientCompanyName}
-                onChange={(e) => setEditForm({ ...editForm, clientCompanyName: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Lead PM <span className="font-normal text-navy-400">(more PMs on the Team tab)</span>
-              </label>
-              <select
-                value={editForm.projectManagerUserId}
-                disabled={!permissions.canChangeProjectManager}
-                title={
-                  permissions.canChangeProjectManager
-                    ? undefined
-                    : "Only an administrator or the current project manager can change this."
-                }
-                onChange={(e) => setEditForm({ ...editForm, projectManagerUserId: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-neutral-50 disabled:text-navy-500 disabled:cursor-not-allowed"
-              >
-                <option value="">Unassigned</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.fullName} {emp.jobLevel ? `(${emp.jobLevel})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className={`grid gap-4 ${permissions.canViewFinancials ? "grid-cols-3" : "grid-cols-2"}`}>
-            {permissions.canViewFinancials && (
-              <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1">Budget (INR)</label>
-                <Input
-                  type="number"
-                  value={editForm.budgetInr}
-                  onChange={(e) => setEditForm({ ...editForm, budgetInr: e.target.value })}
-                />
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Start Date</label>
-              <Input
-                type="date"
-                value={editForm.startDate}
-                onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Planned End</label>
-              <Input
-                type="date"
-                value={editForm.plannedEndDate}
-                onChange={(e) => setEditForm({ ...editForm, plannedEndDate: e.target.value })}
-              />
-            </div>
-          </div>
-        </form>
-      </Modal>
 
       {/* WBS Client Comments Modal */}
       <WBSCommentsModal
@@ -737,27 +652,14 @@ export function ProjectDetailClient({
         onCloseScope={() => setIsScopeModalOpen(false)}
         isSolutionOpen={isSolutionModalOpen}
         onCloseSolution={() => setIsSolutionModalOpen(false)}
-        projectCode={project.code}
-        projectName={project.name}
-        clientName={project.clientCompanyName}
-      />
-
-      <ScrapProjectDialog
         projectId={project.id}
         projectCode={project.code}
         projectName={project.name}
-        isOpen={isScrapOpen}
-        onClose={() => setIsScrapOpen(false)}
-        onDone={(outcome, message) => {
-          setScrapNotice(message);
-          // A scrapped project has left every list, so staying on its
-          // page would be a dead end. A recorded request has not.
-          if (outcome === "scrapped") {
-            router.push("/pmt");
-            router.refresh();
-          }
-        }}
+        clientName={project.clientCompanyName}
+        scopeBaseline={project.scopeBaseline}
+        solutionApproach={project.solutionApproach}
       />
+
 
       {scrapNotice && (
         <div
@@ -832,11 +734,12 @@ function ProjectTicketsTab({
       key: "ticketType",
       header: "Type",
       render: (t) => (
-        <span className="text-xs uppercase font-semibold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded">
-          {t.ticketType?.replace("_", " ")}
+        <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1.5 border", ticketTypeColor(t.ticketType))}>
+          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", ticketTypeDotColor(t.ticketType))} />
+          <span>{formatStatus(t.ticketType || "incident")}</span>
         </span>
       ),
-      className: "w-28",
+      className: "w-36",
     },
     {
       key: "subject",

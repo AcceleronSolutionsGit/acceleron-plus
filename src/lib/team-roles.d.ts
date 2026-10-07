@@ -1,10 +1,12 @@
 // Types for team-roles.js (CommonJS so plain `node` scripts can use it).
 
-export type TeamRole = "PM" | "Team Lead" | "Developer";
+export type TeamRole = "PM" | "Team Lead" | "Developer" | "Functional Consultant" | "Technical Consultant";
 
 export const PM: "PM";
 export const TEAM_LEAD: "Team Lead";
 export const DEVELOPER: "Developer";
+export const FUNCTIONAL_CONSULTANT: "Functional Consultant";
+export const TECHNICAL_CONSULTANT: "Technical Consultant";
 
 /** Developer, Team Lead, PM — dropdown order. */
 export const TEAM_ROLES: readonly TeamRole[];

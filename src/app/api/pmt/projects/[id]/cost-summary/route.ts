@@ -70,6 +70,11 @@ export async function GET(
     ? (await projectDb("purchase_orders").where("id", project.po_id).first())?.po_value_inr ?? 0
     : 0;
 
+  // ── Fetch total planned hours from project_team_members ──────────
+  const teamMembers = await projectDb("project_team_members").where("project_id", projectId);
+  const totalPlannedDays = teamMembers.reduce((sum: number, tm: any) => sum + (parseFloat(tm.planned_days) || 0), 0);
+  const totalPlannedHours = totalPlannedDays * DAILY_HOURS;
+
   // ── Budgeted cost per WBS from solutioning line items ───────────
   let budgetedByPhase: Record<string, number> = {};
   if (solutioningSession) {
@@ -226,6 +231,7 @@ export async function GET(
       budget: {
         budgetedFeeInr:    parseFloat(budgetedFeeInr),
         poValueInr:        parseFloat(poValue),
+        totalPlannedHours: parseFloat(totalPlannedHours.toFixed(2)),
         currency:          "INR",
       },
       actuals: {

@@ -106,7 +106,7 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         className={cn(
-          "flex w-full flex-col overflow-hidden rounded-2xl bg-surface shadow-xl outline-none",
+          "flex w-full flex-col overflow-hidden rounded-2xl bg-surface shadow-xl outline-none max-h-[calc(100vh-2rem)]",
           "border border-white/60",
           "animate-[modal-in_320ms_var(--ease-out-soft)_both]",
           sizes[size],

@@ -59,6 +59,7 @@ export async function POST(req: Request) {
         lead_id:     body.leadId ?? null,
         client_company_name: body.clientCompanyName ?? null,
         project_manager_user_id: body.projectManagerUserId ?? null,
+        delivery_manager_user_id: body.deliveryManagerUserId ?? null,
         sponsor_user_id: body.sponsorUserId ?? null,
         start_date:  body.startDate ?? null,
         planned_end_date: body.plannedEndDate ?? null,

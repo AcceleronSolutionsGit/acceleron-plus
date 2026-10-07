@@ -15,7 +15,23 @@ export function FinancialsTab({ projectId, canManageBilling }: { projectId: stri
     async function fetchCost() {
       const res = await fetch(`/api/pmt/projects/${projectId}/cost-summary`);
       if (res.ok) {
-        setCostSummary((await res.json()).data);
+        const rawData = (await res.json()).data;
+        const totalItsmCost = rawData.itsmContribution?.totalCostInr || 0;
+        const mapped = {
+          budgetInr: rawData.budget.budgetedFeeInr,
+          totalPlannedHours: rawData.budget.totalPlannedHours || 0,
+          totalTimesheetCostInr: rawData.actuals.totalInternalCostInr,
+          totalApprovedHours: rawData.actuals.totalProjectHoursLogged,
+          totalAdditionalCostInr: totalItsmCost,
+          remainingBudgetInr: rawData.budget.budgetedFeeInr - rawData.actuals.totalInternalCostInr - totalItsmCost,
+          budgetConsumedPercent: rawData.actuals.budgetUtilizedPercent,
+          breakdownByBand: (rawData.costByBand || []).map((b: any) => ({
+             bandName: b.rateBandName,
+             hours: b.totalHours,
+             cost: b.totalCostInr,
+          }))
+        };
+        setCostSummary(mapped);
       }
       setLoading(false);
     }
@@ -52,9 +68,9 @@ export function FinancialsTab({ projectId, canManageBilling }: { projectId: stri
           <p className="text-2xl font-bold text-navy-900">{formatCurrency(costSummary.budgetInr)}</p>
         </div>
         <div className="bg-white rounded-xl p-5 border border-navy-500/10 shadow-sm">
-          <h3 className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-1">Total Timesheet Cost</h3>
+          <h3 className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-1">Cost (Actual vs Planned)</h3>
           <p className="text-2xl font-bold text-orange-600">{formatCurrency(costSummary.totalTimesheetCostInr)}</p>
-          <p className="text-xs text-navy-400 mt-1">{costSummary.totalApprovedHours} approved hours</p>
+          <p className="text-xs text-navy-400 mt-1">vs {formatCurrency(costSummary.budgetInr)} planned</p>
         </div>
         <div className="bg-white rounded-xl p-5 border border-navy-500/10 shadow-sm">
           <h3 className="text-xs font-bold text-navy-500 uppercase tracking-wide mb-1">Total Additional Cost</h3>
@@ -76,6 +92,53 @@ export function FinancialsTab({ projectId, canManageBilling }: { projectId: stri
           </div>
         </div>
       </div>
+
+      {/* Actual vs Planned Hours tracking */}
+      {(() => {
+        const plannedHours = costSummary.totalPlannedHours || 1; // Prevent division by zero
+        const actualHours = costSummary.totalApprovedHours;
+        const hoursPercent = (actualHours / plannedHours) * 100;
+        const isEscalated = hoursPercent >= 100;
+        const isWarning = hoursPercent >= 80 && !isEscalated;
+        const colorClass = isEscalated ? 'bg-red-50 border-red-200 text-red-900' : isWarning ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900';
+        const barColorClass = isEscalated ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-green-500';
+
+        return (
+          <div className={`rounded-xl p-5 border shadow-sm ${colorClass}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wide mb-1 flex items-center gap-2">
+                  Actual vs Planned Hours
+                  {isEscalated && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse">ESCALATION ALERT</span>}
+                  {isWarning && <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full">WARNING</span>}
+                </h3>
+                <p className="text-3xl font-black mb-1">
+                  {actualHours} <span className="text-lg font-medium opacity-60">/ {costSummary.totalPlannedHours} hrs</span>
+                </p>
+                <p className="text-sm opacity-80">
+                  {hoursPercent.toFixed(1)}% of total allocated project hours consumed.
+                </p>
+              </div>
+              {isEscalated && (
+                <div className="text-right max-w-xs space-y-2">
+                  <p className="text-xs font-bold text-red-700 bg-red-100/50 p-2 rounded-lg border border-red-200">
+                    Maximum allocated hours exceeded! An alert has been dispatched to the escalation matrix. Please review the timesheets immediately.
+                  </p>
+                  <button onClick={() => { if(confirm("Draft a Change Request (CR) and notify the client?")) alert("CR Request Dispatched."); }} className="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-lg transition-colors shadow-sm cursor-pointer">
+                    Request CR from Client
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="w-full bg-black/5 rounded-full h-2.5 mt-4 overflow-hidden">
+              <div 
+                className={`h-2.5 rounded-full transition-all duration-500 ${barColorClass}`} 
+                style={{ width: `${Math.min(hoursPercent, 100)}%` }} 
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cost Breakdown by Band */}

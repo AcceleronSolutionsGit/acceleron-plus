@@ -326,7 +326,44 @@ export async function getTicket(idOrNumber: string): Promise<Ticket | undefined>
       .first(),
     getUserMap(),
   ]);
-  return row ? mapTicketRow(row, userMap) : undefined;
+  if (!row) return undefined;
+
+  const ticket = mapTicketRow(row, userMap);
+
+  // Merge attachments from ticket_attachments table (portal uploads) into ticket.attachments
+  const tableAttachments = await itsmDb("ticket_attachments")
+    .where("ticket_id", ticket.id)
+    .select("id", "file_name", "stored_file_name", "file_path", "mime_type", "file_size_bytes", "created_at")
+    .catch(() => []);
+
+  if (tableAttachments.length > 0) {
+    let existing: any[] = [];
+    try {
+      existing = Array.isArray(ticket.attachments)
+        ? ticket.attachments as any[]
+        : JSON.parse((ticket.attachments as any) || "[]");
+    } catch { existing = []; }
+
+    // Normalise table rows to the same shape as the JSON column
+    const normalised = tableAttachments.map((a: any) => ({
+      id: a.id,
+      originalName: a.file_name,
+      storedFileName: a.stored_file_name,
+      filePath: a.file_path,
+      mimeType: a.mime_type,
+      fileSizeBytes: a.file_size_bytes,
+      uploadedAt: a.created_at,
+      // serve via portal file API since it was uploaded via portal
+      portalServeId: a.id,
+    }));
+
+    // Deduplicate by storedFileName
+    const existingNames = new Set(existing.map((e: any) => e.storedFileName));
+    const merged = [...existing, ...normalised.filter((n: any) => !existingNames.has(n.storedFileName))];
+    (ticket as any).attachments = merged;
+  }
+
+  return ticket;
 }
 
 export async function getTicketHistory(ticketId: string): Promise<TicketHistoryEntry[]> {
@@ -344,50 +381,75 @@ export async function getTicketHistory(ticketId: string): Promise<TicketHistoryE
 }
 
 export async function getTicketActivity(ticketId: string): Promise<ActivityEntry[]> {
-  const history = await getTicketHistory(ticketId);
-  const emails = await itsmDb("emails").where("ticket_id", ticketId);
-  
+  const [history, emails, activityLog] = await Promise.all([
+    getTicketHistory(ticketId),
+    itsmDb("emails").where("ticket_id", ticketId).catch(() => []),
+    itsmDb("ticket_activity_log").where("ticket_id", ticketId).orderBy("created_at", "asc").catch(() => []),
+  ]);
+
   const timeline: ActivityEntry[] = [];
-  
-  // Convert history entries to timeline items
+
+  // Ticket creation synthetic entry — always first
+  const firstHistory = history.length > 0 ? history[history.length - 1] : null;
+  const createdAt = firstHistory?.changedAt || emails[0]?.created_at || new Date().toISOString();
+  timeline.push({
+    id: ticketId + "-created",
+    type: "field_change",
+    timestamp: createdAt,
+    fieldName: "created",
+    newValue: "Ticket created",
+    changedBy: undefined,
+  });
+
+  // History entries
   for (const h of history) {
-    if (h.fieldName === "status" || h.fieldName === "priority" || h.fieldName === "agent_user_id" || h.fieldName === "group_id") {
+    if (["status", "priority", "agent_user_id", "group_id", "notes", "comment"].includes(h.fieldName || "")) {
       timeline.push({
         id: h.id,
-        type: "field_change",
+        type: h.fieldName === "comment" ? "comment" : "field_change",
         timestamp: h.changedAt,
         fieldName: h.fieldName,
         oldValue: h.oldValue,
         newValue: h.newValue,
-        changedBy: h.changedBy
-      });
-    } else if (h.fieldName === "comment") { // Assuming comments are saved as history entries for now
-      timeline.push({
-        id: h.id,
-        type: "comment",
-        timestamp: h.changedAt,
-        body: h.newValue,
-        changedBy: h.changedBy
+        changedBy: h.changedBy,
       });
     }
   }
-  
-  // Convert email entries
+
+  // activity_log entries (comments posted via the new comment box)
+  for (const a of activityLog) {
+    timeline.push({
+      id: a.id,
+      type: "field_change",
+      timestamp: a.created_at,
+      fieldName: a.field_name || "notes",
+      newValue: a.new_value,
+      changedBy: a.changed_by_name ? { id: a.changed_by_user_id || "", fullName: a.changed_by_name, email: "", role: "agent", isActive: true } as any : undefined,
+    });
+  }
+
+  // Email entries with CC/To
   for (const e of emails) {
     const isOutbound = e.direction === "outbound";
+    let cc: string[] = [];
+    let toList: string[] = [];
+    try { cc = Array.isArray(e.cc_recipients) ? e.cc_recipients : JSON.parse(e.cc_recipients || "[]"); } catch { cc = []; }
+    try { toList = Array.isArray(e.to_recipients) ? e.to_recipients : JSON.parse(e.to_recipients || "[]"); } catch { toList = []; }
     timeline.push({
       id: e.id,
       type: isOutbound ? "email_outbound" : "email_inbound",
       timestamp: e.created_at,
-      sender: e.sender,
-      recipients: e.recipients,
+      sender: e.sender || e.from_address,
+      recipients: Array.isArray(e.recipients) ? e.recipients : (e.recipients ? [e.recipients] : []),
+      toRecipients: toList.length > 0 ? toList : undefined,
+      ccRecipients: cc.length > 0 ? cc : undefined,
       subject: e.subject,
       body: e.body,
-      direction: e.direction as any
+      direction: e.direction as any,
     });
   }
-  
-  return timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  return timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
 
 // ─── ITSM: Change Requests ────────────────────────────────────────

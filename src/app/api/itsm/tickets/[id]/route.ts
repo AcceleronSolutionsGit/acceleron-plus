@@ -3,6 +3,7 @@ import { getTicket } from "@/lib/api";
 import { itsmDb } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { notifyAsync, events } from "@/lib/notifications";
+import { autoAssignTicket } from "@/lib/itsm-engine";
 
 export const runtime = "nodejs";
 
@@ -70,6 +71,11 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.impact !== undefined) updates.impact = body.impact;
 
     await itsmDb("tickets").where("id", existing.id).update(updates);
+
+    // Auto-assign if group changed and no explicit agent was provided
+    if (updates.group_id && updates.group_id !== existing.group_id && !updates.agent_user_id) {
+      await autoAssignTicket(existing.id, updates.group_id as string);
+    }
 
     // ─── PMT notifications ────────────────────────────────────────
     const projectCode = (updates.project_code as string | null) ?? existing.project_code;

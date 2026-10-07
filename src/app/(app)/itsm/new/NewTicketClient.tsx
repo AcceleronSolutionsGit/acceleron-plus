@@ -298,7 +298,27 @@ export function NewTicketClient({
         {/* Left Column (Main Content) */}
         <div className="flex-1 space-y-6">
           <div className="bg-white/80 backdrop-blur-xl border border-navy-500/10 rounded-2xl shadow-xl shadow-navy-900/5 overflow-hidden transition-all duration-500">
-            {/* Tabs */}
+            
+            {/* Ticket Type Tabs */}
+            <div className="flex flex-wrap items-center gap-2 px-6 py-4 border-b border-navy-500/10 bg-neutral-100/50">
+              <span className="text-sm font-bold text-navy-800 mr-2">Form Type:</span>
+              {TICKET_TYPES.map((type) => (
+                <button
+                  key={type.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, ticketType: type.value })}
+                  className={`px-5 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${
+                    form.ticketType === type.value 
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 scale-105' 
+                      : 'bg-white text-navy-600 hover:bg-neutral-50 hover:text-navy-800 border border-navy-500/10'
+                  }`}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Nav Tabs */}
             <div className="flex items-center gap-1 px-4 py-3 border-b border-navy-500/5 bg-neutral-50/80 overflow-x-auto scrollbar-hide">
               <span className="px-4 py-1.5 bg-white shadow-sm rounded-lg text-sm font-bold text-navy-900 flex items-center gap-2 whitespace-nowrap transition-all duration-200">
                 <span className="text-blue-500 text-lg">📄</span> Details
@@ -425,27 +445,20 @@ export function NewTicketClient({
                   required
                 />
                 <CustomSelect
-                  label="Ticket Type"
-                  value={form.ticketType}
-                  onChange={(e: any) => setForm({ ...form, ticketType: e.target.value })}
-                  options={TICKET_TYPES}
+                  label="Status"
+                  value={form.ticketType === 'new' ? 'new' : 'new'} // Just visual
+                  disabled
+                  options={TICKET_STATUSES}
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5">
                 <CustomSelect
                   label="Impact"
                   value={form.impact}
                   onChange={(e: any) => setForm({ ...form, impact: e.target.value })}
                   options={TICKET_IMPACTS}
-                  required
-                />
-                <CustomSelect
-                  label="Status"
-                  value={form.ticketType === 'new' ? 'new' : 'new'} // Just visual
-                  disabled
-                  options={TICKET_STATUSES}
                   required
                 />
               </div>

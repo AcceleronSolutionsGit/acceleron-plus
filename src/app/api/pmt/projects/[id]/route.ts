@@ -117,8 +117,15 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.client_company_name !== undefined) projectUpdate.client_company_name = body.client_company_name;
     if (body.projectManagerUserId !== undefined) projectUpdate.project_manager_user_id = body.projectManagerUserId;
     if (body.project_manager_user_id !== undefined) projectUpdate.project_manager_user_id = body.project_manager_user_id;
+    if (body.deliveryManagerUserId !== undefined) projectUpdate.delivery_manager_user_id = body.deliveryManagerUserId;
+    if (body.delivery_manager_user_id !== undefined) projectUpdate.delivery_manager_user_id = body.delivery_manager_user_id;
     if (body.sponsorUserId !== undefined) projectUpdate.sponsor_user_id = body.sponsorUserId;
     if (body.sponsor_user_id !== undefined) projectUpdate.sponsor_user_id = body.sponsor_user_id;
+    if (body.solutionApproach !== undefined) projectUpdate.solution_approach = body.solutionApproach;
+    if (body.solution_approach !== undefined) projectUpdate.solution_approach = body.solution_approach;
+    if (body.scopeBaseline !== undefined) projectUpdate.scope_baseline = body.scopeBaseline;
+    if (body.scope_baseline !== undefined) projectUpdate.scope_baseline = body.scope_baseline;
+    if (body.classification !== undefined) projectUpdate.classification = body.classification;
 
     await projectDb("projects").where("id", projectId).update(projectUpdate);
 

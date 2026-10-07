@@ -13,10 +13,14 @@ import { Input } from "@/components/ui/Input";
 import {
   relativeTime, formatStatus,
   ticketStatusColor, priorityColor,
+  ticketTypeColor, ticketTypeDotColor,
   cn,
 } from "@/lib/utils";
 import { phaseColorClass } from "../pmt/ProjectListClient";
 import { Combobox } from "@/components/ui/Combobox";
+import { AutoTicketModal } from "./AutoTicketModal";
+import { ExportReportModal } from "./ExportReportModal";
+import { KanbanBoard } from "./KanbanBoard";
 
 const PHASES = [
   "Discovery",
@@ -46,29 +50,20 @@ export function TicketQueueClient({
   const router = useRouter();
 
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
-  const [viewMode, setViewMode] = useState<"table" | "phase_board">("table");
+  const [viewMode, setViewMode] = useState<"table" | "phase_board" | "kanban">("table");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<Priority | "all">("all");
   const [phaseFilter, setPhaseFilter] = useState<string>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [showOnlyMine, setShowOnlyMine] = useState<boolean>(false);
 
   // Agents and Projects for New Ticket modal
   const [agents, setAgents] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
 
-  // New Ticket Modal state
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newTicket, setNewTicket] = useState({
-    subject: "",
-    description: "",
-    ticketType: "incident",
-    priority: "medium",
-    projectCode: "",
-    agentUserId: "",
-    requesterId: currentUser?.id || "",
-  });
+  const [isAutoModalOpen, setIsAutoModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -102,18 +97,29 @@ export function TicketQueueClient({
     return Array.from(codes).sort();
   }, [tickets, projects]);
 
+  // Apply Role Restrictions
+  const visibleTickets = useMemo(() => {
+    if (currentUser?.role === "ticket_handler") {
+      return tickets.filter((t) => t.ticketType === "incident");
+    }
+    return tickets;
+  }, [tickets, currentUser]);
+
   // Phase counts
   const phaseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     PHASES.forEach((ph) => {
-      counts[ph] = tickets.filter((t) => t.projectPhase === ph).length;
+      counts[ph] = visibleTickets.filter((t) => t.projectPhase === ph).length;
     });
     return counts;
-  }, [tickets]);
+  }, [visibleTickets]);
 
   // Filtered tickets
   const filtered = useMemo(() => {
-    return tickets.filter((t) => {
+    return visibleTickets.filter((t) => {
+      if (showOnlyMine) {
+        if (t.agentUserId !== currentUser?.id && t.requesterId !== currentUser?.id) return false;
+      }
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
       if (phaseFilter !== "all" && t.projectPhase !== phaseFilter) return false;
@@ -133,64 +139,36 @@ export function TicketQueueClient({
       }
       return true;
     });
-  }, [tickets, statusFilter, priorityFilter, phaseFilter, projectFilter, searchTerm]);
+  }, [visibleTickets, statusFilter, priorityFilter, phaseFilter, projectFilter, searchTerm, showOnlyMine, currentUser]);
 
-  const newCount = tickets.filter((t) => t.status === "new").length;
-  const openCount = tickets.filter((t) => t.status === "open").length;
-  const inProgressCount = tickets.filter((t) => t.status === "pending" || t.status === "on_hold").length;
-  const overdueCount = tickets.filter((t) => t.isOverdue).length;
+  const newCount = visibleTickets.filter((t) => t.status === "new").length;
+  const openCount = visibleTickets.filter((t) => t.status === "open").length;
+  const inProgressCount = visibleTickets.filter((t) => t.status === "pending" || t.status === "on_hold").length;
+  const overdueCount = visibleTickets.filter((t) => t.isOverdue).length;
 
-  const handleCreateTicket = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTicket.subject) return;
+  const myTickets = visibleTickets.filter(t => t.agentUserId === currentUser?.id || t.requesterId === currentUser?.id);
+  const myActiveCount = myTickets.filter(t => t.status === "open").length;
+  const myInProgressCount = myTickets.filter(t => t.status === "pending" || t.status === "on_hold").length;
+  const myClosedCount = myTickets.filter(t => t.status === "closed" || t.status === "resolved").length;
 
-    setIsSubmitting(true);
+
+  const handleUpdateStatus = async (ticketId: string, newStatus: TicketStatus) => {
     try {
-      const selectedProj = projects.find((p) => p.code === newTicket.projectCode);
-      const res = await fetch("/api/itsm/tickets", {
-        method: "POST",
+      const res = await fetch(`/api/itsm/tickets/${ticketId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: newTicket.subject,
-          description: newTicket.description,
-          ticketType: newTicket.ticketType,
-          priority: newTicket.priority,
-          projectCode: newTicket.projectCode || null,
-          projectContextId: selectedProj?.itsmContextId || null,
-          agentUserId: newTicket.agentUserId || null,
-          requesterId: newTicket.requesterId || currentUser?.id || null,
-        }),
+        body: JSON.stringify({ status: newStatus }),
       });
-
       if (res.ok) {
-        setIsModalOpen(false);
-        setNewTicket({
-          subject: "",
-          description: "",
-          ticketType: "incident",
-          priority: "medium",
-          projectCode: "",
-          agentUserId: "",
-          requesterId: currentUser?.id || "",
-        });
-
-        // Refresh ticket list
-        const refreshRes = await fetch("/api/itsm/tickets");
-        if (refreshRes.ok) {
-          const data = await refreshRes.json();
-          if (data.tickets) setTickets(data.tickets);
-        } else {
-          router.refresh();
-        }
+        setTickets((prev) =>
+          prev.map((t) => (t.id === ticketId ? { ...t, status: newStatus } : t))
+        );
       } else {
-        const err = await res.json();
-        alert(`Failed to create ticket: ${err.error || res.statusText}`);
+        throw new Error("Failed to update ticket status");
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create ticket due to network error.");
-    } finally {
-      setIsSubmitting(false);
+      throw err;
     }
   };
 
@@ -254,11 +232,12 @@ export function TicketQueueClient({
       key: "ticketType",
       header: "Type",
       render: (t) => (
-        <span className="text-xs uppercase font-semibold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded">
-          {t.ticketType?.replace("_", " ")}
+        <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1.5 border", ticketTypeColor(t.ticketType))}>
+          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", ticketTypeDotColor(t.ticketType))} />
+          <span>{formatStatus(t.ticketType || "incident")}</span>
         </span>
       ),
-      className: "w-28",
+      className: "w-36",
     },
     {
       key: "status",
@@ -368,18 +347,49 @@ export function TicketQueueClient({
               <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M2 4a1 1 0 011-1h3a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v12a1 1 0 01-1 1H9a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v12a1 1 0 01-1 1h-3a1 1 0 01-1-1V4z" />
               </svg>
-              <span>Phase-Wise View</span>
+              <span>Phase View</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "kanban" ? "bg-white text-navy-900 shadow-sm" : "text-neutral-500 hover:text-navy-700"
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <path d="M8 3v18" />
+                <path d="M16 3v18" />
+              </svg>
+              <span>Kanban</span>
             </button>
           </div>
 
-          <Button variant="secondary" onClick={() => router.push("/itsm/new")}>
-            Full Ticket Form
+          <Button
+            variant="secondary"
+            onClick={() => setIsExportModalOpen(true)}
+            className="border-neutral-200 text-navy-700 bg-white hover:bg-neutral-50 hover:border-neutral-300 shadow-sm"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export Report
           </Button>
-          <Button data-guide="ticket:quick" onClick={() => setIsModalOpen(true)}>
+          <Button
+            variant="secondary"
+            onClick={() => setIsAutoModalOpen(true)}
+            className="border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-400"
+          >
+            <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Auto from File
+          </Button>
+          <Button data-guide="ticket:new" onClick={() => router.push("/itsm/new")}>
             <svg className="w-4 h-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
             </svg>
-            Quick Ticket
+            New Ticket
           </Button>
         </div>
       </div>
@@ -425,6 +435,37 @@ export function TicketQueueClient({
         />
       </div>
 
+      {/* My Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          label="My Active Tickets"
+          value={myActiveCount}
+          icon={
+            <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="My In Progress"
+          value={myInProgressCount}
+          icon={
+            <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="My Closed"
+          value={myClosedCount}
+          icon={
+            <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          }
+        />
+      </div>
+
       {/* Phase Filters Banner (Project Phase Sync) */}
       <div className="bg-white p-3.5 rounded-xl border border-neutral-200 shadow-sm space-y-2">
         <div className="flex items-center justify-between text-xs text-navy-500 font-semibold uppercase tracking-wider">
@@ -450,7 +491,7 @@ export function TicketQueueClient({
                 : "bg-neutral-100 text-navy-700 hover:bg-neutral-200"
             }`}
           >
-            All Phases ({tickets.length})
+            All Phases ({visibleTickets.length})
           </button>
           {PHASES.map((ph) => {
             const count = phaseCounts[ph] || 0;
@@ -508,11 +549,11 @@ export function TicketQueueClient({
             placeholder="All Projects"
             searchPlaceholder="Search projects…"
             options={[
-              { value: "all", label: "All Projects", hint: String(tickets.length) },
+              { value: "all", label: "All Projects", hint: String(visibleTickets.length) },
               ...allProjectCodes.map((code) => ({
                 value: code,
                 label: code,
-                hint: String(tickets.filter((t) => t.projectCode === code).length),
+                hint: String(visibleTickets.filter((t) => t.projectCode === code).length),
               })),
             ]}
           />
@@ -528,7 +569,7 @@ export function TicketQueueClient({
               ...statuses.map((st) => ({
                 value: st,
                 label: formatStatus(st),
-                hint: String(tickets.filter((t) => t.status === st).length),
+                hint: String(visibleTickets.filter((t) => t.status === st).length),
               })),
             ]}
           />
@@ -544,7 +585,7 @@ export function TicketQueueClient({
               ...priorities.map((pr) => ({
                 value: pr,
                 label: formatStatus(pr),
-                hint: String(tickets.filter((t) => t.priority === pr).length),
+                hint: String(visibleTickets.filter((t) => t.priority === pr).length),
               })),
             ]}
           />
@@ -564,13 +605,25 @@ export function TicketQueueClient({
             </button>
           )}
 
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-navy-700 font-medium cursor-pointer select-none flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                checked={showOnlyMine}
+                onChange={(e) => setShowOnlyMine(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded border-neutral-300 focus:ring-blue-500"
+              />
+              Show Only Mine
+            </label>
+          </div>
+
           <span className="text-xs font-semibold text-neutral-500 ml-auto">
-            {filtered.length} of {tickets.length} tickets
+            {filtered.length} of {visibleTickets.length} tickets
           </span>
         </div>
       </div>
 
-      {/* View Content: Queue Table OR Phase-Wise View */}
+      {/* View Content: Queue Table OR Phase-Wise View OR Kanban */}
       {viewMode === "table" ? (
         <DataTable
           columns={columns}
@@ -583,148 +636,49 @@ export function TicketQueueClient({
           }
           rowClassName={(t) => (t.isOverdue ? "bg-red-50/20" : "")}
         />
-      ) : (
+      ) : viewMode === "phase_board" ? (
         <PhaseBoard
           tickets={filtered}
           onTicketClick={(t) => router.push(`/itsm/${t.ticketNumber}`)}
         />
+      ) : (
+        <KanbanBoard
+          tickets={filtered}
+          onTicketClick={(t) => router.push(`/itsm/${t.ticketNumber}`)}
+          onStatusChange={handleUpdateStatus}
+        />
       )}
 
-      {/* Quick Ticket Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Create New Ticket"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateTicket} disabled={isSubmitting || !newTicket.subject}>
-              {isSubmitting ? "Creating..." : "Create Ticket"}
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleCreateTicket} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">
-              Subject *
-            </label>
-            <Input
-              value={newTicket.subject}
-              onChange={(e) => setNewTicket({ ...newTicket, subject: e.target.value })}
-              placeholder="Brief summary of the issue or request..."
-              required
-            />
-          </div>
+      {/* Auto-Generate Ticket Modal */}
+      <AutoTicketModal
+        isOpen={isAutoModalOpen}
+        onClose={() => setIsAutoModalOpen(false)}
+        projects={projects}
+        currentUser={currentUser}
+        onTicketCreated={async () => {
+          const refreshRes = await fetch("/api/itsm/tickets");
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            if (data.tickets) setTickets(data.tickets);
+          } else {
+            router.refresh();
+          }
+        }}
+      />
 
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Description</label>
-            <textarea
-              value={newTicket.description}
-              onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
-              placeholder="Detailed description, error messages, or steps to reproduce..."
-              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Type</label>
-              <select
-                value={newTicket.ticketType}
-                onChange={(e) => setNewTicket({ ...newTicket, ticketType: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {TICKET_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Priority</label>
-              <select
-                value={newTicket.priority}
-                onChange={(e) => setNewTicket({ ...newTicket, priority: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-navy-700">Requester</label>
-              {currentUser && (
-                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  Auto-detected ({currentUser.fullName || currentUser.email})
-                </span>
-              )}
-            </div>
-            <select
-              value={newTicket.requesterId}
-              onChange={(e) => setNewTicket({ ...newTicket, requesterId: e.target.value })}
-              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {currentUser && (
-                <option value={currentUser.id}>
-                  {currentUser.fullName} ({currentUser.email}) — [You]
-                </option>
-              )}
-              {agents.filter((a) => a.id !== currentUser?.id).map((ag) => (
-                <option key={ag.id} value={ag.id}>
-                  {ag.fullName} ({ag.email})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Link to Project
-              </label>
-              <select
-                value={newTicket.projectCode}
-                onChange={(e) => setNewTicket({ ...newTicket, projectCode: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">No Project (Unlinked)</option>
-                {projects.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.code} — {p.name} ({p.currentPhase || "Discovery"})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Assign Agent (Master Employees)
-              </label>
-              <select
-                value={newTicket.agentUserId}
-                onChange={(e) => setNewTicket({ ...newTicket, agentUserId: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">Auto-Assign / Unassigned</option>
-                {agents.map((ag) => (
-                  <option key={ag.id} value={ag.id}>
-                    {ag.fullName} {ag.jobLevel ? `(${ag.jobLevel})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </form>
-      </Modal>
+      {/* Export Report Modal */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        currentFilters={{
+          status: statusFilter === "all" ? undefined : statusFilter,
+          priority: priorityFilter === "all" ? undefined : priorityFilter,
+          projectCode: projectFilter === "all" ? undefined : projectFilter,
+          ticketType: "all",
+        }}
+        totalCount={filtered.length}
+      />
     </div>
   );
 }
@@ -805,6 +759,9 @@ function PhaseBoard({
                               ⚠️ Overdue
                             </span>
                           )}
+                          <ColorBadge colorClass={ticketTypeColor(t.ticketType)} className="text-[10px] font-semibold px-1.5 py-0.5">
+                            {formatStatus(t.ticketType || "incident")}
+                          </ColorBadge>
                           <ColorBadge colorClass={priorityColor(t.priority || "medium")} className="text-[10px] uppercase font-bold px-1.5 py-0.5">
                             {t.priority}
                           </ColorBadge>

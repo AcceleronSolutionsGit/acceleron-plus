@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/ui/Table";
 import { ColorBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { formatDate, formatStatus, priorityColor } from "@/lib/utils";
 
@@ -316,30 +317,30 @@ export function ReleasesClient({ releases: initialReleases }: { releases: Releas
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Release Type</label>
-              <select
+              <Combobox
+                label="Release Type"
                 value={newRelease.releaseType}
-                onChange={(e) => setNewRelease({ ...newRelease, releaseType: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="minor">Minor</option>
-                <option value="major">Major</option>
-                <option value="hotfix">Hotfix</option>
-                <option value="emergency">Emergency</option>
-              </select>
+                onChange={(val) => setNewRelease({ ...newRelease, releaseType: val })}
+                options={[
+                  { value: "minor", label: "Minor" },
+                  { value: "major", label: "Major" },
+                  { value: "hotfix", label: "Hotfix" },
+                  { value: "emergency", label: "Emergency" },
+                ]}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Priority</label>
-              <select
+              <Combobox
+                label="Priority"
                 value={newRelease.priority}
-                onChange={(e) => setNewRelease({ ...newRelease, priority: e.target.value })}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
+                onChange={(val) => setNewRelease({ ...newRelease, priority: val })}
+                options={[
+                  { value: "low", label: "Low" },
+                  { value: "medium", label: "Medium" },
+                  { value: "high", label: "High" },
+                  { value: "urgent", label: "Urgent" },
+                ]}
+              />
             </div>
           </div>
 
@@ -363,19 +364,20 @@ export function ReleasesClient({ releases: initialReleases }: { releases: Releas
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Lead Agent</label>
-            <select
+            <Combobox
+              label="Lead Agent"
               value={newRelease.agentUserId}
-              onChange={(e) => setNewRelease({ ...newRelease, agentUserId: e.target.value })}
-              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="">Select Release Lead...</option>
-              {agents.map((ag) => (
-                <option key={ag.id} value={ag.id}>
-                  {ag.fullName} {ag.jobLevel ? `(${ag.jobLevel})` : ""}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setNewRelease({ ...newRelease, agentUserId: val })}
+              options={[
+                { value: "", label: "Select Release Lead..." },
+                ...agents.map((ag) => ({
+                  value: ag.id,
+                  label: `${ag.fullName} ${ag.jobLevel ? `(${ag.jobLevel})` : ""}`,
+                })),
+              ]}
+              placeholder="Select Release Lead..."
+              searchPlaceholder="Search agents..."
+            />
           </div>
         </form>
       </Modal>

@@ -23,7 +23,7 @@ export const LEAD_STATUSES = [
   "lost",
 ] as const;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function findLead(idOrNumber: string) {
   return projectDb("leads")
@@ -89,6 +89,8 @@ export async function PATCH(req: Request, context: Params) {
     text("contactEmail", "contact_email");
     text("contactPhone", "contact_phone");
     text("description", "description", 5000);
+    text("scopeBaseline", "scope_baseline", 20000);
+    text("solutionApproach", "solution_approach", 20000);
     text("notes", "notes", 5000);
     text("zohoCrmRef", "zoho_crm_ref");
     text("zohoCrmStage", "zoho_crm_stage");

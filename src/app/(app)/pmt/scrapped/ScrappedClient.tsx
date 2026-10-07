@@ -2,10 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, EmptyState, SectionHeading } from "@/components/ui/Card";
 import { Badge, CodeChip } from "@/components/ui/Badge";
-import { PurgeProjectDialog } from "@/components/project/ScrapProjectDialog";
 import { formatISODate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -43,10 +43,10 @@ export function ScrappedClient() {
   const [scrapped, setScrapped] = useState<ScrappedProject[]>([]);
   const [requests, setRequests] = useState<ScrapRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [purging, setPurging] = useState<ScrappedProject | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -255,7 +255,7 @@ export function ScrappedClient() {
                       Restore
                     </Button>
                     <button
-                      onClick={() => setPurging(p)}
+                      onClick={() => router.push(`/pmt/scrapped/${p.code || p.id}/purge`)}
                       disabled={!p.canPurge}
                       title={
                         p.canPurge
@@ -278,21 +278,6 @@ export function ScrappedClient() {
           </div>
         )}
       </div>
-
-      {purging && (
-        <PurgeProjectDialog
-          projectId={purging.id}
-          projectCode={purging.code}
-          projectName={purging.name}
-          blockers={purging.purgeBlockers}
-          isOpen
-          onClose={() => setPurging(null)}
-          onDone={(message) => {
-            setNotice(message);
-            load();
-          }}
-        />
-      )}
     </div>
   );
 }

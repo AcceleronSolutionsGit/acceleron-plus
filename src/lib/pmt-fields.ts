@@ -28,6 +28,7 @@ export const WBS_FIELDS: Record<string, FieldSpec> = {
   Progress: { column: "progress_percent", kind: "int", min: 0, max: 100 },
   "Estimated hours": { column: "estimated_hours", kind: "number", min: 0, max: 100000 },
   Owner: { column: "owner_user_id", kind: "string", maxLength: 64 },
+  Sprint: { column: "sprint_id", kind: "uuid" },
 };
 
 export const MILESTONE_FIELDS: Record<string, FieldSpec> = {

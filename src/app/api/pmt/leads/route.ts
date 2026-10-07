@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { companyName, contactName, contactEmail, contactPhone, description,
           opportunityValueInr, zohoCrmRef, zohoCrmStage, source = "manual",
-          expectedCloseDate, pmOwnerUserId, notes } = body;
+          expectedCloseDate, pmOwnerUserId, notes, scopeBaseline, solutionApproach } = body;
 
   if (!companyName) {
     return NextResponse.json({ success: false, error: "VALIDATION_FAILED",
@@ -52,8 +52,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Sequential lead number
-  const last = await projectDb("leads").max("lead_number as m").first() as any;
-  const lastNum = last?.m ? parseInt((last.m as string).replace("ACC-LEAD-", "")) || 0 : 0;
+  const last = await projectDb("leads")
+    .where("lead_number", "like", "ACC-LEAD-%")
+    .orderBy("lead_number", "desc")
+    .first("lead_number") as any;
+  const lastNum = last?.lead_number ? parseInt((last.lead_number as string).replace("ACC-LEAD-", "")) || 0 : 0;
   const leadNumber = `ACC-LEAD-${String(lastNum + 1).padStart(4, "0")}`;
 
   const [row] = await projectDb("leads").insert({
@@ -64,6 +67,8 @@ export async function POST(req: NextRequest) {
     contact_email:         contactEmail ?? null,
     contact_phone:         contactPhone ?? null,
     description:           description ?? null,
+    scope_baseline:        scopeBaseline ?? null,
+    solution_approach:     solutionApproach ?? null,
     opportunity_value_inr: opportunityValueInr ?? null,
     zoho_crm_ref:          zohoCrmRef ?? null,
     zoho_crm_stage:        zohoCrmStage ?? null,

@@ -65,6 +65,8 @@ export type Capability =
   // Tickets
   | "ticket.view"
   | "ticket.create"
+  | "ticket.manage"
+  | "ticket.assign"
   // Administration
   | "employee.view"
   | "employee.manage"
@@ -74,6 +76,7 @@ export type Capability =
   | "integration.run"
   // Reporting across every project at once, rather than within one
   | "report.allocations"
+  | "report.tickets"
   // Bringing a collected sheet of allocations back in, in bulk
   | "allocation.import"
   // Output
@@ -144,6 +147,41 @@ const GLOBAL: Record<AppRole, Capability[]> = {
     // They can already read the plan on screen; refusing the download
     // was inconsistent rather than protective. Cost figures are still
     // withheld — that is what "export.financials" is for.
+    "export.plan",
+  ],
+
+  sales: [
+    "project.view", "project.create", "financials.view",
+    "plan.view", "document.view", "document.upload",
+    "ticket.view", "ticket.create", "ticket.manage",
+    "export.plan", "export.financials",
+  ],
+
+  ticket_handler: [
+    "ticket.view", "ticket.assign", "report.tickets",
+  ],
+
+  functional_consultant: [
+    "project.view",
+    "plan.view", "plan.updateProgress",
+    "risk.view", "risk.create",
+    "governance.view",
+    "timesheet.logOwn",
+    "document.view", "document.upload",
+    "team.view",
+    "ticket.view", "ticket.create",
+    "export.plan",
+  ],
+
+  technical_consultant: [
+    "project.view",
+    "plan.view", "plan.updateProgress",
+    "risk.view", "risk.create",
+    "governance.view",
+    "timesheet.logOwn",
+    "document.view", "document.upload",
+    "team.view",
+    "ticket.view", "ticket.create",
     "export.plan",
   ],
 };
@@ -232,6 +270,7 @@ export function redactProjectFinancials<T extends object>(project: T): T {
 
 export interface AccessContext {
   role: AppRole;
+  additionalRoles?: AppRole[];
   /** Undefined when the question is not about a specific project. */
   projectRole?: ProjectRole | null;
   /** True when this person is the named PM or sponsor on the project. */
@@ -302,16 +341,17 @@ export function canSeeProjectFinancials(
  * are a member of — in their project role too.
  */
 export function can(context: AccessContext, capability: Capability): boolean {
-  if (context.role === "admin") return true;
+  const allRoles = [context.role, ...(context.additionalRoles || [])];
+  if (allRoles.includes("admin")) return true;
 
   // Money on a project: its PMs and admins only (see above). This is
   // decided before anything else, because it is not a layer question.
   if (context.projectScoped && isFinancialCapability(capability)) {
-    return context.role !== "client" && context.isProjectManager === true;
+    return !allRoles.includes("client") && context.isProjectManager === true;
   }
 
   // A client account is never raised by a project row, only narrowed.
-  if (context.role === "client") {
+  if (allRoles.includes("client") && allRoles.length === 1) {
     if (!GLOBAL.client.includes(capability)) return false;
     if (!context.projectRole) return true;
     return PROJECT[context.projectRole]?.includes(capability) ?? false;
@@ -325,8 +365,9 @@ export function can(context: AccessContext, capability: Capability): boolean {
     return PROJECT[teamRole].includes(capability);
   }
 
-  // Not on the team (or asked without a project): the account role.
-  if (!GLOBAL[context.role]?.includes(capability)) return false;
+  // Not on the team (or asked without a project): the account roles.
+  const hasGlobalCapability = allRoles.some(r => GLOBAL[r]?.includes(capability));
+  if (!hasGlobalCapability) return false;
 
   // Sponsor: their account role already reflects the project.
   if (context.isProjectOwner) return true;
@@ -348,9 +389,12 @@ export function canAssignProjectManagers(context: AccessContext): boolean {
 
 /** Every capability this context allows — handy for sending to the client. */
 export function capabilitiesFor(context: AccessContext): Capability[] {
-  if (context.role === "admin") return [...GLOBAL.admin];
+  const allRoles = [context.role, ...(context.additionalRoles || [])];
+  if (allRoles.includes("admin")) return [...GLOBAL.admin];
+  
   // Same answer as can(), capability by capability, so the two cannot drift.
-  const candidates = new Set<Capability>([...(GLOBAL[context.role] ?? []), ...FINANCIAL_CAPABILITIES]);
+  const globalCaps = allRoles.flatMap(r => GLOBAL[r] ?? []);
+  const candidates = new Set<Capability>([...globalCaps, ...FINANCIAL_CAPABILITIES]);
   return [...candidates].filter((capability) => can(context, capability));
 }
 
@@ -374,6 +418,22 @@ export const GLOBAL_ROLE_LABELS: Record<AppRole, { name: string; description: st
   client: {
     name: "Client",
     description: "Read-only view of the plan and shared documents. Can raise tickets.",
+  },
+  sales: {
+    name: "Sales / Pre-Sales",
+    description: "Access to leads, solutioning, and full access to ITSM.",
+  },
+  ticket_handler: {
+    name: "Ticket Handler",
+    description: "Reads and assigns incident tickets and downloads reports.",
+  },
+  functional_consultant: {
+    name: "Functional Consultant",
+    description: "Updates their own work, logs time, and provides functional expertise.",
+  },
+  technical_consultant: {
+    name: "Technical Consultant",
+    description: "Updates their own work, logs time, and provides technical expertise.",
   },
 };
 

@@ -80,7 +80,7 @@ function UploadModal({ projectId, onSuccess, onClose }: {
     description: "",
     version: "1.0",
     tags: "",
-    accessLevel: "team" as DocumentAccessLevel,
+    accessLevels: ["team"] as DocumentAccessLevel[],
   });
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -109,7 +109,13 @@ function UploadModal({ projectId, onSuccess, onClose }: {
 
     const fd = new FormData();
     fd.append("file", file);
-    Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+    Object.entries(form).forEach(([k, v]) => {
+      if (k === "accessLevels") {
+        fd.append("accessLevel", (v as string[]).join(","));
+      } else {
+        fd.append(k, String(v));
+      }
+    });
 
     try {
       setProgress(50);
@@ -221,12 +227,30 @@ function UploadModal({ projectId, onSuccess, onClose }: {
                 className="w-full text-sm border border-navy-500/15 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
             </div>
             {/* Access Level */}
-            <div>
-              <label className="block text-xs font-bold text-navy-700 mb-1.5 uppercase tracking-wide">Access</label>
-              <select value={form.accessLevel} onChange={e => setForm(f => ({ ...f, accessLevel: e.target.value as DocumentAccessLevel }))}
-                className="w-full text-sm border border-navy-500/15 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white">
-                {ACCESS_LEVELS.map(a => <option key={a.value} value={a.value}>{a.icon} {a.label}</option>)}
-              </select>
+            <div className="col-span-2">
+              <label className="block text-xs font-bold text-navy-700 mb-1.5 uppercase tracking-wide">View Permissions</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {ACCESS_LEVELS.map(a => (
+                  <label key={a.value} className="flex items-start gap-2 cursor-pointer p-2 rounded-lg border border-navy-500/15 hover:bg-navy-50/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={form.accessLevels.includes(a.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setForm(f => ({ ...f, accessLevels: [...f.accessLevels, a.value] }));
+                        } else {
+                          setForm(f => ({ ...f, accessLevels: f.accessLevels.filter(x => x !== a.value) }));
+                        }
+                      }}
+                      className="mt-0.5 rounded border-navy-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-navy-800">{a.icon} {a.label}</div>
+                      <div className="text-[10px] text-navy-500 mt-0.5">{a.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -289,7 +313,8 @@ function DocumentCard({ doc, canDelete, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const meta = getDocTypeMeta(doc.documentType);
-  const accessMeta = ACCESS_LEVELS.find(a => a.value === doc.accessLevel)!;
+  const docAccessLevels = (doc.accessLevel || "team").split(",");
+  const accessMetas = docAccessLevels.map((al: string) => ACCESS_LEVELS.find(a => a.value === al)).filter(Boolean) as typeof ACCESS_LEVELS;
 
   const handleDownload = () => {
     window.open(withBase(`/api/documents/${doc.id}/download`), "_blank");
@@ -327,7 +352,13 @@ function DocumentCard({ doc, canDelete, onDelete }: {
           <span className="text-[11px] text-navy-400">•</span>
           <span className="text-[11px] text-navy-500">{doc.fileSizeDisplay}</span>
           <span className="text-[11px] text-navy-400">•</span>
-          <span className="text-[11px] text-navy-500">{accessMeta.icon} {accessMeta.label}</span>
+          <div className="flex items-center gap-1">
+            {accessMetas.map(am => (
+              <span key={am.value} className="text-[11px] text-navy-500 border border-navy-500/20 px-1.5 py-0.5 rounded" title={am.description}>
+                {am.icon} {am.label}
+              </span>
+            ))}
+          </div>
           <span className="text-[11px] text-navy-400">•</span>
           <span className="text-[11px] text-navy-500">↓ {doc.downloadCount}</span>
           <span className="text-[11px] text-navy-400">•</span>

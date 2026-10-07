@@ -28,6 +28,9 @@ export interface SessionPayload {
   roleCode: string;
   /** Normalised app-level role for route guards. */
   role: AppRole;
+  /** Additional roles if a user holds multiple. */
+  additionalRoleCodes?: string[];
+  additionalRoles?: AppRole[];
   /** Issued-at, epoch seconds. */
   iat: number;
   /** Expires-at, epoch seconds. */
@@ -111,6 +114,8 @@ export interface SessionSeed {
   fullName: string;
   roleCode: string;
   role: AppRole;
+  additionalRoleCodes?: string[];
+  additionalRoles?: AppRole[];
 }
 
 /** Build a signed cookie value for a freshly authenticated user. */
@@ -174,6 +179,18 @@ export function deriveAppRole(roleCode: string | undefined | null): AppRole {
     case "project_manager":
     case "delivery_manager":
       return "pm";
+    case "sales":
+    case "pre_sales":
+      return "sales";
+    case "ticket_handler":
+    case "ticket_manager":
+      return "ticket_handler";
+    case "functional_consultant":
+    case "fc":
+      return "functional_consultant";
+    case "technical_consultant":
+    case "tc":
+      return "technical_consultant";
     case "client":
     case "customer":
       return "client";

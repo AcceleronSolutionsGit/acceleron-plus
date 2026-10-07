@@ -122,6 +122,10 @@ async function run() {
     { code: "agent", name: "Support Agent", description: "Works ITSM tickets" },
     { code: "member", name: "Team Member", description: "Standard delivery team access" },
     { code: "client", name: "Client", description: "Read-only client portal access" },
+    { code: "sales", name: "Sales / Pre-Sales", description: "Access to leads, solutioning, and ITSM" },
+    { code: "ticket_handler", name: "Ticket Handler", description: "Incident tickets handling and reporting" },
+    { code: "functional_consultant", name: "Functional Consultant", description: "Functional expertise" },
+    { code: "technical_consultant", name: "Technical Consultant", description: "Technical expertise" },
   ];
 
   for (const role of baseline) {

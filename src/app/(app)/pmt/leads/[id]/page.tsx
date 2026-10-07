@@ -17,7 +17,7 @@ export default async function LeadSolutioningPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   const leadRow = await projectDb("leads")
     .where(isUuid ? "id" : "lead_number", id)
     .first();
@@ -58,12 +58,16 @@ export default async function LeadSolutioningPage({
     )
     .orderBy("full_name", "asc");
 
+  const canSeeCosts = session?.role === "admin" || session?.userId === leadRow.pm_owner_user_id;
+  const safeRateBands = canSeeCosts ? rateBands : rateBands.map(rb => ({ ...rb, daily_cost_inr: 0, daily_billable_rate_inr: 0 }));
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto min-h-[calc(100vh-64px)] space-y-6">
       <SolutioningClient
         lead={lead}
-        rateBands={JSON.parse(JSON.stringify(rateBands))}
+        rateBands={JSON.parse(JSON.stringify(safeRateBands))}
         darwinboxEmployees={JSON.parse(JSON.stringify(darwinboxEmployees))}
+        canSeeCosts={canSeeCosts}
       />
     </div>
   );

@@ -36,6 +36,7 @@ export const INTERNAL_DEPARTMENTS = [
   "IT Infra",
   "Sales",
   "Zoho",
+  "Software Development",
 ] as const;
 
 const DEPT_BADGE: Record<string, string> = {
@@ -48,6 +49,7 @@ const DEPT_BADGE: Record<string, string> = {
   "IT Infra": "bg-cyan-100 text-cyan-800 border border-cyan-200",
   Sales: "bg-violet-100 text-violet-800 border border-violet-200",
   Zoho: "bg-teal-100 text-teal-800 border border-teal-200",
+  "Software Development": "bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200",
 };
 
 interface RateBand {
@@ -353,8 +355,8 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
 
   // Create rate band
   const handleCreateRateBand = async () => {
-    if (!rateFormData.band_name || !rateFormData.level_code || rateFormData.daily_cost_inr === undefined || rateFormData.daily_billable_rate_inr === undefined) {
-      alert("Please enter Band Name, Level Code, Daily Cost, and Daily Billable Rate.");
+    if (!rateFormData.band_name || !rateFormData.level_code || rateFormData.daily_cost_inr === undefined) {
+      alert("Please enter Band Name, Level Code, and Daily Cost.");
       return;
     }
     setIsSavingRate(true);
@@ -1185,19 +1187,9 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
                       <h4 className="text-base font-bold text-navy-900 mb-4">{rb.band_name}</h4>
 
                       <div className="space-y-2 bg-neutral-50 p-3 rounded-lg border border-neutral-100">
-                        <div className="flex justify-between text-xs">
+                        <div className="flex justify-between text-xs items-center">
                           <span className="text-navy-500">Daily Internal Cost:</span>
-                          <span className="font-semibold text-navy-900">{formatINR(cost)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-navy-500">Daily Billable Rate:</span>
-                          <span className="font-bold text-emerald-700">{formatINR(rate)}</span>
-                        </div>
-                        <div className="pt-2 border-t border-neutral-200 flex justify-between text-xs items-center">
-                          <span className="text-navy-500 font-medium">Target Margin:</span>
-                          <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-900 font-bold text-xs">
-                            {margin}% ({formatINR(rate - cost)}/day)
-                          </span>
+                          <span className="font-bold text-navy-900 text-sm">{formatINR(cost)}</span>
                         </div>
                       </div>
                     </div>
@@ -1700,7 +1692,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-xs font-semibold text-navy-700 mb-1">Daily Cost (INR)</label>
               <input
@@ -1710,32 +1702,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
                 className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
               />
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">Daily Billable Rate (INR)</label>
-              <input
-                type="number"
-                value={rateFormData.daily_billable_rate_inr !== undefined ? rateFormData.daily_billable_rate_inr : ""}
-                onChange={(e) => setRateFormData({ ...rateFormData, daily_billable_rate_inr: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-              />
-            </div>
           </div>
-
-          {/* Margin Preview */}
-          {rateFormData.daily_billable_rate_inr && rateFormData.daily_cost_inr ? (
-            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs flex justify-between items-center">
-              <span className="text-navy-500">Calculated Margin:</span>
-              <span className="font-bold text-navy-900">
-                {(
-                  ((Number(rateFormData.daily_billable_rate_inr) - Number(rateFormData.daily_cost_inr)) /
-                    Number(rateFormData.daily_billable_rate_inr)) *
-                  100
-                ).toFixed(1)}
-                % (₹{Number(rateFormData.daily_billable_rate_inr) - Number(rateFormData.daily_cost_inr)}/day)
-              </span>
-            </div>
-          ) : null}
 
           <div className="flex items-center gap-2 pt-2">
             <input
@@ -1872,7 +1839,6 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
                   level_code: selectedCode,
                   band_name: match ? match.defaultName : rateFormData.band_name || "",
                   daily_cost_inr: match ? match.defaultCost : rateFormData.daily_cost_inr,
-                  daily_billable_rate_inr: match ? match.defaultRate : rateFormData.daily_billable_rate_inr,
                 });
               }}
               className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none bg-white font-medium"
@@ -1922,7 +1888,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-xs font-semibold text-navy-700 mb-1">Daily Internal Cost (INR) *</label>
               <input
@@ -1932,19 +1898,6 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
                 value={rateFormData.daily_cost_inr !== undefined ? rateFormData.daily_cost_inr : ""}
                 onChange={(e) => setRateFormData({ ...rateFormData, daily_cost_inr: parseFloat(e.target.value) || 0 })}
                 placeholder="e.g. 5800"
-                className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">Daily Billable Rate (INR) *</label>
-              <input
-                type="number"
-                required
-                min={0}
-                value={rateFormData.daily_billable_rate_inr !== undefined ? rateFormData.daily_billable_rate_inr : ""}
-                onChange={(e) => setRateFormData({ ...rateFormData, daily_billable_rate_inr: parseFloat(e.target.value) || 0 })}
-                placeholder="e.g. 11600"
                 className="w-full px-3 py-2 border border-navy-500/20 rounded-xl text-sm focus:ring-2 focus:ring-navy-900 focus:outline-none"
               />
             </div>

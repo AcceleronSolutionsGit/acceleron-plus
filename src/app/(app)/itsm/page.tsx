@@ -11,7 +11,7 @@ export default async function ITSMTicketsPage() {
     getSession(),
   ]);
 
-  if (session?.role !== "admin") {
+  if (!["admin", "sales", "ticket_handler"].includes(session?.role || "")) {
     return <ComingSoonPlaceholder moduleName="Service Desk & Tickets" />;
   }
 

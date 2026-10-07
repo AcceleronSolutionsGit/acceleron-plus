@@ -522,6 +522,50 @@ export const GUIDES: Guide[] = [
       },
     ],
   },
+
+  // ─── Agile & Quality ────────────────────────────────────────────
+  {
+    id: "agile-quality",
+    title: "Sprint Planning & Quality Tracking",
+    summary: "Plan your sprints, manage requirements, and link them to test cases.",
+    minutes: 4,
+    roles: ["admin", "pm"],
+    path: "/pmt",
+    group: "Delivery",
+    steps: [
+      {
+        title: "Open a project",
+        body: "Select a project to plan sprints and track quality.",
+        target: "css:tbody tr",
+        path: "/pmt",
+      },
+      {
+        title: "Sprint Planning",
+        body: "Drag and drop unassigned WBS items from the backlog directly into an active sprint.",
+        target: "tab:sprints",
+      },
+      {
+        title: "Requirements",
+        body: "Manage project requirements here, categorizing them in folders and tracking their approval state.",
+        target: "tab:requirements",
+      },
+      {
+        title: "Test Cases",
+        body: "Link your test cases directly to the requirements and WBS tasks to ensure complete coverage.",
+        target: "tab:tests",
+      },
+      {
+        title: "Traceability Matrix",
+        body: "The matrix cross-references everything for you. Filter by 'Uncovered' to instantly see which requirements are missing test coverage.",
+        target: "tab:traceability",
+      },
+      {
+        title: "ITSM Kanban Board",
+        body: "Switching to Service Desk tickets, you can now manage them using a drag-and-drop Kanban board.",
+        target: "nav:/itsm",
+      }
+    ],
+  },
 ];
 
 /** True when a guide starts on, or walks through, a Phase 2 page. */
