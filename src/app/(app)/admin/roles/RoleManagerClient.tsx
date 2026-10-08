@@ -39,6 +39,7 @@ const ROLE_COLOR: Record<string, string> = {
   agent: "bg-blue-500/10 text-blue-700",
   member: "bg-navy-500/10 text-navy-700",
   client: "bg-violet-500/10 text-violet-700",
+  sales: "bg-fuchsia-500/10 text-fuchsia-700",
 };
 
 const DEPT_BADGE_COLOR: Record<string, string> = {
@@ -59,6 +60,7 @@ const WHAT_THEY_CAN_DO: Record<string, string[]> = {
   agent: ["Work ITSM tickets", "See projects they are on", "Log their own time"],
   member: ["See projects they are on", "Update progress on their own work", "Log their own time", "Raise risks and tickets", "No commercial visibility"],
   client: ["Read the plan and shared documents", "See invoices raised to them", "Raise tickets", "Change nothing"],
+  sales: ["Access leads and solutioning", "Full access to ITSM", "View projects and financials"],
 };
 
 function relative(iso: string | null): string {

@@ -69,6 +69,7 @@ export interface Project {
   name: string;
   zohoAccountRef?: string;
   zohoSalesOrderRef?: string;
+  poDetails?: string;
   sponsorUserId?: string;
   projectManagerUserId?: string;
   deliveryManagerUserId?: string;

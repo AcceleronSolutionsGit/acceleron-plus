@@ -126,6 +126,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.scopeBaseline !== undefined) projectUpdate.scope_baseline = body.scopeBaseline;
     if (body.scope_baseline !== undefined) projectUpdate.scope_baseline = body.scope_baseline;
     if (body.classification !== undefined) projectUpdate.classification = body.classification;
+    if (body.zohoSalesOrderRef !== undefined) projectUpdate.zoho_sales_order_ref = body.zohoSalesOrderRef;
+    if (body.zoho_sales_order_ref !== undefined) projectUpdate.zoho_sales_order_ref = body.zoho_sales_order_ref;
+    if (body.poDetails !== undefined) projectUpdate.po_details = body.poDetails;
+    if (body.po_details !== undefined) projectUpdate.po_details = body.po_details;
 
     await projectDb("projects").where("id", projectId).update(projectUpdate);
 

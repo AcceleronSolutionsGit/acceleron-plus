@@ -59,6 +59,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
     startDate: toDateInput(project.startDate),
     plannedEndDate: toDateInput(project.plannedEndDate),
     classification: project.classification || "non_group",
+    zohoSalesOrderRef: project.zohoSalesOrderRef || "",
+    poDetails: project.poDetails || "",
   });
 
   const [managers, setManagers] = useState<PickedManager[]>([]);
@@ -136,6 +138,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
         status: draft.status,
         currentPhase: draft.currentPhase,
         classification: draft.classification,
+        zohoSalesOrderRef: draft.zohoSalesOrderRef.trim() || null,
+        poDetails: draft.poDetails.trim() || null,
         startDate: draft.startDate || null,
         plannedEndDate: draft.plannedEndDate || null,
       };
@@ -265,6 +269,25 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                 placeholder="Goals, scope and the business value"
                 rows={3}
               />
+            </Section>
+
+            <Section title="Commercial references">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Zoho Sales Order No"
+                  value={draft.zohoSalesOrderRef}
+                  onChange={(e) => set("zohoSalesOrderRef", e.target.value)}
+                  placeholder="e.g. SO-12345"
+                  autoComplete="off"
+                />
+                <Input
+                  label="PO Details"
+                  value={draft.poDetails}
+                  onChange={(e) => set("poDetails", e.target.value)}
+                  placeholder="PO number or details"
+                  autoComplete="off"
+                />
+              </div>
             </Section>
 
             <Section title="Ownership">
