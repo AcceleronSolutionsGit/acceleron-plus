@@ -287,7 +287,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               onComingSoonClick={setComingSoonNotice}
             />
 
-            <NavSection label="Support" isCollapsed={isCollapsed} badge={!isAdmin ? "Phase 2" : undefined} />
+            <NavSection label="Support" isCollapsed={isCollapsed} badge={!isAdmin ? "Coming Soon" : undefined} />
             <NavItem
               href="/itsm"
               icon={<TicketIcon />}
@@ -362,14 +362,14 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavSection
               label="Service Desk"
               isCollapsed={isCollapsed}
-              badge={phase1 ? "Phase 2" : undefined}
+              badge={!isAdmin ? "Coming Soon" : undefined}
             />
             <NavItem
               href="/itsm"
               icon={<TicketIcon />}
               label="Tickets"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
+              comingSoon={!isAdmin}
               onComingSoonClick={setComingSoonNotice}
             />
             <NavItem
@@ -377,7 +377,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               icon={<ChangeIcon />}
               label="Changes"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
+              comingSoon={!isAdmin}
               onComingSoonClick={setComingSoonNotice}
             />
             <NavItem
@@ -385,7 +385,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               icon={<ReleaseIcon />}
               label="Releases"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
+              comingSoon={!isAdmin}
               onComingSoonClick={setComingSoonNotice}
             />
             <NavItem
@@ -393,7 +393,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               icon={<UserGroupIcon />}
               label="Consultant View"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
+              comingSoon={!isAdmin}
               onComingSoonClick={setComingSoonNotice}
             />
             {canManageItsmMasters && (
@@ -402,7 +402,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
                 icon={<DatabaseIcon />}
                 label="Assignment Groups"
                 isCollapsed={isCollapsed}
-                comingSoon={phase1}
+                comingSoon={!isAdmin}
                 onComingSoonClick={setComingSoonNotice}
               />
             )}

@@ -8,6 +8,8 @@ interface Tab {
   label: string;
   icon?: React.ReactNode;
   count?: number;
+  disabled?: boolean;
+  title?: string;
 }
 
 interface TabsProps {
@@ -71,14 +73,21 @@ export function Tabs({ tabs, defaultTab, onTabChange, children, className }: Tab
               role="tab"
               aria-selected={active}
               tabIndex={active ? 0 : -1}
-              onClick={() => handleTabChange(tab.id)}
+              onClick={(e) => {
+                if (tab.disabled) { e.preventDefault(); return; }
+                handleTabChange(tab.id)
+              }}
               className={cn(
                 "relative flex shrink-0 cursor-pointer items-center gap-2 rounded-t-lg px-3.5 py-2.5",
                 "text-[13.5px] font-semibold transition-colors duration-200",
                 active
                   ? "text-navy-900"
+                  : tab.disabled
+                  ? "text-navy-400/50 cursor-not-allowed"
                   : "text-navy-400 hover:bg-navy-900/4 hover:text-navy-700"
               )}
+              disabled={tab.disabled}
+              title={tab.title}
             >
               {tab.icon && <span className="h-4 w-4">{tab.icon}</span>}
               {tab.label}

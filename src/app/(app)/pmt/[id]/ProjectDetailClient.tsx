@@ -187,7 +187,7 @@ export function ProjectDetailClient({
     // 4. Quality & Tracking
     { id: "tests",         label: "Test Cases",            count: testCases.length, group: "quality" },
     { id: "traceability",  label: "Traceability Matrix",   count: undefined, group: "quality" },
-    { id: "tickets",       label: "Linked ITSM Tickets",  count: tickets.length, group: "quality" },
+    { id: "tickets",       label: "Linked ITSM Tickets",  count: tickets.length, group: "quality", disabled: true, title: "Go to the ITSM portal to view and manage tickets" },
     { id: "risks",         label: "Risks & Issues",        count: risks.length, group: "quality" },
     // 5. Governance & Docs
     { id: "governance",    label: "Stage-Gates",           count: reviews.length, group: "governance" },
@@ -203,7 +203,7 @@ export function ProjectDetailClient({
   const tabs = ALL_TABS
     .filter((tab) => !tab.finance || permissions.canViewFinancials)
     .filter((tab) => activeGroup === "all" || tab.group === activeGroup)
-    .map((tab) => ({ id: tab.id, label: tab.label, count: tab.count }));
+    .map((tab) => ({ id: tab.id, label: tab.label, count: tab.count, disabled: tab.disabled, title: tab.title }));
 
   // Lifecycle steps. 1 and 2 come from the lead and its estimates (see
   // lib/lifecycle.ts); nothing here asserts a stage that did not happen.
