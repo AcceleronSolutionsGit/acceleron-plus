@@ -37,17 +37,34 @@ async function migrate() {
     process.exit(1);
   }
 
-  const hasPoDetails = await projectDb.schema.hasColumn("projects", "po_details");
-  if (!hasPoDetails) {
-    console.log("Adding po_details to projects...");
-    await projectDb.schema.alterTable("projects", (t) => {
-      t.text("po_details").nullable();
-    });
-    console.log("Done.");
-  } else {
-    console.log("Column po_details already exists.");
+  const columnsToAdd = [
+    { name: "po_details", type: "text" },
+    { name: "delivery_manager_user_id", type: "string" },
+    { name: "sponsor_user_id", type: "string" },
+    { name: "classification", type: "string" },
+    { name: "zoho_sales_order_ref", type: "string" },
+    { name: "solution_approach", type: "text" },
+    { name: "scope_baseline", type: "text" }
+  ];
+
+  await projectDb.schema.alterTable("projects", (t) => {
+    // We add them if they don't exist
+  });
+
+  for (const col of columnsToAdd) {
+    const exists = await projectDb.schema.hasColumn("projects", col.name);
+    if (!exists) {
+      console.log(`Adding ${col.name} to projects...`);
+      await projectDb.schema.alterTable("projects", (t) => {
+        if (col.type === "text") t.text(col.name).nullable();
+        if (col.type === "string") t.string(col.name).nullable();
+      });
+    } else {
+      console.log(`Column ${col.name} already exists.`);
+    }
   }
 
+  console.log("Done.");
   process.exit(0);
 }
 
