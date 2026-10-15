@@ -94,7 +94,8 @@ const COL_ALIASES: Record<string, string[]> = {
 };
 
 function normalise(header: string): string {
-  return header.trim().toLowerCase().replace(/[^a-z0-9#]+/g, " ").trim();
+  // Strip line-breaks and tabs first (merged/wrapped Excel headers), then collapse non-alphanumeric
+  return header.trim().replace(/[\r\n\t]+/g, " ").toLowerCase().replace(/[^a-z0-9#]+/g, " ").trim();
 }
 
 function mapColumns(headers: string[]): Record<string, number> {
@@ -102,27 +103,68 @@ function mapColumns(headers: string[]): Record<string, number> {
   const normalised = headers.map(normalise);
 
   for (const [key, aliases] of Object.entries(COL_ALIASES)) {
+    // Pass 1: exact normalised match
     for (const alias of aliases) {
       const target = normalise(alias);
       const idx = normalised.indexOf(target);
+      if (idx !== -1) { mapping[key] = idx; break; }
+    }
+    if (mapping[key] !== undefined) continue;
+
+    // Pass 2: contains-based fallback (e.g. "Sum of Amount (INR)" ⊇ "sum of amount")
+    for (const alias of aliases) {
+      const target = normalise(alias);
+      const idx = normalised.findIndex((h) => h.includes(target) || target.includes(h));
       if (idx !== -1) { mapping[key] = idx; break; }
     }
   }
   return mapping;
 }
 
+/** Resolve an ExcelJS cell value to a plain string, handling formulas, rich-text and shared strings. */
+function resolveCellValue(v: ExcelJS.CellValue): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number" || typeof v === "boolean") return String(v).trim();
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "object") {
+    // Formula cell: { formula: string, result: string | number | ... }
+    if ("result" in v) return resolveCellValue((v as ExcelJS.CellFormulaValue).result as ExcelJS.CellValue);
+    // Rich-text cell: { richText: [{text, font}, ...] }
+    if ("richText" in v) return (v as ExcelJS.CellRichTextValue).richText.map((rt) => rt.text).join("").trim();
+    // Hyperlink / shared-string with plain text
+    if ("text" in v) return String((v as { text: string }).text).trim();
+  }
+  return "";
+}
+
 function cellStr(row: ExcelJS.Row, idx: number | undefined): string {
   if (idx === undefined) return "";
-  const cell = row.getCell(idx + 1); // 1-indexed
-  const v = cell.value;
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object" && "text" in v) return String((v as { text: string }).text).trim();
-  return String(v).trim();
+  const cell = row.getCell(idx + 1); // ExcelJS is 1-indexed
+  return resolveCellValue(cell.value);
 }
 
 function cellNum(row: ExcelJS.Row, idx: number | undefined): number | null {
   if (idx === undefined) return null;
-  const raw = cellStr(row, idx).replace(/[^\d.-]/g, ""); // strip currency symbols $, ₹, commas
+  const cell = row.getCell(idx + 1);
+  const v = cell.value;
+  if (v === null || v === undefined) return null;
+
+  // Direct numeric value — fast path, avoids string round-trip
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+
+  // Formula result — extract result before stringify
+  if (typeof v === "object" && "result" in v) {
+    const r = (v as ExcelJS.CellFormulaValue).result;
+    if (typeof r === "number") return Number.isFinite(r) ? r : null;
+    // Shared-string result
+    const rs = resolveCellValue(r as ExcelJS.CellValue).replace(/[^\d.-]/g, "");
+    const rn = parseFloat(rs);
+    return Number.isFinite(rn) ? rn : null;
+  }
+
+  // Fallback: resolve to string and strip formatting
+  const raw = resolveCellValue(v).replace(/[^\d.-]/g, "");
   const n = parseFloat(raw);
   return Number.isFinite(n) ? n : null;
 }
@@ -132,13 +174,36 @@ function cellDate(row: ExcelJS.Row, idx: number | undefined): string | null {
   const cell = row.getCell(idx + 1);
   const v = cell.value;
   if (!v) return null;
+
+  // Direct Date object
   if (v instanceof Date) {
     const y = v.getFullYear();
     const m = String(v.getMonth() + 1).padStart(2, "0");
     const d = String(v.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
-  const s = String(v).trim();
+
+  // Formula cell: {formula, result} � unwrap result which may be a Date or serial number
+  if (typeof v === "object" && "result" in v) {
+    const r = (v as ExcelJS.CellFormulaValue).result;
+    if (r instanceof Date) {
+      const y = r.getFullYear();
+      const m = String(r.getMonth() + 1).padStart(2, "0");
+      const d = String(r.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    if (typeof r === "number") {
+      // Excel serial date ? JS Date (Excel epoch offset from 1970-01-01 is 25569 days)
+      const d = new Date(Math.round((r - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) {
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      }
+    }
+  }
+
+  // String fallback via resolveCellValue (handles rich-text / shared-string cells)
+  const s = resolveCellValue(v);
+  if (!s) return null;
   // Try ISO date YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   // Try DD/MM/YYYY or DD-MM-YYYY
@@ -234,19 +299,36 @@ export async function runSalesOrderImport(opts: {
   let headerRowIndex = 1;
   let mapping: Record<string, number> = {};
 
-  for (let r = 1; r <= Math.min(12, ws.rowCount); r++) {
+  for (let r = 1; r <= Math.min(15, ws.rowCount); r++) {
     const row = ws.getRow(r);
     const headers: string[] = [];
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      headers[colNumber - 1] = cell.value ? String(cell.value).trim() : "";
+      // Use resolveCellValue so merged/formula header cells are read correctly
+      headers[colNumber - 1] = resolveCellValue(cell.value) || "";
     });
+
+    // Skip rows that are clearly empty
+    if (headers.every((h) => !h)) continue;
+
     const currentMapping = mapColumns(headers);
-    if (Object.keys(currentMapping).length >= 3) {
+    const mappedCount = Object.keys(currentMapping).length;
+
+    // Log detected headers to server console for debugging
+    if (mappedCount > 0) {
+      console.log(`[SalesOrderImport] Row ${r} header scan: ${mappedCount} columns mapped →`, currentMapping);
+      console.log(`[SalesOrderImport] Raw headers at row ${r}:`, headers.filter(Boolean).join(" | "));
+    }
+
+    // Accept row as header if at least 2 recognisable columns are found
+    // (threshold lowered from 3 to handle minimal exports)
+    if (mappedCount >= 2) {
       headerRowIndex = r;
       mapping = currentMapping;
       break;
     }
   }
+
+  console.log(`[SalesOrderImport] Final header row: ${headerRowIndex}, mapping:`, mapping);
 
   // Check essential column presence
   const hasId = mapping.salesorderId !== undefined || mapping.salesOrderNumber !== undefined;
