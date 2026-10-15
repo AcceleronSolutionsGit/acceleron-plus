@@ -44,7 +44,15 @@ async function migrate() {
     { name: "classification", type: "string" },
     { name: "zoho_sales_order_ref", type: "string" },
     { name: "solution_approach", type: "text" },
-    { name: "scope_baseline", type: "text" }
+    { name: "scope_baseline", type: "text" },
+    { name: "invoiced_amount", type: "decimal", precision: 15, scale: 2 },
+    { name: "balance_amount", type: "decimal", precision: 15, scale: 2 },
+    { name: "category", type: "string" },
+    { name: "currency", type: "string" },
+    { name: "product_name", type: "string" },
+    { name: "material_info", type: "text" },
+    { name: "group_name", type: "string" },
+    { name: "invoiced_status", type: "string" }
   ];
 
   await projectDb.schema.alterTable("projects", (t) => {
@@ -58,6 +66,7 @@ async function migrate() {
       await projectDb.schema.alterTable("projects", (t) => {
         if (col.type === "text") t.text(col.name).nullable();
         if (col.type === "string") t.string(col.name).nullable();
+        if (col.type === "decimal") t.decimal(col.name, col.precision || 15, col.scale || 2).defaultTo(0);
       });
     } else {
       console.log(`Column ${col.name} already exists.`);

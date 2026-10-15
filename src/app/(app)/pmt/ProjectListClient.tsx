@@ -222,6 +222,7 @@ export function ProjectListClient({
   const stats = useMemo(() => {
     const byGroup = { active: 0, pipeline: 0, on_hold: 0, closed: 0 };
     const byPhase = new Map<string, number>();
+    const byCategory = new Map<string, number>();
     const byManager = new Map<string, { name: string; count: number }>();
     const clients = new Set<string>();
     let noManager = 0;
@@ -231,6 +232,10 @@ export function ProjectListClient({
       byGroup[groupOf(p.status)] += 1;
       const phase = p.currentPhase || "Discovery";
       byPhase.set(phase, (byPhase.get(phase) ?? 0) + 1);
+      if (p.category) {
+        const cat = p.category.trim();
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + 1);
+      }
       if (p.clientCompanyName) clients.add(p.clientCompanyName.trim().toLowerCase());
       const managers = p.managers ?? [];
       if (managers.length === 0) noManager += 1;
@@ -241,7 +246,7 @@ export function ProjectListClient({
       }
       if (timelineFor(p, today).tone === "late") overdue += 1;
     }
-    return { byGroup, byPhase, byManager, clients: clients.size, noManager, overdue };
+    return { byGroup, byPhase, byCategory, byManager, clients: clients.size, noManager, overdue };
   }, [projects, today]);
 
   // ── Filter + sort ─────────────────────────────────────────────
@@ -250,7 +255,7 @@ export function ProjectListClient({
     const list = projects.filter((p) => {
       if (filters.status !== "all" && !STATUS_GROUPS[filters.status].includes(p.status)) return false;
       if (filters.phase !== "all" && (p.currentPhase || "Discovery") !== filters.phase) return false;
-      if (filters.category !== "all" && (p.category || "Uncategorized") !== filters.category) return false;
+      if (filters.category !== "all" && (p.category || "Uncategorized").toLowerCase() !== filters.category.toLowerCase()) return false;
       if (filters.classification !== "all" && (p.classification || "non_group") !== filters.classification) return false;
       if (filters.client !== "all" && (p.clientCompanyName || "Internal") !== filters.client) return false;
       const managers = p.managers ?? [];
@@ -281,11 +286,17 @@ export function ProjectListClient({
         break; // already newest first from the server
     }
     return list;
-  }, [projects, deferredQuery, filters.status, filters.phase, filters.manager, filters.sort]);
+  }, [projects, deferredQuery, filters.status, filters.phase, filters.category, filters.classification, filters.client, filters.manager, filters.sort]);
 
   const shown = filtered.slice(0, visible);
   const hasFilters =
-    filters.q.trim() !== "" || filters.status !== "all" || filters.phase !== "all" || filters.manager !== "all";
+    filters.q.trim() !== "" ||
+    filters.status !== "all" ||
+    filters.phase !== "all" ||
+    filters.category !== "all" ||
+    filters.classification !== "all" ||
+    filters.client !== "all" ||
+    filters.manager !== "all";
 
   // Draw more rows as the end of the list comes into view.
   useEffect(() => {
@@ -527,10 +538,9 @@ export function ProjectListClient({
             searchThreshold={99}
             options={[
               { value: "all", label: "All categories" },
-              { value: "Implementation", label: "Implementation" },
-              { value: "Support", label: "Support" },
-              { value: "Consulting", label: "Consulting" },
-              { value: "Uncategorized", label: "Uncategorized" },
+              ...Array.from(stats.byCategory.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([c, count]) => ({ value: c, label: c, hint: String(count) })),
             ]}
           />
           <Combobox
@@ -872,9 +882,13 @@ const ProjectRow = memo(function ProjectRow({
       <td className={cell}>
         {p.category ? (
           <span className={cn(
-            "inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset",
-            p.category.toLowerCase().includes("support") ? "bg-blue-50 text-blue-700 ring-blue-700/10" :
-            p.category.toLowerCase().includes("implementation") ? "bg-purple-50 text-purple-700 ring-purple-700/10" :
+            "inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ring-inset",
+            p.category.toUpperCase() === "SAP" ? "bg-indigo-50 text-indigo-700 ring-indigo-600/20" :
+            p.category.toUpperCase() === "SOFTWARE" ? "bg-blue-50 text-blue-700 ring-blue-700/20" :
+            p.category.toUpperCase() === "SUPPORT" ? "bg-teal-50 text-teal-700 ring-teal-700/20" :
+            p.category.toUpperCase() === "INFRA" ? "bg-purple-50 text-purple-700 ring-purple-600/20" :
+            (p.category.toUpperCase() === "LICENCE" || p.category.toUpperCase() === "LICENSE") ? "bg-amber-50 text-amber-700 ring-amber-600/20" :
+            p.category.toUpperCase() === "AUDIT" ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" :
             "bg-gray-50 text-gray-700 ring-gray-600/20"
           )}>
             {p.category}

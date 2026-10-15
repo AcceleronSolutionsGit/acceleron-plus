@@ -79,6 +79,13 @@ export interface Project {
   actualEndDate?: string;
   description?: string;
   budgetInr?: number | string;
+  invoicedAmount?: number | string;
+  balanceAmount?: number | string;
+  currency?: string;
+  productName?: string;
+  materialInfo?: string;
+  groupName?: string;
+  invoicedStatus?: string;
   clientCompanyName?: string;
   leadId?: string;
   solutionApproach?: string;
@@ -119,6 +126,30 @@ export interface PmCandidate {
   designation: string | null;
   department: string | null;
   location: string | null;
+}
+
+export interface SalesOrder {
+  id: string;
+  tenantId: string;
+  rowLabel?: string | null;
+  category?: string | null;
+  currency: string;
+  salesOrderNumber: string;
+  materialInfo?: string | null;
+  productName?: string | null;
+  orderStatus: string;
+  orderDate?: string | null;
+  customerName: string;
+  purchaseOrder?: string | null;
+  invoicedStatus?: string | null;
+  amount: number;
+  invoicedAmount: number;
+  balanceAmount: number;
+  projectId?: string | null;
+  projectCode?: string | null;
+  classification?: 'group' | 'non_group' | string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 

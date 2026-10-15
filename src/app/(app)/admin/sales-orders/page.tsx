@@ -6,7 +6,7 @@ import { SalesOrdersClient } from "./SalesOrdersClient";
 export const dynamic = "force-dynamic";
 
 export default async function AdminSalesOrdersPage() {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["admin", "pm"]);
   if (!auth.ok) redirect("/auth/sign-in");
 
   return <SalesOrdersClient />;

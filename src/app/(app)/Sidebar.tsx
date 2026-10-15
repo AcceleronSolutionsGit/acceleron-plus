@@ -414,7 +414,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
         {isAdmin && (
           <>
             <NavSection label="Administration" isCollapsed={isCollapsed} />
-            <NavItem href="/admin/sales-orders" icon={<UploadCloudIcon />} label="Import Sales Orders" isCollapsed={isCollapsed} />
+            <NavItem href="/admin/sales-orders" icon={<UploadCloudIcon />} label="Sales Orders & Invoicing" isCollapsed={isCollapsed} />
             <NavItem href="/admin/allocations" icon={<ChartIcon />} label="Resource Allocation" isCollapsed={isCollapsed} />
             <NavItem href="/admin/masters" icon={<DatabaseIcon />} label="Master Data" isCollapsed={isCollapsed} />
             <NavItem href="/admin/roles" icon={<PeopleIcon />} label="People & Roles" isCollapsed={isCollapsed} />

@@ -176,6 +176,7 @@ const MIGRATION_FOR: Record<string, string> = {
   darwinbox_sync_settings: "src/lib/migrations/migrate-darwinbox-autosync.js",
   darwinbox_sync_runs: "src/lib/migrations/migrate-darwinbox-autosync.js",
   wbs_assignments: "src/lib/migrations/migrate-assignments.js",
+  sales_orders: "src/lib/migrations/migrate-sales-orders.js",
 };
 
 /**

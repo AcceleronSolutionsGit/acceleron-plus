@@ -17,6 +17,7 @@ const TABS = [
   { label: "Portfolio Dashboard", href: "/pmt/dashboard", badge: "KPIs", exact: true },
   { label: "Leads & Pipeline", href: "/pmt/leads", badge: "Pre-Sales", exact: false },
   { label: "Enterprise Governance", href: "/pmt/governance", badge: "Stage-Gates", exact: false },
+  { label: "Sales Orders & Billing", href: "/admin/sales-orders", badge: "Finance", exact: false },
 ];
 
 export function PmtHeaderTabs({ title, subtitle, action, userRole }: PmtHeaderTabsProps) {
