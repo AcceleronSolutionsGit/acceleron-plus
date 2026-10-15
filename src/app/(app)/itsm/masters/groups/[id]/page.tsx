@@ -13,7 +13,12 @@ export default async function EditItsmGroupPage({ params }: { params: { id: stri
   const group = await itsmDb("service_groups").where({ id: params.id }).first();
   if (!group) return notFound();
 
-  const members = await itsmDb("service_group_members").where({ group_id: params.id }).select("user_id");
+  let members: Array<{ user_id: string }> = [];
+  try {
+    members = await itsmDb("service_group_members").where({ group_id: params.id }).select("user_id");
+  } catch {
+    members = [];
+  }
 
   const users = await identityDb("users")
     .where("is_active", true)

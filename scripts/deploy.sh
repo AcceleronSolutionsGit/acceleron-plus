@@ -76,6 +76,18 @@ if $MIGRATE; then
     migrate-phase1
     migrate-team-roles
     migrate-darwinbox-autosync
+    migrate-delivery-manager
+    migrate-itsm-groups
+    migrate-lead-scope-and-documents
+    migrate-missing-project-columns
+    migrate-project-approach
+    migrate-quality
+    migrate-sales-orders
+    migrate-settings
+    migrate-solutioning-margins-allocations
+    migrate-sprints
+    migrate-ticket-attachments
+    migrate-user-roles-table
   )
   for m in "${MIGRATIONS[@]}"; do
     echo "  → $m"

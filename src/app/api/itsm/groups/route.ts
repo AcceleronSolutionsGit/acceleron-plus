@@ -4,13 +4,51 @@ import { requireSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
+let tableEnsured = false;
+async function ensureServiceGroupMembers() {
+  if (tableEnsured) return;
+  try {
+    const exists = await itsmDb.schema.hasTable("service_group_members");
+    if (!exists) {
+      await itsmDb.schema.createTable("service_group_members", (t) => {
+        t.uuid("group_id").notNullable().references("id").inTable("service_groups").onDelete("CASCADE");
+        t.uuid("user_id").notNullable();
+        t.primary(["group_id", "user_id"]);
+        t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(itsmDb.fn.now());
+      });
+      console.log("✚ Auto-created service_group_members table.");
+    }
+    tableEnsured = true;
+  } catch (err) {
+    console.warn("Could not ensure service_group_members table:", err);
+  }
+}
+
 export async function GET() {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   try {
+    await ensureServiceGroupMembers();
+
     const groups = await itsmDb("service_groups").select("*").orderBy("name");
-    const members = await itsmDb("service_group_members").select("*");
+    
+    let members: Array<{ group_id: string; user_id: string }> = [];
+    try {
+      members = await itsmDb("service_group_members").select("*");
+    } catch (e: unknown) {
+      const dbErr = e as { code?: string };
+      if (dbErr?.code === "42P01") {
+        await ensureServiceGroupMembers();
+        try {
+          members = await itsmDb("service_group_members").select("*");
+        } catch {
+          members = [];
+        }
+      } else {
+        throw e;
+      }
+    }
 
     const result = groups.map(g => ({
       id: g.id,
@@ -63,6 +101,7 @@ export async function POST(req: Request) {
     }
 
     // Update members
+    await ensureServiceGroupMembers();
     await itsmDb("service_group_members").where({ group_id: groupId }).del();
     if (members && Array.isArray(members) && members.length > 0) {
       const inserts = members.map(m => ({ group_id: groupId, user_id: m }));
