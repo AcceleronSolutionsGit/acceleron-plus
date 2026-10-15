@@ -244,14 +244,63 @@ export async function DELETE(req: Request) {
     if (!auth.ok) return auth.response;
 
     const url = new URL(req.url);
-    const id = url.searchParams.get("id");
+    const id  = url.searchParams.get("id");
+    const mode = url.searchParams.get("mode");
 
+    // ── Single record delete ──────────────────────────────────
     if (id) {
       await projectDb("sales_orders").where("id", id).delete();
       return NextResponse.json({ success: true, message: "Sales order deleted." });
     }
 
-    return NextResponse.json({ success: false, error: "Specify an ID to delete." }, { status: 400 });
+    // ── Bulk mode: clear_orders ───────────────────────────────
+    // Removes all rows from sales_orders. Projects are kept intact.
+    if (mode === "clear_orders") {
+      const count = await projectDb("sales_orders").delete();
+      return NextResponse.json({
+        success: true,
+        message: `Cleared ${count} sales order${count === 1 ? "" : "s"}. Projects are untouched.`,
+        ordersDeleted: count,
+        projectsDeleted: 0,
+      });
+    }
+
+    // ── Bulk mode: clear_with_projects ────────────────────────
+    // Removes all sales_orders AND any projects that were auto-created
+    // by the importer (identified by having zoho_sales_order_ref set).
+    if (mode === "clear_with_projects") {
+      const projCount = await projectDb("projects")
+        .whereNotNull("zoho_sales_order_ref")
+        .delete();
+      const ordCount = await projectDb("sales_orders").delete();
+      return NextResponse.json({
+        success: true,
+        message: `Removed ${ordCount} sales order${ordCount === 1 ? "" : "s"} and ${projCount} auto-created project${projCount === 1 ? "" : "s"}.`,
+        ordersDeleted: ordCount,
+        projectsDeleted: projCount,
+      });
+    }
+
+    // ── Bulk mode: full_reset ─────────────────────────────────
+    // Same as clear_with_projects but uses TRUNCATE for orders
+    // (faster on large tables; resets sequences).
+    if (mode === "full_reset") {
+      await projectDb.raw("TRUNCATE TABLE sales_orders RESTART IDENTITY CASCADE");
+      const projCount = await projectDb("projects")
+        .whereNotNull("zoho_sales_order_ref")
+        .delete();
+      return NextResponse.json({
+        success: true,
+        message: `Full reset complete. All sales orders cleared and ${projCount} import-linked project${projCount === 1 ? "" : "s"} removed.`,
+        ordersDeleted: -1, // truncated
+        projectsDeleted: projCount,
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: "Specify an ?id= to delete a single record, or ?mode= (clear_orders | clear_with_projects | full_reset) for bulk operations." },
+      { status: 400 }
+    );
   } catch (err) {
     return serverError("admin.salesOrders.DELETE", err);
   }

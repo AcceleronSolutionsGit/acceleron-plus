@@ -118,6 +118,12 @@ export function SalesOrdersClient() {
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Clear-import modal state
+  const [clearModalOpen, setClearModalOpen] = useState(false);
+  const [clearBusy, setClearBusy] = useState<"" | "clear_orders" | "clear_with_projects" | "full_reset">("");
+  const [clearResult, setClearResult] = useState<{ message: string; ordersDeleted: number; projectsDeleted: number } | null>(null);
+  const [clearConfirmMode, setClearConfirmMode] = useState<"" | "clear_orders" | "clear_with_projects" | "full_reset">("");
+
   // Fetch persisted sales orders from API
   const fetchOrders = useCallback(async () => {
     try {
@@ -182,6 +188,31 @@ export function SalesOrdersClient() {
     setFile(next);
     setImportResult(null);
     setUploadError("");
+  }
+
+  // Clear-import handler
+  async function handleClear(mode: "clear_orders" | "clear_with_projects" | "full_reset") {
+    setClearBusy(mode);
+    setClearResult(null);
+    try {
+      const res = await fetch(`/api/admin/sales-orders?mode=${mode}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (data.success) {
+        setClearResult({
+          message: data.message,
+          ordersDeleted: data.ordersDeleted ?? 0,
+          projectsDeleted: data.projectsDeleted ?? 0,
+        });
+        setClearConfirmMode("");
+        await fetchOrders();
+      } else {
+        setClearResult({ message: data.error || "Operation failed.", ordersDeleted: 0, projectsDeleted: 0 });
+      }
+    } catch {
+      setClearResult({ message: "Could not connect to the server.", ordersDeleted: 0, projectsDeleted: 0 });
+    } finally {
+      setClearBusy("");
+    }
   }
 
   // Filtered orders
@@ -388,6 +419,18 @@ export function SalesOrdersClient() {
               <path d="M3 14v1a2 2 0 002 2h10a2 2 0 002-2v-1M10 3v10m-3-3l3-3 3 3" />
             </svg>
             Upload Workbook (.xlsx)
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => { setClearModalOpen(true); setClearResult(null); setClearConfirmMode(""); }}
+            className="h-10 text-xs font-semibold gap-2 text-red-600 border-red-200 hover:bg-red-50"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Clear Import Data
           </Button>
 
           <Link href="/pmt">
@@ -1245,6 +1288,179 @@ export function SalesOrdersClient() {
               </div>
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* ── Clear Import Data Modal ──────────────────────────── */}
+      <Modal
+        isOpen={clearModalOpen}
+        onClose={() => { setClearModalOpen(false); setClearResult(null); setClearConfirmMode(""); }}
+        title="Clear Import Data"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+            <strong className="font-bold">⚠️ Destructive Operations</strong> — These actions permanently delete data from the database and cannot be undone. Review each option carefully before confirming.
+          </div>
+
+          {/* Result banner */}
+          {clearResult && (
+            <div className={cn(
+              "rounded-xl border px-4 py-3 text-xs font-medium",
+              clearResult.message.toLowerCase().includes("fail") || clearResult.message.toLowerCase().includes("error")
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            )}>
+              ✅ {clearResult.message}
+            </div>
+          )}
+
+          {/* Option 1 ── Sales orders only */}
+          <div className="rounded-xl border border-navy-900/10 bg-surface p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="9" y1="13" x2="15" y2="13" />
+                </svg>
+              </span>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-navy-900">Option 1 — Clear Sales Orders Only</h4>
+                <p className="mt-0.5 text-xs text-navy-500 leading-relaxed">
+                  Deletes all rows from the <code className="font-mono bg-navy-900/5 px-1 rounded">sales_orders</code> table.
+                  All linked PMT projects are <strong>kept intact</strong>.
+                  Use this when you want to re-import fresh order data without touching projects.
+                </p>
+              </div>
+            </div>
+            {clearConfirmMode === "clear_orders" ? (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-semibold text-red-600">Confirm delete all sales orders?</span>
+                <Button
+                  size="sm"
+                  onClick={() => handleClear("clear_orders")}
+                  loading={clearBusy === "clear_orders"}
+                  disabled={clearBusy !== ""}
+                  className="h-8 px-3 text-xs font-bold bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Yes, Delete Orders
+                </Button>
+                <button onClick={() => setClearConfirmMode("")} className="text-xs text-navy-500 hover:text-navy-800 underline">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setClearConfirmMode("clear_orders")}
+                disabled={clearBusy !== ""}
+                className="h-8 px-3 text-xs font-semibold text-orange-700 border-orange-200 hover:bg-orange-50"
+              >
+                Clear Sales Orders Only
+              </Button>
+            )}
+          </div>
+
+          {/* Option 2 ── Sales orders + auto-created projects */}
+          <div className="rounded-xl border border-navy-900/10 bg-surface p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                </svg>
+              </span>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-navy-900">Option 2 — Clear Orders + Auto-Created Projects</h4>
+                <p className="mt-0.5 text-xs text-navy-500 leading-relaxed">
+                  Deletes all <code className="font-mono bg-navy-900/5 px-1 rounded">sales_orders</code> rows <strong>and</strong> any PMT projects that were
+                  auto-created by the importer (those with a Zoho Sales Order reference set).
+                  Pre-existing manually created projects are <strong>not affected</strong>.
+                </p>
+              </div>
+            </div>
+            {clearConfirmMode === "clear_with_projects" ? (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-semibold text-red-600">Confirm? This will delete orders + import-linked projects.</span>
+                <Button
+                  size="sm"
+                  onClick={() => handleClear("clear_with_projects")}
+                  loading={clearBusy === "clear_with_projects"}
+                  disabled={clearBusy !== ""}
+                  className="h-8 px-3 text-xs font-bold bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Yes, Delete Both
+                </Button>
+                <button onClick={() => setClearConfirmMode("")} className="text-xs text-navy-500 hover:text-navy-800 underline">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setClearConfirmMode("clear_with_projects")}
+                disabled={clearBusy !== ""}
+                className="h-8 px-3 text-xs font-semibold text-red-700 border-red-200 hover:bg-red-50"
+              >
+                Clear Orders &amp; Auto-Created Projects
+              </Button>
+            )}
+          </div>
+
+          {/* Option 3 ── Full reset (nuclear) */}
+          <div className="rounded-xl border-2 border-red-300 bg-red-50/30 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-red-800">Option 3 — Full Reset (Nuclear)</h4>
+                  <span className="rounded px-1.5 py-0.5 text-[10px] font-bold bg-red-200 text-red-800 uppercase tracking-wide">Destructive</span>
+                </div>
+                <p className="mt-0.5 text-xs text-red-700/80 leading-relaxed">
+                  Runs <code className="font-mono bg-red-100 px-1 rounded">TRUNCATE TABLE sales_orders RESTART IDENTITY CASCADE</code> for a full table wipe,
+                  then removes <strong>all</strong> projects linked to any Zoho Sales Order reference, regardless of when they were created.
+                  Use only to start completely fresh.
+                </p>
+              </div>
+            </div>
+            {clearConfirmMode === "full_reset" ? (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-bold text-red-700">⚠️ This cannot be undone. Confirm full reset?</span>
+                <Button
+                  size="sm"
+                  onClick={() => handleClear("full_reset")}
+                  loading={clearBusy === "full_reset"}
+                  disabled={clearBusy !== ""}
+                  className="h-8 px-3 text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow-sm"
+                >
+                  🔴 Yes, Full Reset
+                </Button>
+                <button onClick={() => setClearConfirmMode("")} className="text-xs text-navy-500 hover:text-navy-800 underline">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => setClearConfirmMode("full_reset")}
+                disabled={clearBusy !== ""}
+                className="h-8 px-3 text-xs font-bold bg-red-700 hover:bg-red-800 text-white"
+              >
+                Full Reset (Truncate All)
+              </Button>
+            )}
+          </div>
         </div>
       </Modal>
     </div>
