@@ -72,52 +72,87 @@ export interface SalesOrderImportResult {
 // ── Column name normalisation ──────────────────────────────────
 
 const COL_ALIASES: Record<string, string[]> = {
-  rowLabel:         ["row labels", "row label", "group", "group#", "group number", "group/non group", "group/non-group (customer)", "internal_external", "internal external"],
-  category:         ["category", "project category", "cat"],
+  rowLabel:         ["row labels", "row label", "group/non-group (customer)", "group/non group", "group number", "group#", "group", "internal_external", "internal external"],
+  category:         ["project category", "category", "cat"],
   currency:         ["currency", "curr"],
   salesorderId:     ["salesorder_id", "sales order id", "salesorder id", "so id", "salesorder"],
-  salesOrderNumber: ["sales order#", "sales order number", "so#", "so number", "salesorder#", "sales order"],
-  materialInfo:     ["material info", "material information", "contract period", "material", "nature of job"],
-  productName:      ["product name", "product", "item name", "item"],
-  description:      ["sale order description", "sales order description", "order description", "description", "so description", "item description", "scope", "nature of job"],
+  salesOrderNumber: ["sales order number", "sales order#", "sales order", "salesorder#", "so number", "so#", "so no", "so"],
+  materialInfo:     ["material information", "material info", "contract period", "material", "nature of job"],
+  productName:      ["product name", "item name", "product", "item"],
+  description:      [
+    "sale order description", "sales order description", "order description", "item description",
+    "description / project", "description/project", "project / description", "project description",
+    "description", "so description", "project name", "project", "scope of work", "scope",
+    "nature of job", "job name", "particulars", "details"
+  ],
   orderStatus:      ["order status", "order stat", "status"],
-  date:             ["date", "order date", "so date"],
-  customerName:     ["customer name", "customer", "client name", "client"],
-  purchaseOrder:    ["purchase order", "purchase order#", "po#", "po number", "po details", "customer po"],
-  groupNumber:      ["group/non-group (customer)", "group/non group", "group#", "group number", "group"],
-  referenceNumber:  ["reference#", "reference number", "reference", "ref#"],
-  amount:           ["sum of amount", "amount", "total amount", "order amount", "so amount", "contract value"],
-  invoicedAmount:   ["sum of invoiced amount", "invoiced amount", "invoiced am", "invoiced amt", "billed amount", "total invoiced"],
-  balanceAmount:    ["sum of balance", "balance", "balance amount", "remaining amount", "remaining amt", "remaining balance", "net balance", "unbilled amount"],
-  invoiced:         ["invoiced", "fully invoiced", "invoiced?", "invoiced status"],
-  classification:   ["classification", "group / non-group", "group/non-group", "group / non group", "group/non group", "group or non group", "group/non-group (customer)", "client type", "customer type", "internal_external", "internal external"],
+  date:             ["order date", "so date", "sales order date", "date"],
+  customerName:     ["customer name", "client name", "account name", "company name", "customer", "client", "party name"],
+  purchaseOrder:    ["purchase order#", "purchase order number", "purchase order", "customer po#", "customer po", "po number", "po#", "po details"],
+  groupNumber:      ["group/non-group (customer)", "group/non group", "group number", "group#", "group"],
+  referenceNumber:  ["reference number", "reference#", "reference", "ref#"],
+  amount:           [
+    "sum of amount (inr)", "sum of amount", "total order value", "order value", "so value",
+    "total amount", "order amount", "so amount", "contract value", "amount (inr)", "total (inr)",
+    "net amount", "total value", "amount", "value"
+  ],
+  invoicedAmount:   [
+    "sum of invoiced amount (inr)", "sum of invoiced amount", "total invoiced amount", "invoiced amount",
+    "invoiced amt", "invoiced am", "billed amount", "total invoiced", "invoiced value", "sum of invoiced",
+    "billed"
+  ],
+  balanceAmount:    [
+    "sum of balance amount (inr)", "sum of balance amount", "sum of balance", "remaining balance",
+    "remaining amount", "remaining amt", "balance amount", "unbilled amount", "net balance",
+    "balance value", "balance", "remaining", "unbilled"
+  ],
+  invoiced:         ["invoiced status", "fully invoiced", "invoiced?", "invoiced"],
+  classification:   [
+    "group/non-group (customer)", "group / non-group", "group/non-group", "group / non group",
+    "group/non group", "group or non group", "client type", "customer type", "internal_external",
+    "internal external", "classification"
+  ],
 };
 
 function normalise(header: string): string {
-  // Strip line-breaks and tabs first (merged/wrapped Excel headers), then collapse non-alphanumeric
   return header.trim().replace(/[\r\n\t]+/g, " ").toLowerCase().replace(/[^a-z0-9#]+/g, " ").trim();
 }
 
 function mapColumns(headers: string[]): Record<string, number> {
   const mapping: Record<string, number> = {};
   const normalised = headers.map(normalise);
+  const assignedCols = new Set<number>();
 
+  // Pass 1: exact normalised match
   for (const [key, aliases] of Object.entries(COL_ALIASES)) {
-    // Pass 1: exact normalised match
     for (const alias of aliases) {
       const target = normalise(alias);
       const idx = normalised.indexOf(target);
-      if (idx !== -1) { mapping[key] = idx; break; }
-    }
-    if (mapping[key] !== undefined) continue;
-
-    // Pass 2: contains-based fallback (e.g. "Sum of Amount (INR)" ⊇ "sum of amount")
-    for (const alias of aliases) {
-      const target = normalise(alias);
-      const idx = normalised.findIndex((h) => h.includes(target) || target.includes(h));
-      if (idx !== -1) { mapping[key] = idx; break; }
+      if (idx !== -1 && !assignedCols.has(idx)) {
+        mapping[key] = idx;
+        assignedCols.add(idx);
+        break;
+      }
     }
   }
+
+  // Pass 2: contains-based fallback for unmapped fields (length >= 4)
+  for (const [key, aliases] of Object.entries(COL_ALIASES)) {
+    if (mapping[key] !== undefined) continue;
+
+    for (const alias of aliases) {
+      const target = normalise(alias);
+      if (target.length < 4) continue;
+
+      const idx = normalised.findIndex((h, colIdx) => !assignedCols.has(colIdx) && h.includes(target));
+      if (idx !== -1) {
+        mapping[key] = idx;
+        assignedCols.add(idx);
+        break;
+      }
+    }
+  }
+
   return mapping;
 }
 
@@ -183,7 +218,7 @@ function cellDate(row: ExcelJS.Row, idx: number | undefined): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  // Formula cell: {formula, result} � unwrap result which may be a Date or serial number
+  // Formula cell: {formula, result} � unwrap result which may be a Date or serial number
   if (typeof v === "object" && "result" in v) {
     const r = (v as ExcelJS.CellFormulaValue).result;
     if (r instanceof Date) {
@@ -444,7 +479,8 @@ export async function runSalesOrderImport(opts: {
       balanceVal = Math.round((amountVal - invoicedVal) * 100) / 100;
     }
 
-    const effectiveDesc = desc || matInfo || prodName || "";
+    const fallbackDesc = [customer, effectiveSoNum].filter(Boolean).join(" - ");
+    const effectiveDesc = desc || matInfo || prodName || fallbackDesc || "";
     const rawClassification = cellStr(row, mapping.classification);
     const effectiveClassification = deriveClassification(
       rawClassification,
