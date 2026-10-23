@@ -118,6 +118,24 @@ export function ProjectDetailClient({
   const [isUpdatingPhase, setIsUpdatingPhase] = useState(false);
   const [phaseSyncSuccess, setPhaseSyncSuccess] = useState(false);
 
+  // Sync state whenever props update from server component revalidation
+  useEffect(() => {
+    setProject(initialProject);
+    setCurrentPhase(initialProject.currentPhase || "Discovery");
+  }, [initialProject]);
+
+  useEffect(() => {
+    setLocalWbsItems(wbsItems);
+  }, [wbsItems]);
+
+  useEffect(() => {
+    setTickets(initialTickets);
+  }, [initialTickets]);
+
+  useEffect(() => {
+    setSprints(initialSprints);
+  }, [initialSprints]);
+
   // WBS Comments Modal state
   const [activeCommentWbsItem, setActiveCommentWbsItem] = useState<WBSItem | null>(null);
 

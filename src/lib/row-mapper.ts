@@ -115,6 +115,9 @@ export function mapProjectRow(row: any, userMap?: Map<string, User>): Project {
   p.sponsor = getUser(row.sponsor_user_id, userMap);
   if (row.current_phase) p.currentPhase = row.current_phase;
   if (row.itsm_context_id) p.itsmContextId = row.itsm_context_id;
+  if (row.overhead_percent !== undefined && row.overhead_percent !== null) {
+    p.overheadPercent = Number(row.overhead_percent);
+  }
   
   return p;
 }

@@ -65,15 +65,32 @@ export async function GET(
         .first()
     : null;
 
-  const budgetedFeeInr = solutioningSession?.proposed_fee_inr ?? project.budget_inr ?? 0;
+  const budgetedFeeInr = project.budget_inr !== null && project.budget_inr !== undefined
+    ? parseFloat(project.budget_inr)
+    : (solutioningSession?.proposed_fee_inr ? parseFloat(solutioningSession.proposed_fee_inr) : 0);
   const poValue = project.po_id
     ? (await projectDb("purchase_orders").where("id", project.po_id).first())?.po_value_inr ?? 0
     : 0;
 
-  // ── Fetch total planned hours from project_team_members ──────────
-  const teamMembers = await projectDb("project_team_members").where("project_id", projectId);
+  // ── Fetch total planned hours and planned labor cost from project_team_members ──
+  const teamMembers = await projectDb("project_team_members as ptm")
+    .leftJoin("employee_rate_bands as erb", "ptm.rate_band_id", "erb.id")
+    .where("ptm.project_id", projectId)
+    .select(
+      "ptm.*",
+      "erb.daily_cost_inr as band_daily_cost"
+    );
+
   const totalPlannedDays = teamMembers.reduce((sum: number, tm: any) => sum + (parseFloat(tm.planned_days) || 0), 0);
   const totalPlannedHours = totalPlannedDays * DAILY_HOURS;
+  const plannedLaborCostInr = teamMembers.reduce((sum: number, tm: any) => {
+    if (tm.planned_cost_inr !== null && tm.planned_cost_inr !== undefined && !isNaN(parseFloat(tm.planned_cost_inr))) {
+      return sum + parseFloat(tm.planned_cost_inr);
+    }
+    const days = parseFloat(tm.planned_days || 0);
+    const costPerDay = parseFloat(tm.daily_cost_inr || tm.band_daily_cost || 0);
+    return sum + (days * costPerDay);
+  }, 0);
 
   // ── Budgeted cost per WBS from solutioning line items ───────────
   let budgetedByPhase: Record<string, number> = {};
@@ -130,13 +147,11 @@ export async function GET(
   }).sort((a, b) => b.totalCostInr - a.totalCostInr);
 
   // ── Aggregate by Phase (WBS parent) ────────────────────────────
-  // Map wbs_name → parent phase name
   const wbsById: Record<string, any> = {};
   for (const w of wbsItems) wbsById[w.id] = w;
 
   function getPhase(wbsName: string | null): string {
     if (!wbsName) return "General";
-    // Find WBS item by name and resolve its top-level parent
     const found = wbsItems.find((w) => w.name === wbsName);
     if (!found) return wbsName;
     if (!found.parent_wbs_id) return found.name;
@@ -189,7 +204,6 @@ export async function GET(
       )
       .groupByRaw("CASE WHEN ticket_id IS NOT NULL THEN 'ticket' ELSE 'change_request' END");
 
-    // We approximate ITSM cost using the project's avg band cost
     const avgBandCostPerHour = totalProjectHours > 0
       ? (totalInternalCostInr / totalProjectHours)
       : 0;
@@ -217,10 +231,118 @@ export async function GET(
     };
   }
 
+  // ── Overhead & Additional Costs ────────────────────────────────
+  const overheadPercent = parseFloat(
+    project.overhead_percent !== undefined && project.overhead_percent !== null
+      ? project.overhead_percent
+      : (solutioningSession?.overhead_margin_percent ?? 0)
+  );
+
+  const plannedOverheadInr = parseFloat(((plannedLaborCostInr * overheadPercent) / 100).toFixed(2));
+  const actualOverheadInr = parseFloat(((totalInternalCostInr * overheadPercent) / 100).toFixed(2));
+  const overheadVarianceInr = parseFloat((plannedOverheadInr - actualOverheadInr).toFixed(2));
+
+  // Query additional costs
+  let additionalCostRows = await projectDb("project_additional_costs")
+    .where("project_id", projectId)
+    .orderBy("created_at", "asc");
+
+  // Fallback if none in project_additional_costs but session has some
+  if (additionalCostRows.length === 0 && solutioningSession) {
+    const sessionCosts = await projectDb("solutioning_additional_costs")
+      .where("session_id", solutioningSession.id)
+      .orderBy("sequence", "asc");
+    if (sessionCosts.length > 0) {
+      additionalCostRows = sessionCosts.map((sc) => ({
+        id: sc.id,
+        project_id: projectId,
+        category: sc.category || "other",
+        description: sc.description,
+        planned_amount_inr: sc.amount_inr,
+        actual_amount_inr: 0,
+        status: "planned",
+        notes: "From solutioning session",
+        created_at: sc.created_at,
+        updated_at: sc.updated_at,
+      }));
+    }
+  }
+
+  const additionalCostItems = additionalCostRows.map((c) => {
+    const planned = parseFloat(c.planned_amount_inr || 0);
+    const actual = parseFloat(c.actual_amount_inr || 0);
+    return {
+      id: c.id,
+      category: c.category || "other",
+      description: c.description,
+      plannedAmountInr: planned,
+      actualAmountInr: actual,
+      varianceInr: parseFloat((planned - actual).toFixed(2)),
+      status: c.status || "planned",
+      notes: c.notes,
+    };
+  });
+
+  const totalPlannedAdditionalCostInr = parseFloat(
+    additionalCostItems.reduce((s, c) => s + c.plannedAmountInr, 0).toFixed(2)
+  );
+  const totalDirectActualAdditionalCostInr = parseFloat(
+    additionalCostItems.reduce((s, c) => s + c.actualAmountInr, 0).toFixed(2)
+  );
+  const totalActualAdditionalCostInr = parseFloat(
+    (totalDirectActualAdditionalCostInr + itsmContribution.totalCostInr).toFixed(2)
+  );
+  const additionalCostVarianceInr = parseFloat(
+    (totalPlannedAdditionalCostInr - totalActualAdditionalCostInr).toFixed(2)
+  );
+
+  // Group additional costs by category
+  const categoryMap: Record<string, { category: string; plannedInr: number; actualInr: number; varianceInr: number; count: number }> = {};
+  for (const item of additionalCostItems) {
+    const cat = item.category;
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { category: cat, plannedInr: 0, actualInr: 0, varianceInr: 0, count: 0 };
+    }
+    categoryMap[cat].plannedInr += item.plannedAmountInr;
+    categoryMap[cat].actualInr += item.actualAmountInr;
+    categoryMap[cat].count += 1;
+  }
+  if (itsmContribution.totalCostInr > 0) {
+    categoryMap["itsm_support"] = {
+      category: "itsm_support",
+      plannedInr: 0,
+      actualInr: itsmContribution.totalCostInr,
+      varianceInr: -itsmContribution.totalCostInr,
+      count: itsmContribution.breakdown.length,
+    };
+  }
+  const additionalCostByCategory = Object.values(categoryMap).map((cat) => ({
+    category: cat.category,
+    plannedInr: parseFloat(cat.plannedInr.toFixed(2)),
+    actualInr: parseFloat(cat.actualInr.toFixed(2)),
+    varianceInr: parseFloat((cat.plannedInr - cat.actualInr).toFixed(2)),
+    count: cat.count,
+  }));
+
+  // ── Overall Totals (Planned vs Actual) ──────────────────────────
+  const totalPlannedCostInr = parseFloat(
+    (plannedLaborCostInr + plannedOverheadInr + totalPlannedAdditionalCostInr).toFixed(2)
+  );
+  const totalActualCostInr = parseFloat(
+    (totalInternalCostInr + actualOverheadInr + totalActualAdditionalCostInr).toFixed(2)
+  );
+  const totalCostVarianceInr = parseFloat((totalPlannedCostInr - totalActualCostInr).toFixed(2));
+
+  const plannedMarginInr = parseFloat((budgetedFeeInr - totalPlannedCostInr).toFixed(2));
+  const plannedMarginPercent = budgetedFeeInr > 0 ? parseFloat(((plannedMarginInr / budgetedFeeInr) * 100).toFixed(2)) : 0;
+
+  const actualMarginInr = parseFloat((budgetedFeeInr - totalActualCostInr).toFixed(2));
+  const actualMarginPercent = budgetedFeeInr > 0 ? parseFloat(((actualMarginInr / budgetedFeeInr) * 100).toFixed(2)) : 0;
+
   const totalAllHours = totalProjectHours + itsmContribution.totalHours;
-  const marginInr     = budgetedFeeInr - totalInternalCostInr;
-  const marginPct     = budgetedFeeInr > 0 ? (marginInr / budgetedFeeInr) * 100 : 0;
-  const budgetUtilPct = budgetedFeeInr > 0 ? (totalInternalCostInr / budgetedFeeInr) * 100 : 0;
+  const legacyMarginInr = budgetedFeeInr - totalInternalCostInr;
+  const legacyMarginPct = budgetedFeeInr > 0 ? (legacyMarginInr / budgetedFeeInr) * 100 : 0;
+  const budgetUtilPct = budgetedFeeInr > 0 ? (totalActualCostInr / budgetedFeeInr) * 100 : 0;
 
   return NextResponse.json({
     success: true,
@@ -229,8 +351,8 @@ export async function GET(
       projectCode: project.code,
       projectName: project.name,
       budget: {
-        budgetedFeeInr:    parseFloat(budgetedFeeInr),
-        poValueInr:        parseFloat(poValue),
+        budgetedFeeInr:    parseFloat(budgetedFeeInr.toFixed(2)),
+        poValueInr:        parseFloat(poValue.toFixed(2)),
         totalPlannedHours: parseFloat(totalPlannedHours.toFixed(2)),
         currency:          "INR",
       },
@@ -240,9 +362,45 @@ export async function GET(
         totalHoursLogged:        parseFloat(totalAllHours.toFixed(2)),
         totalInternalCostInr:    parseFloat(totalInternalCostInr.toFixed(2)),
         totalBillableValueInr:   parseFloat(totalBillableValueInr.toFixed(2)),
-        marginInr:               parseFloat(marginInr.toFixed(2)),
-        marginPercent:           parseFloat(marginPct.toFixed(2)),
+        marginInr:               parseFloat(actualMarginInr.toFixed(2)),
+        marginPercent:           parseFloat(actualMarginPercent.toFixed(2)),
         budgetUtilizedPercent:   parseFloat(budgetUtilPct.toFixed(2)),
+        // Legacy backward compatibility
+        legacyMarginInr:         parseFloat(legacyMarginInr.toFixed(2)),
+        legacyMarginPercent:     parseFloat(legacyMarginPct.toFixed(2)),
+      },
+      // ── Detailed Planned vs Actual Breakdown ──
+      labor: {
+        plannedHours:    parseFloat(totalPlannedHours.toFixed(2)),
+        actualHours:     parseFloat(totalProjectHours.toFixed(2)),
+        varianceHours:   parseFloat((totalPlannedHours - totalProjectHours).toFixed(2)),
+        plannedCostInr:  parseFloat(plannedLaborCostInr.toFixed(2)),
+        actualCostInr:   parseFloat(totalInternalCostInr.toFixed(2)),
+        varianceCostInr: parseFloat((plannedLaborCostInr - totalInternalCostInr).toFixed(2)),
+      },
+      overhead: {
+        percent:         overheadPercent,
+        plannedInr:      plannedOverheadInr,
+        actualInr:       actualOverheadInr,
+        varianceInr:     overheadVarianceInr,
+      },
+      additionalCosts: {
+        totalPlannedInr: totalPlannedAdditionalCostInr,
+        totalActualInr:  totalActualAdditionalCostInr,
+        directActualInr: totalDirectActualAdditionalCostInr,
+        itsmCostInr:     itsmContribution.totalCostInr,
+        varianceInr:     additionalCostVarianceInr,
+        items:           additionalCostItems,
+        byCategory:      additionalCostByCategory,
+      },
+      totals: {
+        plannedTotalCostInr:  totalPlannedCostInr,
+        actualTotalCostInr:   totalActualCostInr,
+        varianceCostInr:      totalCostVarianceInr,
+        plannedMarginInr:     plannedMarginInr,
+        plannedMarginPercent: plannedMarginPercent,
+        actualMarginInr:      actualMarginInr,
+        actualMarginPercent:  actualMarginPercent,
       },
       costByBand,
       costByPhase,

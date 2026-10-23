@@ -56,6 +56,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
     status: project.status,
     currentPhase: project.currentPhase || "Discovery",
     budgetInr: project.budgetInr ? String(project.budgetInr) : "",
+    overheadPercent: project.overheadPercent !== undefined && project.overheadPercent !== null ? String(project.overheadPercent) : "0",
     startDate: toDateInput(project.startDate),
     plannedEndDate: toDateInput(project.plannedEndDate),
     classification: project.classification || "non_group",
@@ -63,8 +64,32 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
     poDetails: project.poDetails || "",
   });
 
-  const [managers, setManagers] = useState<PickedManager[]>([]);
-  const [deliveryManager, setDeliveryManager] = useState<PickedManager[]>([]);
+  const [managers, setManagers] = useState<PickedManager[]>(() => {
+    if (project.projectManagerUserId) {
+      return [{
+        key: `user:${project.projectManagerUserId}`,
+        fullName: project.projectManager?.fullName || "Assigned PM",
+        jobLevel: project.projectManager?.jobLevel || null,
+        employeeId: (project.projectManager as any)?.darwinboxRef || null,
+        userId: project.projectManagerUserId,
+      }];
+    }
+    return [];
+  });
+  const [deliveryManager, setDeliveryManager] = useState<PickedManager[]>(() => {
+    if (project.deliveryManagerUserId) {
+      return [{
+        key: project.deliveryManagerUserId.startsWith("emp:") || project.deliveryManagerUserId.startsWith("user:")
+          ? project.deliveryManagerUserId
+          : `user:${project.deliveryManagerUserId}`,
+        fullName: "Assigned Delivery Manager",
+        jobLevel: null,
+        employeeId: null,
+        userId: project.deliveryManagerUserId,
+      }];
+    }
+    return [];
+  });
   
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -94,12 +119,12 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
         if (!data?.people) return;
         
         if (project.projectManagerUserId) {
-          const pm = data.people.find((p: any) => p.userId === project.projectManagerUserId || p.key === project.projectManagerUserId);
+          const pm = data.people.find((p: any) => p.userId === project.projectManagerUserId || p.key === project.projectManagerUserId || p.key === `user:${project.projectManagerUserId}`);
           if (pm) setManagers([pm]);
         }
         
         if (project.deliveryManagerUserId) {
-          const dm = data.people.find((p: any) => p.userId === project.deliveryManagerUserId || p.key === project.deliveryManagerUserId);
+          const dm = data.people.find((p: any) => p.userId === project.deliveryManagerUserId || p.key === project.deliveryManagerUserId || p.key === `user:${project.deliveryManagerUserId}`);
           if (dm) setDeliveryManager([dm]);
         }
       })
@@ -145,11 +170,26 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
       };
 
       if (permissions.canChangeProjectManager) {
-        payload.projectManagerUserId = managers[0]?.key || null;
-        payload.deliveryManagerUserId = deliveryManager[0]?.key || null;
+        if (managers.length > 0) {
+          payload.managers = managers.map((m) => m.key);
+          payload.projectManagerUserId =
+            managers[0]?.userId ||
+            (managers[0]?.key?.startsWith("user:") ? managers[0].key.slice(5) : null) ||
+            managers[0]?.key ||
+            null;
+        } else {
+          payload.managers = [];
+          payload.projectManagerUserId = null;
+        }
+
+        payload.deliveryManagerUserId =
+          deliveryManager[0]?.userId ||
+          deliveryManager[0]?.key ||
+          null;
       }
       if (permissions.canViewFinancials) {
         payload.budgetInr = draft.budgetInr ? Number(draft.budgetInr) : null;
+        payload.overheadPercent = draft.overheadPercent !== "" ? Number(draft.overheadPercent) : 0;
       }
 
       const res = await fetch(`/api/pmt/projects/${project.id}`, {
@@ -162,8 +202,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
         throw new Error(data?.error || "Could not save project");
       }
 
-      router.push(`/pmt/${project.id}`);
       router.refresh();
+      router.push(`/pmt/${project.code || project.id}`);
     } catch (err: any) {
       setServerError(err.message || "A network error occurred.");
       setSubmitting(false);
@@ -327,7 +367,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
             </Section>
 
             <Section title="Schedule & budget">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Input
                   label="Start date"
                   type="date"
@@ -342,7 +382,9 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                   onChange={(e) => set("plannedEndDate", e.target.value)}
                   error={show("plannedEndDate")}
                 />
-                {permissions.canViewFinancials ? (
+              </div>
+              {permissions.canViewFinancials ? (
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Input
                     label="Budget"
                     type="number"
@@ -360,15 +402,27 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                         : undefined
                     }
                   />
-                ) : (
-                   <div>
-                     <label className="block text-sm font-medium text-navy-700 mb-1">Budget</label>
-                     <div className="px-3 py-2 border rounded bg-gray-50 text-gray-500 text-sm">
-                       Hidden
-                     </div>
-                   </div>
-                )}
-              </div>
+                  <Input
+                    label="Overhead Margin (%)"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={draft.overheadPercent}
+                    onChange={(e) => set("overheadPercent", e.target.value)}
+                    placeholder="e.g. 10"
+                    hint="Applied to labor costs for overhead loading."
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-navy-700 mb-1">Budget</label>
+                  <div className="px-3 py-2 border rounded bg-gray-50 text-gray-500 text-sm">
+                    Hidden
+                  </div>
+                </div>
+              )}
             </Section>
 
             <div className="flex items-center justify-end gap-3 border-t border-navy-900/10 pt-6">

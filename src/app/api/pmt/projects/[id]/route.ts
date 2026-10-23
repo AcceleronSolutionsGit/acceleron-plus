@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getProject } from "@/lib/api";
 import { projectDb, itsmDb } from "@/lib/db";
 import { requireProjectCapability, can } from "@/lib/auth";
 import { redactProjectFinancials } from "@/lib/permissions";
+import { setProjectManagers, ManagerInputError } from "@/lib/project-managers";
 import type { Project } from "@/lib/types";
+import { notifyAsync, events } from "@/lib/notifications";
 
 /** Budget and margin are project finance: only the named PM and admins see them. */
 function redactFinancials(project: Project, canSeeMoney: boolean): Project {
   return canSeeMoney ? project : redactProjectFinancials(project);
 }
-import { notifyAsync, events } from "@/lib/notifications";
 
 export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -68,24 +70,29 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     const projectId = existing.id;
     const projectCode = existing.code;
 
-    // Being the named PM is what unlocks a project's finances, so naming
-    // one is reserved for an admin or the current PM handing over —
-    // otherwise any editor could name themselves and read the money.
-    const requestedPm =
-      body.projectManagerUserId !== undefined ? body.projectManagerUserId : body.project_manager_user_id;
-    if (
-      requestedPm !== undefined &&
-      (requestedPm || null) !== (existing.project_manager_user_id || null) &&
-      access.role !== "admin" &&
-      !access.isProjectManager
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Only an administrator or one of this project's PMs can change who manages it.",
-        },
-        { status: 403 }
-      );
+    const canChangePM = access.role === "admin" || access.isProjectManager;
+
+    // Handle PM changes if managers array is passed
+    if (body.managers !== undefined) {
+      if (!canChangePM) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Only an administrator or one of this project's PMs can change who manages it.",
+          },
+          { status: 403 }
+        );
+      }
+      if (Array.isArray(body.managers)) {
+        try {
+          await setProjectManagers(projectId, body.managers);
+        } catch (err: any) {
+          if (err instanceof ManagerInputError) {
+            return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+          }
+          throw err;
+        }
+      }
     }
 
     // The current phase lives in itsm_db.project_contexts, not on the
@@ -102,11 +109,57 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       updated_at: new Date().toISOString(),
     };
 
+    // Handle single requested PM if managers array was not explicitly passed
+    const requestedPm =
+      body.projectManagerUserId !== undefined ? body.projectManagerUserId : body.project_manager_user_id;
+
+    if (body.managers === undefined && requestedPm !== undefined) {
+      const isKey = typeof requestedPm === "string" && (requestedPm.startsWith("emp:") || requestedPm.startsWith("user:"));
+      const isUuid = typeof requestedPm === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedPm);
+
+      if (isKey) {
+        if (!canChangePM) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Only an administrator or one of this project's PMs can change who manages it.",
+            },
+            { status: 403 }
+          );
+        }
+        await setProjectManagers(projectId, [requestedPm]);
+      } else if (isUuid) {
+        if (requestedPm !== existing.project_manager_user_id && !canChangePM) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Only an administrator or one of this project's PMs can change who manages it.",
+            },
+            { status: 403 }
+          );
+        }
+        projectUpdate.project_manager_user_id = requestedPm;
+      } else if (!requestedPm) {
+        if (existing.project_manager_user_id && !canChangePM) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Only an administrator or one of this project's PMs can change who manages it.",
+            },
+            { status: 403 }
+          );
+        }
+        projectUpdate.project_manager_user_id = null;
+      }
+    }
+
     if (body.name !== undefined) projectUpdate.name = body.name;
     if (body.description !== undefined) projectUpdate.description = body.description;
     if (body.status !== undefined) projectUpdate.status = body.status;
     if (body.budgetInr !== undefined) projectUpdate.budget_inr = body.budgetInr;
     if (body.budget_inr !== undefined) projectUpdate.budget_inr = body.budget_inr;
+    if (body.overheadPercent !== undefined) projectUpdate.overhead_percent = Number(body.overheadPercent) || 0;
+    if (body.overhead_percent !== undefined) projectUpdate.overhead_percent = Number(body.overhead_percent) || 0;
     if (body.startDate !== undefined) projectUpdate.start_date = body.startDate;
     if (body.start_date !== undefined) projectUpdate.start_date = body.start_date;
     if (body.plannedEndDate !== undefined) projectUpdate.planned_end_date = body.plannedEndDate;
@@ -115,8 +168,6 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.actual_end_date !== undefined) projectUpdate.actual_end_date = body.actual_end_date;
     if (body.clientCompanyName !== undefined) projectUpdate.client_company_name = body.clientCompanyName;
     if (body.client_company_name !== undefined) projectUpdate.client_company_name = body.client_company_name;
-    if (body.projectManagerUserId !== undefined) projectUpdate.project_manager_user_id = body.projectManagerUserId;
-    if (body.project_manager_user_id !== undefined) projectUpdate.project_manager_user_id = body.project_manager_user_id;
     if (body.deliveryManagerUserId !== undefined) projectUpdate.delivery_manager_user_id = body.deliveryManagerUserId;
     if (body.delivery_manager_user_id !== undefined) projectUpdate.delivery_manager_user_id = body.delivery_manager_user_id;
     if (body.sponsorUserId !== undefined) projectUpdate.sponsor_user_id = body.sponsorUserId;
@@ -131,7 +182,9 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.poDetails !== undefined) projectUpdate.po_details = body.poDetails;
     if (body.po_details !== undefined) projectUpdate.po_details = body.po_details;
 
-    await projectDb("projects").where("id", projectId).update(projectUpdate);
+    if (Object.keys(projectUpdate).length > 1) {
+      await projectDb("projects").where("id", projectId).update(projectUpdate);
+    }
 
     // 3. Phase sync with ITSM project_contexts
     const newPhase = body.currentPhase ?? body.phase ?? body.current_phase;
@@ -197,6 +250,17 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
       access.role === "admin" ||
       (access.role !== "client" &&
         (updatedProject?.projectManagerUserId === session.userId || access.projectRole === "manager"));
+
+    try {
+      revalidatePath(`/pmt/${projectId}`);
+      revalidatePath(`/pmt/${projectCode}`);
+      revalidatePath(`/pmt/${projectId}/edit`);
+      revalidatePath(`/pmt/${projectCode}/edit`);
+      revalidatePath("/pmt");
+    } catch (e) {
+      // Ignore revalidatePath in non-Next environments
+    }
+
     return NextResponse.json({ project: updatedProject ? redactFinancials(updatedProject, canSeeMoney) : updatedProject, phaseSynced: Boolean(newPhase && newPhase !== previousPhase) }, { status: 200 });
   } catch (error) {
     console.error("Failed to update project:", error);

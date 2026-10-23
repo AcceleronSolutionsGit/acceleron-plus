@@ -92,6 +92,7 @@ export interface Project {
   scopeBaseline?: string;
   category?: string;
   classification?: 'group' | 'non_group';
+  overheadPercent?: number;
   createdAt: string;
   updatedAt: string;
   // Joined/computed
@@ -1042,6 +1043,19 @@ export interface CostByPhase {
   budgetedCostInr: number;
   varianceInr: number;
   variancePercent: number;
+}
+
+export interface ProjectAdditionalCost {
+  id: string;
+  projectId: string;
+  category: "software" | "cloud_infra" | "travel" | "hardware" | "contractor" | "other";
+  description: string;
+  plannedAmountInr: number;
+  actualAmountInr: number;
+  status: "planned" | "incurred" | "approved" | "settled";
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProjectCostSummary {
