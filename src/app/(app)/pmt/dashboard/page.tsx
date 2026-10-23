@@ -18,6 +18,7 @@ export default async function PMTDashboardPage() {
   const session = await getSession();
   const viewer = session ? { role: session.role, userId: session.userId } : null;
 
+  const isAdmin = session?.role === "admin" || Boolean(session?.additionalRoles?.includes("admin"));
   const allProjects = activeProjectRows.map((r: any) => mapProjectRow(r));
 
   // Money is per project: the named PM sees their own projects' budget
@@ -28,10 +29,14 @@ export default async function PMTDashboardPage() {
     session?.roleCode === "delivery_manager" ||
     Boolean(session?.additionalRoleCodes?.some((c: string) => /delivery.?manager/i.test(c)));
   const managed = await projectsManagedBy(session?.userId, isDmOrPm);
+
+  // Non-admins (PM, DM, members) only see projects they are allocated to
+  const targetProjects = isAdmin ? allProjects : allProjects.filter((p) => managed.has(p.id));
+
   const financeIds = new Set(
-    allProjects.filter((p) => canSeeProjectFinancials(viewer, p, managed)).map((p) => p.id)
+    targetProjects.filter((p) => canSeeProjectFinancials(viewer, p, managed)).map((p) => p.id)
   );
-  const projects = allProjects.map((p) => (financeIds.has(p.id) ? p : redactProjectFinancials(p)));
+  const projects = targetProjects.map((p) => (financeIds.has(p.id) ? p : redactProjectFinancials(p)));
 
   // Fetch all milestones for these projects
   const projectIds = projects.map(p => p.id);
@@ -52,7 +57,7 @@ export default async function PMTDashboardPage() {
     .sum({ cost: projectDb.raw("project_timesheets.hours_logged * (employee_rate_bands.daily_cost_inr / 8)") })
     .groupBy("project_timesheets.project_id") : [];
 
-  const costData = allProjects.filter((p) => financeIds.has(p.id)).map(p => {
+  const costData = targetProjects.filter((p) => financeIds.has(p.id)).map(p => {
     const tsCost = timesheetCostsWithRates.find((c: any) => c.project_id === p.id);
     const actualCost = tsCost ? Number(tsCost.cost) : 0;
     const budget = p.budgetInr ? Number(p.budgetInr) : 0;
@@ -74,7 +79,7 @@ export default async function PMTDashboardPage() {
     "Testing", "UAT", "Go-Live", "Closure",
   ];
   const phaseCounts: Record<string, number> = {};
-  for (const p of allProjects) {
+  for (const p of targetProjects) {
     const phase = p.currentPhase || "Discovery";
     phaseCounts[phase] = (phaseCounts[phase] || 0) + 1;
   }

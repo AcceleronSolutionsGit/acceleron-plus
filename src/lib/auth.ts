@@ -313,6 +313,19 @@ export async function getProjectAccess(
   }
 
   try {
+    const user = await identityDb("users as u")
+      .where("u.id", current.userId)
+      .select("u.employee_id")
+      .first<{ employee_id: string | null } | undefined>()
+      .catch(() => undefined);
+
+    const userKeys = [
+      current.userId,
+      `user:${current.userId}`,
+      user?.employee_id,
+      user?.employee_id ? `emp:${user.employee_id}` : null,
+    ].filter(Boolean) as string[];
+
     const [project, membership] = await Promise.all([
       projectDb("projects")
         .where("id", projectId)
@@ -321,7 +334,10 @@ export async function getProjectAccess(
       projectDb("project_team_members")
         .where("project_id", projectId)
         .andWhere((qb) => {
-          qb.where("user_id", current.userId).orWhere("user_id", `user:${current.userId}`);
+          qb.whereIn("user_id", userKeys);
+          if (user?.employee_id) {
+            qb.orWhereIn("employee_id", userKeys);
+          }
         })
         .andWhere("is_active", true)
         .select("role_in_project")
@@ -331,14 +347,8 @@ export async function getProjectAccess(
     if (membership) context.projectRole = normaliseProjectRole(membership.role_in_project);
 
     // Named PM, named Delivery Manager, project Lead/Manager on the team, or allocated DM/PM
-    const isNamedPm = Boolean(
-      project?.project_manager_user_id &&
-      (project.project_manager_user_id === current.userId || project.project_manager_user_id === `user:${current.userId}`)
-    );
-    const isNamedDm = Boolean(
-      project?.delivery_manager_user_id &&
-      (project.delivery_manager_user_id === current.userId || project.delivery_manager_user_id === `user:${current.userId}`)
-    );
+    const isNamedPm = Boolean(project?.project_manager_user_id && userKeys.includes(project.project_manager_user_id));
+    const isNamedDm = Boolean(project?.delivery_manager_user_id && userKeys.includes(project.delivery_manager_user_id));
     const isLeadOrManager = context.projectRole === "manager" || context.projectRole === "lead";
     const isDmOrPmRole =
       allRoles.includes("pm") ||
@@ -358,7 +368,7 @@ export async function getProjectAccess(
 
     if (
       project?.sponsor_user_id &&
-      (project.sponsor_user_id === current.userId || project.sponsor_user_id === `user:${current.userId}`)
+      userKeys.includes(project.sponsor_user_id)
     ) {
       context.isProjectOwner = true;
     }
@@ -386,32 +396,39 @@ export async function projectsManagedBy(
   const ids = new Set<string>();
   if (!userId) return ids;
   try {
+    const user = await identityDb("users as u")
+      .leftJoin("roles as r", "r.id", "u.role_id")
+      .where("u.id", userId)
+      .select("r.code as role_code", "u.employee_id")
+      .first<{ role_code: string | null; employee_id: string | null } | undefined>()
+      .catch(() => undefined);
+
     let checkDmOrPm = isDmOrPm;
     if (checkDmOrPm === undefined) {
-      const user = await identityDb("users as u")
-        .leftJoin("roles as r", "r.id", "u.role_id")
-        .where("u.id", userId)
-        .select("r.code as role_code")
-        .first<{ role_code: string | null } | undefined>()
-        .catch(() => undefined);
       const code = user?.role_code?.toLowerCase() || "";
       checkDmOrPm = code === "pm" || code === "project_manager" || code === "delivery_manager";
     }
 
+    const userKeys = [
+      userId,
+      `user:${userId}`,
+      user?.employee_id,
+      user?.employee_id ? `emp:${user.employee_id}` : null,
+    ].filter(Boolean) as string[];
+
     const [namedPm, namedDm, team] = await Promise.all([
       projectDb("projects")
-        .where((qb) => {
-          qb.where("project_manager_user_id", userId).orWhere("project_manager_user_id", `user:${userId}`);
-        })
+        .whereIn("project_manager_user_id", userKeys)
         .pluck("id"),
       projectDb("projects")
-        .where((qb) => {
-          qb.where("delivery_manager_user_id", userId).orWhere("delivery_manager_user_id", `user:${userId}`);
-        })
+        .whereIn("delivery_manager_user_id", userKeys)
         .pluck("id"),
       projectDb("project_team_members")
         .where((qb) => {
-          qb.where("user_id", userId).orWhere("user_id", `user:${userId}`);
+          qb.whereIn("user_id", userKeys);
+          if (user?.employee_id) {
+            qb.orWhereIn("employee_id", userKeys);
+          }
         })
         .andWhere("is_active", true)
         .select("project_id", "role_in_project"),

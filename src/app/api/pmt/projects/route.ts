@@ -20,7 +20,9 @@ export async function GET() {
       auth.session.roleCode === "delivery_manager" ||
       Boolean(auth.session.additionalRoleCodes?.some((c: string) => /delivery.?manager/i.test(c)));
     const managed = await projectsManagedBy(auth.session.userId, isDmOrPm);
-    const visible = projects.map((project) =>
+    const isAdmin = auth.session.role === "admin" || Boolean(auth.session.additionalRoles?.includes("admin"));
+    const targetProjects = isAdmin ? projects : projects.filter((p) => managed.has(p.id));
+    const visible = targetProjects.map((project) =>
       canSeeProjectFinancials(viewer, project, managed) ? project : redactProjectFinancials(project)
     );
     return NextResponse.json({ projects: visible }, { status: 200 });

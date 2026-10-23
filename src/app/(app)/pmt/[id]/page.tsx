@@ -20,10 +20,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!project) notFound();
 
   const session = await getSession();
+  const isAdmin = session?.role === "admin" || Boolean(session?.additionalRoles?.includes("admin"));
   const access = await getProjectAccess(project.id, session);
+
+  // Non-admins (PM, DM, members) may only view projects they are allocated to
+  if (!isAdmin && !access.isProjectManager && !access.isProjectOwner && !access.projectRole) {
+    notFound();
+  }
+
   // Allocated PMs, delivery managers, leads, and admins get the admin view on this project;
-  // unallocated projects or regular members get the restricted delivery view without financials.
-  const isAdminView = session?.role === "admin" || access.isProjectManager || access.isProjectOwner;
+  const isAdminView = isAdmin || access.isProjectManager || access.isProjectOwner;
   const userRole = isAdminView ? "admin" : (session?.role === "client" ? "client" : "member");
   const permissions = {
     canReschedule: can(access, "plan.reschedule"),

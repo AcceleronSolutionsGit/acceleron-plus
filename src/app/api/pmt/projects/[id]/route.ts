@@ -19,6 +19,11 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
     const guard = await requireProjectCapability(id, "project.view");
     if (!guard.ok) return guard.response;
 
+    const isAdmin = guard.session.role === "admin" || guard.session.additionalRoles?.includes("admin");
+    if (!isAdmin && !guard.access.isProjectManager && !guard.access.isProjectOwner && !guard.access.projectRole) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
     const project = await getProject(id);
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
