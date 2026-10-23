@@ -305,16 +305,24 @@ export async function getProjectAccess(
     userId: current.userId,
   };
 
-  if (current.role === "admin" || current.additionalRoles?.includes("admin")) return context;
+  const allRoles = [current.role, ...(current.additionalRoles || [])];
+  if (allRoles.includes("admin")) {
+    context.isProjectManager = true;
+    context.isProjectOwner = true;
+    return context;
+  }
 
   try {
     const [project, membership] = await Promise.all([
       projectDb("projects")
         .where("id", projectId)
-        .select("project_manager_user_id", "sponsor_user_id")
-        .first<{ project_manager_user_id: string | null; sponsor_user_id: string | null } | undefined>(),
+        .select("project_manager_user_id", "delivery_manager_user_id", "sponsor_user_id")
+        .first<{ project_manager_user_id: string | null; delivery_manager_user_id: string | null; sponsor_user_id: string | null } | undefined>(),
       projectDb("project_team_members")
-        .where({ project_id: projectId, user_id: current.userId })
+        .where("project_id", projectId)
+        .andWhere((qb) => {
+          qb.where("user_id", current.userId).orWhere("user_id", `user:${current.userId}`);
+        })
         .andWhere("is_active", true)
         .select("role_in_project")
         .first<{ role_in_project: string | null } | undefined>(),
@@ -322,14 +330,35 @@ export async function getProjectAccess(
 
     if (membership) context.projectRole = normaliseProjectRole(membership.role_in_project);
 
-    // A project can have several PMs: the one named on the project row,
-    // and anyone holding the PM role on its team.
-    if (project?.project_manager_user_id === current.userId || context.projectRole === "manager") {
+    // Named PM, named Delivery Manager, project Lead/Manager on the team, or allocated DM/PM
+    const isNamedPm = Boolean(
+      project?.project_manager_user_id &&
+      (project.project_manager_user_id === current.userId || project.project_manager_user_id === `user:${current.userId}`)
+    );
+    const isNamedDm = Boolean(
+      project?.delivery_manager_user_id &&
+      (project.delivery_manager_user_id === current.userId || project.delivery_manager_user_id === `user:${current.userId}`)
+    );
+    const isLeadOrManager = context.projectRole === "manager" || context.projectRole === "lead";
+    const isDmOrPmRole =
+      allRoles.includes("pm") ||
+      (current.roleCode && /delivery.?manager/i.test(current.roleCode)) ||
+      (current.additionalRoleCodes && current.additionalRoleCodes.some((c) => /delivery.?manager/i.test(c)));
+
+    const isAllocated = isNamedPm || isNamedDm || isLeadOrManager || (isDmOrPmRole && Boolean(membership));
+
+    if (isAllocated) {
       context.isProjectManager = true;
+      context.isProjectOwner = true;
+      context.projectRole = "manager";
+    } else {
+      context.isProjectManager = false;
+      context.isProjectOwner = false;
     }
+
     if (
-      project &&
-      (project.project_manager_user_id === current.userId || project.sponsor_user_id === current.userId)
+      project?.sponsor_user_id &&
+      (project.sponsor_user_id === current.userId || project.sponsor_user_id === `user:${current.userId}`)
     ) {
       context.isProjectOwner = true;
     }
@@ -345,24 +374,43 @@ export async function getProjectAccess(
 }
 
 /**
- * Ids of the projects this person is a PM on — named on the project row
- * or PM on its team. For screens that list many projects at once (the
- * portfolio dashboard, the project list, the pipeline) and have to decide
- * the money question per row.
+ * Ids of the projects this person is a PM or Delivery Manager on — named on
+ * the project row or allocated on its team. For screens that list many projects
+ * at once (the portfolio dashboard, the project list, the pipeline) and have to
+ * decide the money and management questions per row.
  */
-export async function projectsManagedBy(userId: string | null | undefined): Promise<Set<string>> {
+export async function projectsManagedBy(
+  userId: string | null | undefined,
+  isDeliveryManager?: boolean
+): Promise<Set<string>> {
   const ids = new Set<string>();
   if (!userId) return ids;
   try {
-    const [named, team] = await Promise.all([
-      projectDb("projects").where("project_manager_user_id", userId).pluck("id"),
+    const [namedPm, namedDm, team] = await Promise.all([
+      projectDb("projects")
+        .where((qb) => {
+          qb.where("project_manager_user_id", userId).orWhere("project_manager_user_id", `user:${userId}`);
+        })
+        .pluck("id"),
+      projectDb("projects")
+        .where((qb) => {
+          qb.where("delivery_manager_user_id", userId).orWhere("delivery_manager_user_id", `user:${userId}`);
+        })
+        .pluck("id"),
       projectDb("project_team_members")
-        .where({ user_id: userId, is_active: true })
+        .where((qb) => {
+          qb.where("user_id", userId).orWhere("user_id", `user:${userId}`);
+        })
+        .andWhere("is_active", true)
         .select("project_id", "role_in_project"),
     ]);
-    for (const id of named as string[]) ids.add(String(id));
+    for (const id of namedPm as string[]) ids.add(String(id));
+    for (const id of namedDm as string[]) ids.add(String(id));
     for (const row of team as { project_id: string; role_in_project: string | null }[]) {
-      if (normaliseProjectRole(row.role_in_project) === "manager") ids.add(String(row.project_id));
+      const pRole = normaliseProjectRole(row.role_in_project);
+      if (pRole === "manager" || pRole === "lead" || isDeliveryManager) {
+        ids.add(String(row.project_id));
+      }
     }
   } catch (err) {
     console.error("[auth] Could not list managed projects:", err);

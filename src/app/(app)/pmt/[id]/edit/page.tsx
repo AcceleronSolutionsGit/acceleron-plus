@@ -13,6 +13,8 @@ export default async function ProjectEditPage({ params }: { params: Promise<{ id
   const session = await getSession();
 
   const access = await getProjectAccess(project.id, session);
+  if (!can(access, "project.edit")) notFound();
+
   const permissions = {
     canChangeProjectManager: access.role === "admin" || access.isProjectManager === true,
     canViewFinancials: can(access, "financials.view"),

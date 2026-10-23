@@ -20,13 +20,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!project) notFound();
 
   const session = await getSession();
-  // ProjectDetailClient already had a userRole prop, but nothing ever passed
-  // it — so Timesheets, Financials and Documents saw "member" for everyone.
-  const userRole = session?.role ?? "member";
-
-  // One resolution of "what may this person do here", shared by every tab,
-  // so the buttons on screen match what the API will actually accept.
   const access = await getProjectAccess(project.id, session);
+  // Allocated PMs, delivery managers, leads, and admins get the admin view on this project;
+  // unallocated projects or regular members get the restricted delivery view without financials.
+  const isAdminView = session?.role === "admin" || access.isProjectManager || access.isProjectOwner;
+  const userRole = isAdminView ? "admin" : (session?.role === "client" ? "client" : "member");
   const permissions = {
     canReschedule: can(access, "plan.reschedule"),
     canCreatePlan: can(access, "plan.create"),

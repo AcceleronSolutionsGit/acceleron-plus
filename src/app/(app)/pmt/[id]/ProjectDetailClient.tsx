@@ -336,19 +336,21 @@ export function ProjectDetailClient({
             >
               Governance Center
             </Link>
-            <Link
-              href={`/pmt/${project.id}/edit`}
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-200 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-              Edit Project
-            </Link>
+            {(userRole === "admin" || permissions.canChangeProjectManager) && (
+              <Link
+                href={`/pmt/${project.id}/edit`}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-200 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Edit Project
+              </Link>
+            )}
 
             {/* Scrapping is destructive-adjacent, so it sits apart from
                 the rest and is styled as such. A member never sees it. */}
-            {(userRole === "admin" || userRole === "pm") && (
+            {(userRole === "admin" || permissions.canChangeProjectManager) && (
               <Button
                 data-guide="project:scrap"
                 variant="ghost"
@@ -459,7 +461,7 @@ export function ProjectDetailClient({
             { value: "execution", label: "2. Execution" },
             { value: "quality", label: "3. Quality & Risk" },
             { value: "governance", label: "4. Governance & Docs" },
-            { value: "financials", label: "5. Financials" }
+            ...(permissions.canViewFinancials ? [{ value: "financials", label: "5. Financials" }] : [])
           ]}
           value={activeGroup}
           onChange={setActiveGroup}

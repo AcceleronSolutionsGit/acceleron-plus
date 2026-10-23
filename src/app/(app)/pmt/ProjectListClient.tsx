@@ -401,6 +401,7 @@ export function ProjectListClient({
       <PmtHeaderTabs
         title="Projects"
         subtitle={`${projects.length} live project${projects.length === 1 ? "" : "s"} across ${stats.clients} client${stats.clients === 1 ? "" : "s"} — delivery, owners and timelines in one place.`}
+        userRole={userRole}
         action={
           <div className="flex items-center gap-2">
             {userRole === "admin" && (
@@ -414,13 +415,15 @@ export function ProjectListClient({
                 Scrapped
               </Link>
             )}
-            <Button data-guide="project:new" onClick={() => router.push('/pmt/new')}>
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-              New project
-              <kbd className="ml-1 hidden rounded border border-white/25 px-1 font-mono text-[10px] leading-4 text-white/70 sm:inline">N</kbd>
-            </Button>
+            {(userRole === "admin" || userRole === "pm") && (
+              <Button data-guide="project:new" onClick={() => router.push('/pmt/new')}>
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+                New project
+                <kbd className="ml-1 hidden rounded border border-white/25 px-1 font-mono text-[10px] leading-4 text-white/70 sm:inline">N</kbd>
+              </Button>
+            )}
           </div>
         }
       />

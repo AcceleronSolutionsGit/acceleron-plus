@@ -530,7 +530,14 @@ export function MyProjectsClient({ userName }: { userName: string }) {
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-semibold text-navy-900 leading-snug">{p.name}</h3>
+                  <h3 className="text-sm font-semibold text-navy-900 leading-snug">
+                    <a
+                      href={withBase(`/pmt/${p.code || p.id}`)}
+                      className="hover:text-blue-600 transition-colors"
+                    >
+                      {p.name}
+                    </a>
+                  </h3>
                   {(p.clientName || p.salesOrderRef) && (
                     <p className="text-[11px] text-navy-500 mt-0.5 truncate">
                       {[p.clientName, p.salesOrderRef && `SO ${p.salesOrderRef}`].filter(Boolean).join(" · ")}
@@ -574,7 +581,13 @@ export function MyProjectsClient({ userName }: { userName: string }) {
                   )}
                 </div>
 
-                <div className="px-5 py-3 border-t border-neutral-100 flex items-center gap-4">
+                <div className="px-5 py-3 border-t border-neutral-100 flex items-center gap-3">
+                  <a
+                    href={withBase(`/pmt/${p.code || p.id}`)}
+                    className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    View Project →
+                  </a>
                   {isAllocated ? (
                     <>
                       <a
@@ -599,7 +612,7 @@ export function MyProjectsClient({ userName }: { userName: string }) {
                   ) : (
                     <button
                       onClick={() => openForm(p, "add")}
-                      className="text-[12px] font-semibold text-navy-900 hover:text-navy-600 transition-colors cursor-pointer"
+                      className="ml-auto text-[12px] font-semibold text-navy-900 hover:text-navy-600 transition-colors cursor-pointer"
                     >
                       {removed ? "Add again →" : "Add now →"}
                     </button>

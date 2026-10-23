@@ -78,6 +78,8 @@ export function DashboardClient({
     variance: c.budget - c.actualCost,
   }));
 
+  const canSeeFinancials = (userRole === "admin" || costData.length > 0) && userRole !== "client";
+
   return (
     <div className="space-y-6">
       {/* PMT High-Level Tabs */}
@@ -100,30 +102,60 @@ export function DashboardClient({
             </svg>
           }
         />
-        <StatCard
-          label="Portfolio Budget"
-          value={formatCurrency(totalBudget)}
-          accentTop="#10b981"
-          hint={scopeNote}
-          icon={
-            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          }
-          tone="positive"
-        />
-        <StatCard
-          label="Burned Cost"
-          value={formatCurrency(totalBurned)}
-          accentTop={totalBurnedPercent > 85 ? "#ef4444" : "#f59e0b"}
-          hint={`${totalBurnedPercent.toFixed(1)}% of total budget`}
-          tone={totalBurnedPercent > 85 ? "critical" : totalBurnedPercent > 60 ? "warning" : "default"}
-          icon={
-            <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20V10M18 20V4M6 20v-4" />
-            </svg>
-          }
-        />
+        {canSeeFinancials ? (
+          <>
+            <StatCard
+              label="Portfolio Budget"
+              value={formatCurrency(totalBudget)}
+              accentTop="#10b981"
+              hint={scopeNote}
+              icon={
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              }
+              tone="positive"
+            />
+            <StatCard
+              label="Burned Cost"
+              value={formatCurrency(totalBurned)}
+              accentTop={totalBurnedPercent > 85 ? "#ef4444" : "#f59e0b"}
+              hint={`${totalBurnedPercent.toFixed(1)}% of total budget`}
+              tone={totalBurnedPercent > 85 ? "critical" : totalBurnedPercent > 60 ? "warning" : "default"}
+              icon={
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20V10M18 20V4M6 20v-4" />
+                </svg>
+              }
+            />
+          </>
+        ) : (
+          <>
+            <StatCard
+              label="Total Milestones"
+              value={milestones.length}
+              accentTop="#10b981"
+              hint={`${milestones.filter(m => m.status === 'completed').length} completed`}
+              tone="positive"
+              icon={
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+            />
+            <StatCard
+              label="Upcoming Milestones"
+              value={upcomingMilestones.length}
+              accentTop="#6366f1"
+              hint="Delivery targets in queue"
+              icon={
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+                </svg>
+              }
+            />
+          </>
+        )}
         <StatCard
           label="Overdue Milestones"
           value={overdueMilestones.length}

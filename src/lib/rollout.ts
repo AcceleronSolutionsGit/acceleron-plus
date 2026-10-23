@@ -27,7 +27,7 @@ export function isPhase1Restricted(role: AppRole | string | null | undefined): b
 /** Page prefixes a Phase 1 member is sent away from. Pages only — the
  *  Phase 1 screens themselves call /api/pmt/my-timesheet and
  *  /api/pmt/timesheets, so the API is left to its own capability checks. */
-export const PHASE2_PAGES = ["/pmt", "/itsm", "/my-tasks"];
+export const PHASE2_PAGES = ["/itsm", "/my-tasks"];
 
 /**
  * Screens under /admin that reporting managers use too. The APIs behind

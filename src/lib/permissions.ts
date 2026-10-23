@@ -195,15 +195,12 @@ const PROJECT: Record<ProjectRole, Capability[]> = {
   manager: GLOBAL.pm,
 
   lead: [
-    "project.view",
-    "plan.view", "plan.create", "plan.edit", "plan.delete", "plan.reschedule", "plan.updateProgress",
-    "risk.view", "risk.create", "risk.edit",
-    "governance.view",
-    "timesheet.logOwn", "timesheet.viewAll",
-    "document.view", "document.upload",
-    "team.view",
-    "ticket.view", "ticket.create",
-    "export.plan",
+    ...GLOBAL.pm,
+    "financials.view",
+    "invoice.view",
+    "invoice.manage",
+    "team.viewCost",
+    "export.financials",
   ],
 
   contributor: [
@@ -319,16 +316,29 @@ export function isFinancialCapability(capability: Capability): boolean {
  * project list and the portfolio dashboard.
  */
 export function canSeeProjectFinancials(
-  viewer: { role: AppRole; userId?: string | null } | null | undefined,
-  project: { id?: string; projectManagerUserId?: string | null } | null | undefined,
-  /** Projects where the viewer is PM on the team (see projectsManagedBy). */
+  viewer: { role: AppRole; additionalRoles?: AppRole[]; userId?: string | null } | null | undefined,
+  project: { id?: string; projectManagerUserId?: string | null; deliveryManagerUserId?: string | null } | null | undefined,
+  /** Projects where the viewer is PM or lead or delivery manager on the team (see projectsManagedBy). */
   managedProjectIds?: ReadonlySet<string>
 ): boolean {
   if (!viewer) return false;
-  if (viewer.role === "admin") return true;
-  if (viewer.role === "client") return false;
-  if (viewer.userId && project?.projectManagerUserId && project.projectManagerUserId === viewer.userId) {
-    return true;
+  const roles = [viewer.role, ...(viewer.additionalRoles || [])];
+  if (roles.includes("admin")) return true;
+  if (roles.includes("client")) return false;
+
+  if (viewer.userId) {
+    if (
+      project?.projectManagerUserId &&
+      (project.projectManagerUserId === viewer.userId || project.projectManagerUserId === `user:${viewer.userId}`)
+    ) {
+      return true;
+    }
+    if (
+      project?.deliveryManagerUserId &&
+      (project.deliveryManagerUserId === viewer.userId || project.deliveryManagerUserId === `user:${viewer.userId}`)
+    ) {
+      return true;
+    }
   }
   return Boolean(project?.id && managedProjectIds?.has(project.id));
 }

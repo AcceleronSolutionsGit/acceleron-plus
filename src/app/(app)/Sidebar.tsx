@@ -277,14 +277,12 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
       >
         {isClient ? (
           <>
-            <NavSection label="Your projects" isCollapsed={isCollapsed} badge={!isAdmin ? "Phase 2" : undefined} />
+            <NavSection label="Your projects" isCollapsed={isCollapsed} />
             <NavItem
               href="/portal"
               icon={<FolderIcon />}
               label="Projects"
               isCollapsed={isCollapsed}
-              comingSoon={!isAdmin}
-              onComingSoonClick={setComingSoonNotice}
             />
 
             <NavSection label="Support" isCollapsed={isCollapsed} badge={!isAdmin ? "Coming Soon" : undefined} />
@@ -330,23 +328,18 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavSection
               label="Project Management"
               isCollapsed={isCollapsed}
-              badge={phase1 ? "Phase 2" : undefined}
             />
             <NavItem
               href="/pmt"
               icon={<FolderIcon />}
               label="Projects"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
-              onComingSoonClick={setComingSoonNotice}
             />
             <NavItem
               href="/pmt/governance"
               icon={<ShieldIcon />}
               label="Governance"
               isCollapsed={isCollapsed}
-              comingSoon={phase1}
-              onComingSoonClick={setComingSoonNotice}
             />
 
             {/* Timesheet approval and allocation requests. The API scopes what
