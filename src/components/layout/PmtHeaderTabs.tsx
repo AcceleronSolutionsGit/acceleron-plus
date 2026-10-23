@@ -27,6 +27,9 @@ export function PmtHeaderTabs({ title, subtitle, action, userRole }: PmtHeaderTa
     if (tab.href === "/pmt/leads") {
       return userRole === "admin" || userRole === "sales";
     }
+    if (tab.href === "/admin/sales-orders") {
+      return userRole === "admin";
+    }
     return true;
   });
 

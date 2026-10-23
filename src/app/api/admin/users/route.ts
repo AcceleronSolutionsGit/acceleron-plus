@@ -176,8 +176,11 @@ export async function PATCH(req: Request) {
     const update: Record<string, unknown> = {};
 
     if (roleCode !== undefined || roleCodes !== undefined) {
-      const codesToApply = roleCodes ?? (roleCode ? [roleCode] : []);
-      const dbRoles = await identityDb("roles").whereIn("code", codesToApply);
+      const rawCodes = roleCodes ?? (roleCode ? [roleCode] : []);
+      const codesToApply = Array.from(new Set(rawCodes));
+      const dbRoles = codesToApply.length > 0 
+        ? await identityDb("roles").whereIn("code", codesToApply) 
+        : [];
       if (dbRoles.length !== codesToApply.length) {
         return NextResponse.json({ error: "One or more unknown roles." }, { status: 400 });
       }
@@ -201,12 +204,19 @@ export async function PATCH(req: Request) {
         }
       }
       if (dbRoles.length > 0) {
-        update.role_id = dbRoles[0].id; // Keep legacy column updated with the primary role
+        const primaryCode = codesToApply[0];
+        const primaryRole = dbRoles.find(r => r.code === primaryCode) || dbRoles[0];
+        update.role_id = primaryRole.id; // Keep legacy column updated with the primary role
+      } else {
+        update.role_id = null;
       }
 
       await identityDb("user_roles").where("user_id", userId).delete();
       if (dbRoles.length > 0) {
-        await identityDb("user_roles").insert(dbRoles.map(r => ({ user_id: userId, role_id: r.id })));
+        await identityDb("user_roles").insert(codesToApply.map(code => {
+          const matched = dbRoles.find(r => r.code === code)!;
+          return { user_id: userId, role_id: matched.id };
+        }));
       }
     }
 

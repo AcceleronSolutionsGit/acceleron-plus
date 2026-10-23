@@ -40,6 +40,10 @@ const ROLE_COLOR: Record<string, string> = {
   member: "bg-navy-500/10 text-navy-700",
   client: "bg-violet-500/10 text-violet-700",
   sales: "bg-fuchsia-500/10 text-fuchsia-700",
+  functional_consultant: "bg-amber-600/10 text-amber-700",
+  technical_consultant: "bg-cyan-600/10 text-cyan-700",
+  ticket_handler: "bg-emerald-600/10 text-emerald-700",
+  viewer: "bg-slate-500/10 text-slate-700",
 };
 
 const DEPT_BADGE_COLOR: Record<string, string> = {
@@ -55,12 +59,16 @@ const DEPT_BADGE_COLOR: Record<string, string> = {
 };
 
 const WHAT_THEY_CAN_DO: Record<string, string[]> = {
-  admin: ["Everything below, plus:", "Employee master and company masters", "Assign roles to anyone", "Run the Darwinbox sync", "Delete projects and stage-gate records"],
+  admin: ["Full system access across all modules", "Employee master and company masters", "Assign and manage roles for anyone", "Run the Darwinbox sync", "Delete projects and stage-gate records"],
   project_manager: ["Create and run projects", "Build and edit plans, WBS and the Gantt", "Approve timesheets, manage invoices", "See financials and cost", "Record stage-gate reviews"],
   agent: ["Work ITSM tickets", "See projects they are on", "Log their own time"],
   member: ["See projects they are on", "Update progress on their own work", "Log their own time", "Raise risks and tickets", "No commercial visibility"],
   client: ["Read the plan and shared documents", "See invoices raised to them", "Raise tickets", "Change nothing"],
   sales: ["Access leads and solutioning", "Full access to ITSM", "View projects and financials"],
+  functional_consultant: ["Manage functional specifications", "Execute and support project deliverables", "Log time and track tasks"],
+  technical_consultant: ["Manage technical implementation & configurations", "Execute and support project deliverables", "Log time and track tasks"],
+  ticket_handler: ["Manage, assign and resolve ITSM support tickets", "Update ticket statuses and assignments"],
+  viewer: ["Read-only view across permitted modules", "Cannot edit projects, financials, or settings"],
 };
 
 function relative(iso: string | null): string {
@@ -84,7 +92,11 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ user: ManagedUser; roleCodes: string[] } | null>(null);
+  const [managingUser, setManagingUser] = useState<{
+    user: ManagedUser;
+    selectedCodes: string[];
+  } | null>(null);
+  const [modalError, setModalError] = useState("");
   const [showMatrix, setShowMatrix] = useState(false);
 
   // Modals for Create
@@ -136,44 +148,67 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
     return map;
   }, [users]);
 
-  const applyRoles = async (user: ManagedUser, roleCodes: string[]) => {
-    setBusyId(user.id); setError(""); setNotice("");
-    try {
-      const res = await fetch("/api/admin/users", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, roleCodes }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setError(data.error || "Could not change roles."); return; }
-      setNotice(data.message || "Roles updated.");
-      setUsers((prev) => prev.map((u) => u.id === user.id ? { 
-        ...u, 
-        roleCodes, 
-        roleCode: roleCodes[0] || null,
-        roleName: roles.find((r) => r.code === roleCodes[0])?.name ?? roleCodes[0] ?? null,
-        roleNames: roleCodes.map(rc => roles.find((r) => r.code === rc)?.name ?? rc)
-      } : u));
-    } catch { setError("Could not reach the server."); } 
-    finally { setBusyId(null); setConfirming(null); }
+  const openManageRoles = (user: ManagedUser) => {
+    setModalError("");
+    setManagingUser({
+      user,
+      selectedCodes: [...(user.roleCodes || [])],
+    });
   };
 
-  const requestRoleChange = (user: ManagedUser, roleCode: string, add: boolean) => {
-    let newRoles = [...(user.roleCodes || [])];
-    if (add) {
-      if (!newRoles.includes(roleCode)) newRoles.push(roleCode);
-    } else {
-      newRoles = newRoles.filter(r => r !== roleCode);
+  const toggleRoleCode = (code: string) => {
+    if (!managingUser) return;
+    setManagingUser((prev) => {
+      if (!prev) return null;
+      const exists = prev.selectedCodes.includes(code);
+      const nextCodes = exists
+        ? prev.selectedCodes.filter((c) => c !== code)
+        : [...prev.selectedCodes, code];
+      return { ...prev, selectedCodes: nextCodes };
+    });
+  };
+
+  const saveRoles = async () => {
+    if (!managingUser) return;
+    setBusyId(managingUser.user.id);
+    setModalError("");
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: managingUser.user.id,
+          roleCodes: managingUser.selectedCodes,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setModalError(data.error || "Could not change roles.");
+        return;
+      }
+      setNotice(data.message || `Roles updated for ${managingUser.user.fullName}.`);
+      const newCodes = managingUser.selectedCodes;
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === managingUser.user.id
+            ? {
+                ...u,
+                roleCodes: newCodes,
+                roleCode: newCodes[0] || null,
+                roleName: roles.find((r) => r.code === newCodes[0])?.name ?? newCodes[0] ?? null,
+                roleNames: newCodes.map((rc) => roles.find((r) => r.code === rc)?.name ?? rc),
+              }
+            : u
+        )
+      );
+      setManagingUser(null);
+    } catch {
+      setModalError("Could not reach the server.");
+    } finally {
+      setBusyId(null);
     }
-    
-    if (newRoles.includes("admin") && !(user.roleCodes||[]).includes("admin")) {
-      setConfirming({ user, roleCodes: newRoles });
-      return;
-    }
-    if (!(newRoles.includes("admin")) && (user.roleCodes||[]).includes("admin") && user.id === currentUserId) {
-      setConfirming({ user, roleCodes: newRoles });
-      return;
-    }
-    applyRoles(user, newRoles);
   };
 
   const toggleActive = async (user: ManagedUser) => {
@@ -291,18 +326,14 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
                    )) : <ColorBadge colorClass="bg-navy-500/10 text-navy-700">No role</ColorBadge>}
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="relative group">
-                        <Button variant="secondary" size="sm" disabled={busyId === user.id}>Manage Roles</Button>
-                        <div className="absolute right-0 mt-2 w-56 bg-white border border-neutral-200 rounded-md shadow-lg z-10 hidden group-hover:block p-2">
-                           <div className="text-xs font-semibold text-neutral-500 mb-2">Assign Roles</div>
-                           {roles.map(r => (
-                               <label key={r.code} className="flex items-center gap-2 text-sm p-1 hover:bg-neutral-50 rounded cursor-pointer">
-                                   <input type="checkbox" checked={(user.roleCodes || []).includes(r.code)} onChange={(e) => requestRoleChange(user, r.code, e.target.checked)} />
-                                   {r.name}
-                               </label>
-                           ))}
-                        </div>
-                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openManageRoles(user)}
+                      disabled={busyId === user.id}
+                    >
+                      Manage Roles
+                    </Button>
                   <button onClick={() => toggleActive(user)} disabled={busyId === user.id || user.id === currentUserId} className="px-2.5 py-1 text-xs font-medium rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                     {user.isActive ? "Deactivate" : "Reactivate"}
                   </button>
@@ -319,10 +350,145 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
         </div>
       </Card>
 
-      <Modal isOpen={confirming !== null} onClose={() => setConfirming(null)} title="Grant administrator access?" footer={<><Button variant="secondary" onClick={() => setConfirming(null)}>Cancel</Button><Button variant="primary" onClick={() => confirming && applyRoles(confirming.user, confirming.roleCodes)} disabled={busyId !== null}>{busyId ? "Saving..." : "Confirm"}</Button></>}>
-        {confirming && (
-          <div className="space-y-3">
-            <p className="text-sm text-navy-700"><span className="font-semibold">{confirming.user.fullName}</span> roles will be updated.</p>
+      <Modal
+        isOpen={managingUser !== null}
+        onClose={() => {
+          if (busyId === null) setManagingUser(null);
+        }}
+        title="Manage User Roles"
+        size="lg"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs text-navy-500">
+              {!managingUser?.selectedCodes.length
+                ? "No roles selected (default access)"
+                : `${managingUser.selectedCodes.length} role${managingUser.selectedCodes.length === 1 ? "" : "s"} selected`}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setManagingUser(null)}
+                disabled={busyId !== null}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={saveRoles}
+                disabled={busyId !== null}
+              >
+                {busyId === managingUser?.user.id ? "Saving..." : "Save Roles"}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        {managingUser && (
+          <div className="space-y-4">
+            {/* User profile card */}
+            <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-200/70">
+              <Avatar name={managingUser.user.fullName} size="md" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-navy-900 truncate">
+                    {managingUser.user.fullName}
+                  </span>
+                  {managingUser.user.id === currentUserId && (
+                    <ColorBadge colorClass="bg-navy-900/10 text-navy-900">You</ColorBadge>
+                  )}
+                  {!managingUser.user.isActive && (
+                    <ColorBadge colorClass="bg-red-600/10 text-red-700">Deactivated</ColorBadge>
+                  )}
+                  {managingUser.user.department && (
+                    <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${DEPT_BADGE_COLOR[managingUser.user.department] ?? "bg-neutral-100 text-navy-600"}`}>
+                      {managingUser.user.department}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-navy-500 truncate">{managingUser.user.email}</p>
+                {managingUser.user.designation && (
+                  <p className="text-[11px] text-navy-500/80 truncate mt-0.5">{managingUser.user.designation}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Error inside modal */}
+            {modalError && (
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200 flex items-start gap-2">
+                <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {/* Security Notice: Granting Admin */}
+            {managingUser.selectedCodes.includes("admin") && !(managingUser.user.roleCodes || []).includes("admin") && (
+              <div className="p-3 bg-amber-50 text-amber-800 text-xs rounded-lg border border-amber-200/80 flex items-start gap-2">
+                <svg className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <span className="font-semibold">Security Notice: </span>
+                  Granting Administrator gives unrestricted access to employee records, system masters, user role assignments, and Darwinbox synchronization.
+                </div>
+              </div>
+            )}
+
+            {/* Warning: Revoking Admin from Self */}
+            {managingUser.user.id === currentUserId &&
+              (managingUser.user.roleCodes || []).includes("admin") &&
+              !managingUser.selectedCodes.includes("admin") && (
+              <div className="p-3 bg-red-50 text-red-800 text-xs rounded-lg border border-red-200 flex items-start gap-2">
+                <svg className="w-4 h-4 text-red-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <span className="font-semibold">Warning: </span>
+                  You are removing the Administrator role from yourself. Once saved, you will immediately lose access to this admin section.
+                </div>
+              </div>
+            )}
+
+            <div className="text-xs font-semibold uppercase tracking-wider text-navy-400 pt-1">
+              Select System Roles
+            </div>
+
+            {/* Role List */}
+            <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+              {roles.map((r) => {
+                const isChecked = managingUser.selectedCodes.includes(r.code);
+                const descLines = WHAT_THEY_CAN_DO[r.code] ?? (r.description ? [r.description] : []);
+                return (
+                  <div
+                    key={r.code}
+                    onClick={() => toggleRoleCode(r.code)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                      isChecked
+                        ? "bg-navy-50/60 border-navy-300 ring-1 ring-navy-300/50 shadow-xs"
+                        : "bg-white border-neutral-200 hover:bg-neutral-50 hover:border-neutral-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}} // Controlled by outer card onClick
+                      className="mt-1 h-4 w-4 rounded border-neutral-300 text-navy-900 focus:ring-navy-600 pointer-events-none"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-navy-900">{r.name}</span>
+                        <ColorBadge colorClass={ROLE_COLOR[r.code] ?? "bg-neutral-100 text-navy-700"}>
+                          {r.code}
+                        </ColorBadge>
+                      </div>
+                      <p className="text-xs text-navy-500 mt-1 leading-relaxed">
+                        {descLines.join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </Modal>
