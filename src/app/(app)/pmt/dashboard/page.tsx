@@ -23,7 +23,11 @@ export default async function PMTDashboardPage() {
   // Money is per project: the named PM sees their own projects' budget
   // and burn, an admin sees all of them, everyone else sees none. The
   // budget is stripped from what reaches the browser, not just hidden.
-  const managed = await projectsManagedBy(session?.userId);
+  const isDmOrPm =
+    session?.role === "pm" ||
+    session?.roleCode === "delivery_manager" ||
+    Boolean(session?.additionalRoleCodes?.some((c: string) => /delivery.?manager/i.test(c)));
+  const managed = await projectsManagedBy(session?.userId, isDmOrPm);
   const financeIds = new Set(
     allProjects.filter((p) => canSeeProjectFinancials(viewer, p, managed)).map((p) => p.id)
   );

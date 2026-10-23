@@ -15,7 +15,11 @@ export async function GET() {
     // Budgets only on the projects this person manages (all of them for
     // an admin). The key is removed rather than blanked.
     const viewer = { role: auth.session.role, userId: auth.session.userId };
-    const managed = await projectsManagedBy(auth.session.userId);
+    const isDmOrPm =
+      auth.session.role === "pm" ||
+      auth.session.roleCode === "delivery_manager" ||
+      Boolean(auth.session.additionalRoleCodes?.some((c: string) => /delivery.?manager/i.test(c)));
+    const managed = await projectsManagedBy(auth.session.userId, isDmOrPm);
     const visible = projects.map((project) =>
       canSeeProjectFinancials(viewer, project, managed) ? project : redactProjectFinancials(project)
     );

@@ -381,11 +381,23 @@ export async function getProjectAccess(
  */
 export async function projectsManagedBy(
   userId: string | null | undefined,
-  isDeliveryManager?: boolean
+  isDmOrPm?: boolean
 ): Promise<Set<string>> {
   const ids = new Set<string>();
   if (!userId) return ids;
   try {
+    let checkDmOrPm = isDmOrPm;
+    if (checkDmOrPm === undefined) {
+      const user = await identityDb("users as u")
+        .leftJoin("roles as r", "r.id", "u.role_id")
+        .where("u.id", userId)
+        .select("r.code as role_code")
+        .first<{ role_code: string | null } | undefined>()
+        .catch(() => undefined);
+      const code = user?.role_code?.toLowerCase() || "";
+      checkDmOrPm = code === "pm" || code === "project_manager" || code === "delivery_manager";
+    }
+
     const [namedPm, namedDm, team] = await Promise.all([
       projectDb("projects")
         .where((qb) => {
@@ -408,7 +420,7 @@ export async function projectsManagedBy(
     for (const id of namedDm as string[]) ids.add(String(id));
     for (const row of team as { project_id: string; role_in_project: string | null }[]) {
       const pRole = normaliseProjectRole(row.role_in_project);
-      if (pRole === "manager" || pRole === "lead" || isDeliveryManager) {
+      if (pRole === "manager" || pRole === "lead" || checkDmOrPm) {
         ids.add(String(row.project_id));
       }
     }
