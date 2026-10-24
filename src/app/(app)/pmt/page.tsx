@@ -1,6 +1,6 @@
 import React from "react";
 import { getProjects } from "@/lib/api";
-import { getSession, projectsManagedBy } from "@/lib/auth";
+import { getSession, projectsManagedBy, projectsAllocatedTo } from "@/lib/auth";
 import { canSeeProjectFinancials, redactProjectFinancials } from "@/lib/permissions";
 import { ProjectListClient } from "./ProjectListClient";
 
@@ -12,10 +12,15 @@ export default async function PMTProjectsPage() {
     session?.role === "pm" ||
     session?.roleCode === "delivery_manager" ||
     Boolean(session?.additionalRoleCodes?.some((c) => /delivery.?manager/i.test(c)));
-  const managed = await projectsManagedBy(session?.userId, isDmOrPm);
+  const [managed, allocated] = await Promise.all([
+    projectsManagedBy(session?.userId, isDmOrPm),
+    projectsAllocatedTo(session?.userId),
+  ]);
 
-  // Non-admins (PM, DM, members) only see projects they are allocated to
-  const targetProjects = isAdmin ? projects : projects.filter((p) => managed.has(p.id));
+  // Non-admins (PM, DM, members, external users) see projects they manage OR are allocated to
+  const targetProjects = isAdmin
+    ? projects
+    : projects.filter((p) => managed.has(p.id) || allocated.has(p.id));
 
   const visible = targetProjects.map((p) =>
     canSeeProjectFinancials(viewer, p, managed) ? p : redactProjectFinancials(p)

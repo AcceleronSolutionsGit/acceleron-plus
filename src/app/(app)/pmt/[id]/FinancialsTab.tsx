@@ -110,9 +110,11 @@ interface CostSummaryData {
 export function FinancialsTab({
   projectId,
   canManageBilling,
+  currency = "INR",
 }: {
   projectId: string;
   canManageBilling: boolean;
+  currency?: string;
 }) {
   const [data, setData] = useState<CostSummaryData | null>(null);
   const [loading, setLoading] = useState(true);

@@ -22,6 +22,43 @@ import { toDateInput, parseISODate } from "./dates";
 /** Hours in a working day — the divisor turning logged hours into days. */
 export const HOURS_PER_DAY = 8;
 
+export interface AllocationPeriod {
+  id?: string;
+  startDate: string;
+  endDate: string;
+  allocationPercent: number;
+}
+
+export function parseAllocationPeriods(val: unknown): AllocationPeriod[] | null {
+  if (!val) return null;
+  let parsed = val;
+  if (typeof val === "string") {
+    try {
+      parsed = JSON.parse(val);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+  const list: AllocationPeriod[] = [];
+  for (const item of parsed) {
+    if (item && typeof item === "object") {
+      const s = toDateInput(item.startDate) || (typeof item.startDate === "string" ? item.startDate : null);
+      const e = toDateInput(item.endDate) || (typeof item.endDate === "string" ? item.endDate : null);
+      const pct = Math.min(100, Math.max(1, Number(item.allocationPercent) || 100));
+      if (s && e) {
+        list.push({
+          id: item.id ? String(item.id) : undefined,
+          startDate: s,
+          endDate: e,
+          allocationPercent: pct,
+        });
+      }
+    }
+  }
+  return list.length > 0 ? list : null;
+}
+
 export interface RateBand {
   id: string;
   bandName: string;
@@ -54,6 +91,7 @@ export interface TeamMember {
   allocationPercent: number;
   startDate: string | null;
   endDate: string | null;
+  allocationPeriods?: AllocationPeriod[] | null;
   isActive: boolean;
   notes: string | null;
   rateBandId: string | null;
@@ -126,16 +164,28 @@ export function plannedCostFor(input: {
   dailyBillableRateInr?: number | null | undefined;
   /** Override the calendar calculation when somebody has typed a figure. */
   plannedDays?: number | null;
+  /** Multi-period allocation breakdown if allocation % changes over time */
+  allocationPeriods?: AllocationPeriod[] | null;
 }): PlannedCost {
   const allocation = Math.min(100, Math.max(0, Number(input.allocationPercent ?? 100)));
-  const calendarDays = workingDaysBetween(input.startDate, input.endDate);
-  const days =
-    input.plannedDays !== undefined && input.plannedDays !== null
-      ? Number(input.plannedDays)
-      : round2((calendarDays * allocation) / 100);
-
   const cost = Number(input.dailyCostInr ?? 0);
   const billable = Number(input.dailyBillableRateInr ?? 0);
+
+  let days = 0;
+  if (input.plannedDays !== undefined && input.plannedDays !== null) {
+    days = Number(input.plannedDays);
+  } else if (input.allocationPeriods && Array.isArray(input.allocationPeriods) && input.allocationPeriods.length > 0) {
+    let periodDays = 0;
+    for (const p of input.allocationPeriods) {
+      const pAlloc = Math.min(100, Math.max(0, Number(p.allocationPercent ?? 100)));
+      const pWorkDays = workingDaysBetween(p.startDate, p.endDate);
+      periodDays += (pWorkDays * pAlloc) / 100;
+    }
+    days = round2(periodDays);
+  } else {
+    const calendarDays = workingDaysBetween(input.startDate, input.endDate);
+    days = round2((calendarDays * allocation) / 100);
+  }
 
   return {
     plannedDays: days,
@@ -228,15 +278,31 @@ export async function getProjectTeam(
   if (rows.length === 0) return [];
 
   const employeeIds = rows.map((r) => String(r.employee_id ?? "")).filter(Boolean);
-  const [skills, directory, hours] = await Promise.all([
+  const userIds = rows.map((r) => String(r.user_id ?? "")).filter(Boolean);
+  const [skills, directory, userDir, hours, bands, projectRow] = await Promise.all([
     skillsForEmployees(employeeIds),
     employeeDirectory(employeeIds),
+    usersDirectory(userIds),
     options.includeCost ? loggedHoursByUser(projectId) : Promise.resolve(new Map<string, number>()),
+    options.includeCost ? listRateBands() : Promise.resolve([]),
+    projectDb("projects")
+      .where("id", projectId)
+      .select("start_date", "planned_end_date", "actual_end_date")
+      .first<Record<string, unknown> | undefined>()
+      .catch(() => undefined),
   ]);
+
+  const projectStart = projectRow?.start_date ? toDateInput(projectRow.start_date as string) : null;
+  const projectEnd = projectRow?.planned_end_date
+    ? toDateInput(projectRow.planned_end_date as string)
+    : projectRow?.actual_end_date
+    ? toDateInput(projectRow.actual_end_date as string)
+    : null;
 
   return rows.map((row) => {
     const employeeId = row.employee_id ? String(row.employee_id) : null;
     const profile = employeeId ? directory.get(employeeId) : undefined;
+    const uProfile = row.user_id ? userDir.get(String(row.user_id)) : undefined;
 
     const memberType = (String(row.member_type ?? "employee")) as MemberType;
     const customDailyCost =
@@ -244,19 +310,23 @@ export async function getProjectTeam(
         ? null
         : Number(row.custom_daily_cost_inr);
 
+    const rowStart = toDateInput(row.start_date as string) || projectStart || null;
+    const rowEnd = toDateInput(row.end_date as string) || projectEnd || null;
+
     const member: TeamMember = {
       id: String(row.id),
       projectId: String(row.project_id),
       userId: String(row.user_id),
       employeeId,
-      userName: row.user_name ? String(row.user_name) : (profile?.fullName ?? null),
-      email: profile?.email ?? null,
-      designation: profile?.designation ?? null,
-      department: profile?.department ?? null,
+      userName: row.user_name ? String(row.user_name) : (profile?.fullName ?? uProfile?.fullName ?? null),
+      email: profile?.email ?? uProfile?.email ?? null,
+      designation: profile?.designation ?? (row.role_in_project ? String(row.role_in_project) : "Team Member"),
+      department: profile?.department ?? uProfile?.department ?? "Delivery",
       roleInProject: row.role_in_project ? String(row.role_in_project) : null,
       allocationPercent: Number(row.allocation_percent ?? 100),
-      startDate: toDateInput(row.start_date as string) || null,
-      endDate: toDateInput(row.end_date as string) || null,
+      startDate: rowStart,
+      endDate: rowEnd,
+      allocationPeriods: parseAllocationPeriods(row.allocation_periods),
       isActive: row.is_active !== false,
       notes: row.notes ? String(row.notes) : null,
       rateBandId: row.rate_band_id ? String(row.rate_band_id) : null,
@@ -268,15 +338,58 @@ export async function getProjectTeam(
 
     if (options.includeCost) {
       // For consultants, custom daily cost overrides the band rate.
-      const bandDailyCost =
+      const matchedBand = bands.find((b) => b.id === row.rate_band_id || b.bandName === row.rate_band_name);
+      let bandDailyCost =
         row.daily_cost_inr === null || row.daily_cost_inr === undefined
           ? null
           : Number(row.daily_cost_inr);
+      if ((bandDailyCost === null || bandDailyCost === 0) && matchedBand) {
+        bandDailyCost = matchedBand.dailyCostInr;
+      }
       const dailyCost = customDailyCost !== null ? customDailyCost : bandDailyCost;
+
+      const billableRate =
+        row.daily_billable_rate_inr !== null && row.daily_billable_rate_inr !== undefined
+          ? Number(row.daily_billable_rate_inr)
+          : (matchedBand?.dailyBillableRateInr ?? null);
+
+      const allocation = Number(row.allocation_percent ?? 100);
+      const parsedPeriods = parseAllocationPeriods(row.allocation_periods);
+
+      // Only treat planned_days as an override if it is positive (> 0).
+      // Stored 0.00 is a symptom of missing end dates and should be recalculated.
+      const explicitPlannedDays =
+        row.planned_days !== null && row.planned_days !== undefined && Number(row.planned_days) > 0
+          ? Number(row.planned_days)
+          : null;
+
+      // If both member and project have no end date, calculate based on default 3 months from start date
+      let calcEnd = rowEnd;
+      if (!calcEnd && rowStart) {
+        const d = new Date(rowStart);
+        d.setMonth(d.getMonth() + 3);
+        calcEnd = toDateInput(d);
+      }
+
+      const planned = plannedCostFor({
+        startDate: rowStart,
+        endDate: calcEnd,
+        allocationPercent: allocation,
+        dailyCostInr: dailyCost,
+        dailyBillableRateInr: billableRate,
+        plannedDays: explicitPlannedDays,
+        allocationPeriods: parsedPeriods,
+      });
+
+      const effectivePlannedDays = explicitPlannedDays !== null ? explicitPlannedDays : planned.plannedDays;
       const plannedCost =
-        row.planned_cost_inr === null || row.planned_cost_inr === undefined
-          ? null
-          : Number(row.planned_cost_inr);
+        row.planned_cost_inr !== null && Number(row.planned_cost_inr) > 0
+          ? Number(row.planned_cost_inr)
+          : planned.plannedCostInr;
+      const plannedBillable =
+        row.planned_billable_inr !== null && Number(row.planned_billable_inr) > 0
+          ? Number(row.planned_billable_inr)
+          : planned.plannedBillableInr;
 
       const actualHours = hours.get(String(row.user_id)) ?? 0;
       const actualDays = round2(actualHours / HOURS_PER_DAY);
@@ -284,19 +397,10 @@ export async function getProjectTeam(
 
       member.cost = {
         dailyCostInr: dailyCost,
-        dailyBillableRateInr:
-          row.daily_billable_rate_inr === null || row.daily_billable_rate_inr === undefined
-            ? null
-            : Number(row.daily_billable_rate_inr),
-        plannedDays:
-          row.planned_days === null || row.planned_days === undefined
-            ? null
-            : Number(row.planned_days),
+        dailyBillableRateInr: billableRate,
+        plannedDays: effectivePlannedDays,
         plannedCostInr: plannedCost,
-        plannedBillableInr:
-          row.planned_billable_inr === null || row.planned_billable_inr === undefined
-            ? null
-            : Number(row.planned_billable_inr),
+        plannedBillableInr: plannedBillable,
         actualHours,
         actualDays,
         actualCostInr: actualCost,
@@ -316,6 +420,27 @@ interface DirectoryEntry {
   email: string | null;
   designation: string | null;
   department: string | null;
+}
+
+async function usersDirectory(userIds: string[]): Promise<Map<string, DirectoryEntry>> {
+  const map = new Map<string, DirectoryEntry>();
+  const ids = userIds.filter(Boolean);
+  if (ids.length === 0) return map;
+
+  const rows = await identityDb("users")
+    .whereIn("id", ids)
+    .select("id", "full_name", "email", "mobile_phone")
+    .catch(() => []);
+
+  for (const row of rows as Record<string, unknown>[]) {
+    map.set(String(row.id), {
+      fullName: row.full_name ? String(row.full_name) : null,
+      email: row.email ? String(row.email) : null,
+      designation: "Consultant / External",
+      department: "Delivery",
+    });
+  }
+  return map;
 }
 
 async function employeeDirectory(employeeIds: string[]): Promise<Map<string, DirectoryEntry>> {
@@ -409,6 +534,7 @@ export interface Commitment {
   allocationPercent: number;
   startDate: string | null;
   endDate: string | null;
+  allocationPeriods?: AllocationPeriod[] | null;
 }
 
 export interface AllocationPicture {
@@ -441,7 +567,7 @@ function rangesOverlap(
 /**
  * What else these people are committed to over the given window.
  *
- * Keyed by employee_id. Assignments on `excludeProjectId` are left out
+ * Keyed by employee_id AND user_id. Assignments on `excludeProjectId` are left out
  * so a project does not count itself, and `excludeMemberId` drops the
  * row being edited so changing an allocation is not compared against
  * its own old value.
@@ -461,7 +587,9 @@ export async function commitmentsFor(
 
   let query = projectDb("project_team_members as ptm")
     .join("projects as p", "p.id", "ptm.project_id")
-    .whereIn("ptm.employee_id", ids)
+    .where(function () {
+      this.whereIn("ptm.employee_id", ids).orWhereIn("ptm.user_id", ids);
+    })
     .andWhere("ptm.is_active", true)
     // A closed, cancelled or scrapped project is not a claim on
     // anybody's time. This has to agree with the allocation report, or
@@ -472,9 +600,11 @@ export async function commitmentsFor(
     .select(
       "ptm.id",
       "ptm.employee_id",
+      "ptm.user_id",
       "ptm.project_id",
       "ptm.role_in_project",
       "ptm.allocation_percent",
+      "ptm.allocation_periods",
       "ptm.start_date",
       "ptm.end_date",
       "p.code",
@@ -494,9 +624,8 @@ export async function commitmentsFor(
     const end = toDateInput(row.end_date as string) || null;
     if (!rangesOverlap(from, to, start, end)) continue;
 
-    const employeeId = String(row.employee_id);
-    if (!map.has(employeeId)) map.set(employeeId, []);
-    map.get(employeeId)!.push({
+    const periods = parseAllocationPeriods(row.allocation_periods);
+    const item: Commitment = {
       memberId: String(row.id),
       projectId: String(row.project_id),
       projectCode: String(row.code ?? ""),
@@ -505,7 +634,20 @@ export async function commitmentsFor(
       allocationPercent: Number(row.allocation_percent ?? 100),
       startDate: start,
       endDate: end,
-    });
+      allocationPeriods: periods,
+    };
+
+    const empId = row.employee_id ? String(row.employee_id) : null;
+    const uId = row.user_id ? String(row.user_id) : null;
+
+    if (empId) {
+      if (!map.has(empId)) map.set(empId, []);
+      map.get(empId)!.push(item);
+    }
+    if (uId && uId !== empId) {
+      if (!map.has(uId)) map.set(uId, []);
+      map.get(uId)!.push(item);
+    }
   }
 
   return map;

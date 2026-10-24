@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { DarwinboxAutosync } from "./DarwinboxAutosync";
+import { ProjectRolesTab } from "./ProjectRolesTab";
 
 interface Employee {
   employee_id: string;
@@ -122,7 +123,7 @@ interface AdminMastersClientProps {
 
 export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"employees" | "rates" | "companies">("employees");
+  const [activeTab, setActiveTab] = useState<"employees" | "rates" | "companies" | "project-roles">("employees");
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -767,6 +768,21 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
               {companies.length}
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveTab("project-roles")}
+            className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === "project-roles"
+                ? "border-navy-900 text-navy-900"
+                : "border-transparent text-navy-500 hover:text-navy-700"
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
+              <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
+            </svg>
+            <span>Custom Project Roles</span>
+          </button>
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
@@ -1307,6 +1323,11 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
             </div>
           </div>
         )}
+
+        {/* ════════════════════════════════════════════════════════════════
+            TAB 4: CUSTOM PROJECT ROLES MASTER
+            ════════════════════════════════════════════════════════════════ */}
+        {activeTab === "project-roles" && <ProjectRolesTab />}
       </div>
 
       {/* ════════════════════════════════════════════════════════════════

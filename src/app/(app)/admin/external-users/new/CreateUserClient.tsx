@@ -20,6 +20,9 @@ interface ProjectOption {
   name: string;
   category?: string | null;
   projectType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  currency?: string | null;
 }
 
 export function CreateUserClient() {
@@ -56,7 +59,12 @@ export function CreateUserClient() {
         if (data?.roles) setRoles(data.roles);
         if (data?.projects) {
           setProjects(data.projects);
-          if (data.projects.length > 0) setProjectId(data.projects[0].id);
+          if (data.projects.length > 0) {
+            const firstP = data.projects[0];
+            setProjectId(firstP.id);
+            if (firstP.startDate) setStartDate(firstP.startDate);
+            if (firstP.endDate) setEndDate(firstP.endDate);
+          }
         }
       })
       .catch(() => null)
@@ -314,7 +322,15 @@ export function CreateUserClient() {
                 </label>
                 <select
                   value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
+                  onChange={(e) => {
+                    const pId = e.target.value;
+                    setProjectId(pId);
+                    const p = projects.find((proj) => proj.id === pId);
+                    if (p) {
+                      if (p.startDate) setStartDate(p.startDate);
+                      if (p.endDate) setEndDate(p.endDate);
+                    }
+                  }}
                   required={allocateNow}
                   className="w-full h-10 rounded-lg border border-navy-900/15 bg-surface px-3 text-sm text-navy-900 focus:border-navy-700 focus:outline-none"
                 >

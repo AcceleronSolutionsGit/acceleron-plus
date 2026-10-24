@@ -58,7 +58,7 @@ export async function GET(req: Request) {
         .join("roles", "roles.id", "user_roles.role_id")
         .select("user_roles.user_id", "roles.code", "roles.name"),
       projectDb("projects")
-        .select("id", "code", "name", "status", "category", "project_type")
+        .select("id", "code", "name", "status", "category", "project_type", "start_date", "planned_end_date", "actual_end_date", "currency")
         .whereNotIn("status", ["cancelled", "scrapped"])
         .orderBy("name", "asc"),
     ]);
@@ -166,6 +166,9 @@ export async function GET(req: Request) {
         status: p.status,
         category: p.category,
         projectType: p.project_type,
+        startDate: p.start_date ? String(p.start_date).slice(0, 10) : null,
+        endDate: p.planned_end_date ? String(p.planned_end_date).slice(0, 10) : (p.actual_end_date ? String(p.actual_end_date).slice(0, 10) : null),
+        currency: p.currency || "INR",
       })),
     });
   } catch (err) {

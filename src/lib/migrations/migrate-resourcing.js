@@ -158,6 +158,9 @@ async function run() {
     t.decimal("planned_billable_inr", 14, 2)
   );
   await ensureColumn(projectDb, "project_team_members", "notes", (t) => t.text("notes"));
+  await ensureColumn(projectDb, "project_team_members", "allocation_periods", (t) =>
+    t.jsonb("allocation_periods")
+  );
 
   // Looking up "who is on this project" happens on every page load.
   const hasIndex = await projectDb.raw(

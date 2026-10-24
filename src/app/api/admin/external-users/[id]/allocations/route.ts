@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { identityDb, projectDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { readJson } from "@/lib/route-helpers";
+import { plannedCostFor } from "@/lib/staffing";
+import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
 
@@ -46,9 +48,6 @@ export async function POST(
     body.allocationPercent !== undefined && body.allocationPercent !== ""
       ? Math.min(100, Math.max(1, Number(body.allocationPercent)))
       : 100;
-  const startDate = body.startDate || new Date().toISOString().split("T")[0];
-  const endDate = body.endDate || null;
-  const notes = body.notes?.trim() || null;
 
   if (!projectId) {
     return NextResponse.json({ error: "Project is required." }, { status: 400 });
@@ -67,6 +66,14 @@ export async function POST(
       return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
 
+    const startDate =
+      toDateInput(body.startDate) ||
+      (project.start_date ? toDateInput(project.start_date) : new Date().toISOString().split("T")[0]);
+    const endDate =
+      toDateInput(body.endDate) ||
+      (project.planned_end_date ? toDateInput(project.planned_end_date) : (project.actual_end_date ? toDateInput(project.actual_end_date) : null));
+    const notes = body.notes?.trim() || null;
+
     // Check if already actively allocated to this project
     const existing = await projectDb("project_team_members")
       .where("project_id", projectId)
@@ -81,6 +88,13 @@ export async function POST(
       );
     }
 
+    const planned = plannedCostFor({
+      startDate,
+      endDate,
+      allocationPercent,
+      dailyCostInr: customDailyCostInr,
+    });
+
     const [allocation] = await projectDb("project_team_members")
       .insert({
         project_id: projectId,
@@ -93,6 +107,9 @@ export async function POST(
         allocation_percent: allocationPercent,
         start_date: startDate,
         end_date: endDate,
+        planned_days: planned.plannedDays,
+        planned_cost_inr: planned.plannedCostInr,
+        planned_billable_inr: planned.plannedBillableInr,
         notes: notes,
         is_active: true,
         created_at: new Date(),

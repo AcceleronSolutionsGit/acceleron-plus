@@ -11,7 +11,7 @@ import {
 } from "@/lib/route-helpers";
 import { canAssignProjectManagers, normaliseProjectRole } from "@/lib/permissions";
 import { PM, toTeamRole } from "@/lib/team-roles";
-import { plannedCostFor, allocationPictureFor, describeOverallocation } from "@/lib/staffing";
+import { plannedCostFor, allocationPictureFor, describeOverallocation, parseAllocationPeriods } from "@/lib/staffing";
 import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
@@ -47,7 +47,23 @@ export async function PATCH(req: Request, context: Params) {
     const wasPm = normaliseProjectRole(existing.role_in_project as string | null) === "manager";
     let willBePm = wasPm;
     if (body.roleInProject !== undefined) {
-      const role = toTeamRole(body.roleInProject);
+      const roleRaw = String(body.roleInProject ?? "").trim();
+      let role = roleRaw ? toTeamRole(roleRaw) : null;
+      if (!role && roleRaw) {
+        const customRole = await projectDb("project_custom_roles")
+          .where(function () {
+            this.whereRaw("lower(name) = ?", [roleRaw.toLowerCase()])
+              .orWhereRaw("lower(code) = ?", [roleRaw.toLowerCase()]);
+          })
+          .andWhere({ is_active: true })
+          .andWhere(function () {
+            this.whereNull("project_id").orWhere("project_id", project.id);
+          })
+          .first();
+        if (customRole) {
+          role = customRole.name || customRole.code;
+        }
+      }
       if (!role) errors.push(TEAM_ROLE_REQUIRED);
       else {
         updates.role_in_project = role;
@@ -60,6 +76,12 @@ export async function PATCH(req: Request, context: Params) {
     const togglesActivePm = wasPm && body.isActive !== undefined && Boolean(body.isActive) !== Boolean(existing.is_active);
     if ((wasPm !== willBePm || togglesActivePm) && !canAssignProjectManagers(guard.access)) {
       return pmAssignmentRefused();
+    }
+
+    let parsedPeriods = undefined;
+    if (body.allocationPeriods !== undefined) {
+      parsedPeriods = parseAllocationPeriods(body.allocationPeriods);
+      updates.allocation_periods = parsedPeriods ? JSON.stringify(parsedPeriods) : null;
     }
 
     if (body.allocationPercent !== undefined) {
@@ -177,11 +199,17 @@ export async function PATCH(req: Request, context: Params) {
 
     // Anything that moves the dates, the allocation or the rate moves
     // the planned cost with it, or the two quietly disagree.
+    const effectivePeriods =
+      parsedPeriods !== undefined
+        ? parsedPeriods
+        : parseAllocationPeriods(existing.allocation_periods);
+
     const planned = plannedCostFor({
       startDate: start,
       endDate: end,
       allocationPercent:
         (updates.allocation_percent as number) ?? Number(existing.allocation_percent ?? 100),
+      allocationPeriods: effectivePeriods,
       dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr:
         updates.daily_billable_rate_inr !== undefined

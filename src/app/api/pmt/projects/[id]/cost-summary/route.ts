@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { projectDb, itsmDb } from "@/lib/db";
 import { requireProjectCapability } from "@/lib/auth";
+import { getProjectTeam } from "@/lib/staffing";
 
 const DAILY_HOURS = 8;
 
@@ -75,25 +76,11 @@ export async function GET(
     ? (await projectDb("purchase_orders").where("id", project.po_id).first())?.po_value_inr ?? 0
     : 0;
 
-  // ── Fetch total planned hours and planned labor cost from project_team_members ──
-  const teamMembers = await projectDb("project_team_members as ptm")
-    .leftJoin("employee_rate_bands as erb", "ptm.rate_band_id", "erb.id")
-    .where("ptm.project_id", projectId)
-    .select(
-      "ptm.*",
-      "erb.daily_cost_inr as band_daily_cost"
-    );
-
-  const totalPlannedDays = teamMembers.reduce((sum: number, tm: any) => sum + (parseFloat(tm.planned_days) || 0), 0);
+  // ── Fetch total planned hours and planned labor cost from project team staffing ──
+  const team = await getProjectTeam(projectId, { includeCost: true });
+  const totalPlannedDays = team.reduce((sum, tm) => sum + (tm.cost?.plannedDays || 0), 0);
   const totalPlannedHours = totalPlannedDays * DAILY_HOURS;
-  const plannedLaborCostInr = teamMembers.reduce((sum: number, tm: any) => {
-    if (tm.planned_cost_inr !== null && tm.planned_cost_inr !== undefined && !isNaN(parseFloat(tm.planned_cost_inr))) {
-      return sum + parseFloat(tm.planned_cost_inr);
-    }
-    const days = parseFloat(tm.planned_days || 0);
-    const costPerDay = parseFloat(tm.daily_cost_inr || tm.band_daily_cost || 0);
-    return sum + (days * costPerDay);
-  }, 0);
+  const plannedLaborCostInr = team.reduce((sum, tm) => sum + (tm.cost?.plannedCostInr || 0), 0);
 
   // ── Budgeted cost per WBS from solutioning line items ───────────
   let budgetedByPhase: Record<string, number> = {};

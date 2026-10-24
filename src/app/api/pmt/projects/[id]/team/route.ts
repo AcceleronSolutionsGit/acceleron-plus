@@ -21,6 +21,7 @@ import {
   describeOverallocation,
   suggestBandFor,
   describeBandSource,
+  parseAllocationPeriods,
 } from "@/lib/staffing";
 import { toDateInput } from "@/lib/dates";
 
@@ -42,15 +43,23 @@ export async function GET(req: Request, context: Params) {
 
     const team = await getProjectTeam(guard.project.id, { includeCost, includeInactive });
 
-    // What else each of these people is committed to, so the screen can
-    // flag anybody carrying more than a full week across the portfolio.
-    const elsewhere = await commitmentsFor(
-      team.map((m) => m.employeeId ?? "").filter(Boolean),
-      { excludeProjectId: guard.project.id }
+    // What else each of these people is committed to (check both employeeId and userId)
+    const allIdentifiers = Array.from(
+      new Set([
+        ...team.map((m) => m.employeeId ?? "").filter(Boolean),
+        ...team.map((m) => m.userId ?? "").filter(Boolean),
+      ])
     );
 
+    const elsewhere = await commitmentsFor(allIdentifiers, {
+      excludeProjectId: guard.project.id,
+    });
+
     const withLoad = team.map((member) => {
-      const others = member.employeeId ? (elsewhere.get(member.employeeId) ?? []) : [];
+      const others =
+        (member.employeeId ? elsewhere.get(member.employeeId) : null) ||
+        (member.userId ? elsewhere.get(member.userId) : null) ||
+        [];
       const overlapping = others.filter((c) =>
         // Same overlap rule as the guard, applied to this member's window.
         !((c.endDate && member.startDate && c.endDate < member.startDate) ||
@@ -66,10 +75,48 @@ export async function GET(req: Request, context: Params) {
       };
     });
 
+    // Custom roles for this project or global
+    const customRolesRows = await projectDb("project_custom_roles")
+      .where({ is_active: true })
+      .andWhere(function () {
+        this.whereNull("project_id").orWhere("project_id", guard.project.id);
+      })
+      .orderBy("name", "asc")
+      .catch(() => []);
+
+    const customRoles = customRolesRows.map((r: Record<string, unknown>) => ({
+      value: String(r.name || r.role_name || ""),
+      description: String(r.description || "Custom project role"),
+      isCustom: true,
+      projectId: r.project_id ? String(r.project_id) : null,
+    }));
+
+    const standardRoles = TEAM_ROLES.map((role) => ({
+      value: role,
+      description: TEAM_ROLE_DESCRIPTIONS[role],
+      isCustom: false,
+      projectId: null,
+    }));
+
+    const seenRoleValues = new Set<string>();
+    const rolesList: Array<{ value: string; description: string; isCustom?: boolean; projectId?: string | null }> = [];
+    for (const r of [...standardRoles, ...customRoles]) {
+      const key = r.value.trim().toLowerCase();
+      if (!seenRoleValues.has(key)) {
+        seenRoleValues.add(key);
+        rolesList.push(r);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       team: withLoad,
       totals: includeCost ? teamTotals(team) : null,
+      projectStartDate: guard.project.start_date ? String(guard.project.start_date).slice(0, 10) : null,
+      projectEndDate: (guard.project.planned_end_date || guard.project.actual_end_date)
+        ? String(guard.project.planned_end_date || guard.project.actual_end_date).slice(0, 10)
+        : null,
+      currency: guard.project.currency || "INR",
       // Bands are what the "add someone" form needs; a person who
       // cannot see cost gets the names without the rates.
       rateBands: includeCost
@@ -83,9 +130,7 @@ export async function GET(req: Request, context: Params) {
           })),
       canManage: can(guard.access, "team.manage"),
       canViewCost: includeCost,
-      // The three roles a team member can hold, and whether this person
-      // may hand out (or take away) the PM one.
-      roles: TEAM_ROLES.map((role) => ({ value: role, description: TEAM_ROLE_DESCRIPTIONS[role] })),
+      roles: rolesList,
       canAssignPm: canAssignProjectManagers(guard.access),
     });
   } catch (err) {
@@ -137,9 +182,25 @@ export async function POST(req: Request, context: Params) {
     }
 
     const validation = validateAssignment(body);
-    // Developer, Team Lead or PM — any number of each. Blank is Developer.
+    // Developer, Team Lead or PM or any custom project role. Blank is Developer.
     const roleRaw = String(body.roleInProject ?? "").trim();
-    const role = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
+    let role = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
+    if (!role && roleRaw) {
+      // Check if it's an active custom role
+      const customRole = await projectDb("project_custom_roles")
+        .where(function () {
+          this.whereRaw("lower(name) = ?", [roleRaw.toLowerCase()])
+            .orWhereRaw("lower(code) = ?", [roleRaw.toLowerCase()]);
+        })
+        .andWhere({ is_active: true })
+        .andWhere(function () {
+          this.whereNull("project_id").orWhere("project_id", project.id);
+        })
+        .first();
+      if (customRole) {
+        role = customRole.name || customRole.code;
+      }
+    }
     if (!role) validation.push(TEAM_ROLE_REQUIRED);
     if (validation.length > 0) return validationError(validation);
     if (role === PM && !canAssignProjectManagers(guard.access)) return pmAssignmentRefused();
@@ -164,9 +225,16 @@ export async function POST(req: Request, context: Params) {
       };
     }
 
-    const startDate = toDateInput(body.startDate as string) || null;
-    const endDate = toDateInput(body.endDate as string) || null;
+    // Default dates from project if not explicitly supplied
+    const projectStart = project.start_date ? toDateInput(String(project.start_date)) : null;
+    const projectEnd = (project.planned_end_date || project.actual_end_date)
+      ? toDateInput(String(project.planned_end_date || project.actual_end_date))
+      : null;
+
+    const startDate = toDateInput(body.startDate as string) || projectStart || null;
+    const endDate = toDateInput(body.endDate as string) || projectEnd || null;
     const allocationPercent = Number(body.allocationPercent ?? 100);
+    const allocationPeriods = parseAllocationPeriods(body.allocationPeriods);
 
     // Allocation is a claim on somebody's whole week, not just this
     // project's. Putting them at 50% here when they are already at 80%
@@ -210,6 +278,7 @@ export async function POST(req: Request, context: Params) {
       startDate,
       endDate,
       allocationPercent,
+      allocationPeriods,
       dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr: band?.dailyBillableRateInr ?? null,
       plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
@@ -231,6 +300,7 @@ export async function POST(req: Request, context: Params) {
         allocation_percent: allocationPercent,
         start_date: startDate,
         end_date: endDate,
+        allocation_periods: allocationPeriods ? JSON.stringify(allocationPeriods) : null,
         daily_cost_inr: effectiveDailyCost,
         daily_billable_rate_inr: band?.dailyBillableRateInr ?? null,
         member_type: memberType,

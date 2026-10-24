@@ -17,16 +17,75 @@ export function formatDate(dateStr: string | undefined | null): string {
   });
 }
 
-/** Format currency */
-export function formatCurrency(amount: number | string | undefined | null): string {
+/** Get currency symbol for a currency code */
+export function currencySymbol(currency: string = "INR"): string {
+  const curr = (currency || "INR").trim().toUpperCase();
+  switch (curr) {
+    case "USD": return "$";
+    case "EUR": return "€";
+    case "GBP": return "£";
+    case "AED": return "AED ";
+    case "SGD": return "S$";
+    case "AUD": return "A$";
+    case "CAD": return "C$";
+    case "JPY": return "¥";
+    case "INR":
+    default:
+      return "₹";
+  }
+}
+
+/** Format currency with full precision and currency code support */
+export function formatCurrency(
+  amount: number | string | undefined | null,
+  currency: string = "INR"
+): string {
   if (amount === undefined || amount === null) return "—";
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   if (isNaN(num)) return "—";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(num);
+  const curr = (currency || "INR").trim().toUpperCase();
+  const locale =
+    curr === "INR" ? "en-IN" :
+    curr === "USD" ? "en-US" :
+    curr === "EUR" ? "de-DE" :
+    curr === "GBP" ? "en-GB" :
+    curr === "AED" ? "en-AE" :
+    curr === "SGD" ? "en-SG" :
+    curr === "AUD" ? "en-AU" : "en-US";
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: curr,
+      maximumFractionDigits: 0,
+    }).format(num);
+  } catch {
+    const sym = currencySymbol(curr);
+    return `${sym}${num.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  }
+}
+
+/** Format compact currency (e.g., ₹50 L, $500K, €1.2M) */
+export function compactCurrency(
+  value: number | string | undefined | null,
+  currency: string = "INR"
+): string {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  if (n === undefined || n === null || Number.isNaN(n)) return "—";
+  const curr = (currency || "INR").trim().toUpperCase();
+  const sym = currencySymbol(curr);
+  const trim = (val: number) => (Math.round(val * 10) / 10).toString();
+
+  if (curr === "INR") {
+    if (Math.abs(n) >= 1e7) return `${sym}${trim(n / 1e7)} Cr`;
+    if (Math.abs(n) >= 1e5) return `${sym}${trim(n / 1e5)} L`;
+    if (Math.abs(n) >= 1e3) return `${sym}${trim(n / 1e3)} K`;
+    return `${sym}${Math.round(n).toLocaleString("en-IN")}`;
+  } else {
+    if (Math.abs(n) >= 1e9) return `${sym}${trim(n / 1e9)} B`;
+    if (Math.abs(n) >= 1e6) return `${sym}${trim(n / 1e6)} M`;
+    if (Math.abs(n) >= 1e3) return `${sym}${trim(n / 1e3)} K`;
+    return `${sym}${Math.round(n).toLocaleString("en-US")}`;
+  }
 }
 
 /** Format a date with time */

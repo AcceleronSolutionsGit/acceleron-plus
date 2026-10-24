@@ -452,6 +452,48 @@ export async function projectsManagedBy(
   return ids;
 }
 
+/**
+ * All projects where this user is staffed as a team member (active),
+ * regardless of whether they are a PM, lead, developer, consultant, or external user.
+ */
+export async function projectsAllocatedTo(
+  userId: string | null | undefined
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!userId) return ids;
+  try {
+    const user = await identityDb("users as u")
+      .where("u.id", userId)
+      .select("u.employee_id")
+      .first<{ employee_id: string | null } | undefined>()
+      .catch(() => undefined);
+
+    const userKeys = [
+      userId,
+      `user:${userId}`,
+      user?.employee_id,
+      user?.employee_id ? `emp:${user.employee_id}` : null,
+    ].filter(Boolean) as string[];
+
+    const rows = await projectDb("project_team_members")
+      .where((qb) => {
+        qb.whereIn("user_id", userKeys);
+        if (user?.employee_id) {
+          qb.orWhereIn("employee_id", userKeys);
+        }
+      })
+      .andWhere("is_active", true)
+      .select("project_id");
+
+    for (const r of rows) {
+      if (r.project_id) ids.add(String(r.project_id));
+    }
+  } catch (err) {
+    console.error("[auth] Could not list allocated projects:", err);
+  }
+  return ids;
+}
+
 export type ProjectGuardResult =
   | { ok: true; session: SessionPayload; access: AccessContext & { userId: string | null } }
   | { ok: false; response: NextResponse };

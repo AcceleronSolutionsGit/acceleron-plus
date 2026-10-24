@@ -22,6 +22,10 @@ export interface ResolvedProject {
   project_manager_user_id: string | null;
   sponsor_user_id: string | null;
   status: string | null;
+  start_date?: string | null;
+  planned_end_date?: string | null;
+  actual_end_date?: string | null;
+  currency?: string | null;
 }
 
 /**
@@ -44,7 +48,11 @@ export async function resolveProjectOr404(
           "tenant_id",
           "project_manager_user_id",
           "sponsor_user_id",
-          "status"
+          "status",
+          "start_date",
+          "planned_end_date",
+          "actual_end_date",
+          "currency"
         )
         .first<ResolvedProject | undefined>()
     : undefined;

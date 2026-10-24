@@ -401,8 +401,8 @@ export function ProjectDetailClient({
           <MetaItem label="Client" value={project.clientCompanyName || "Internal"} />
           {permissions.canViewFinancials && (
             <MetaItem
-              label="Budget"
-              value={project.budgetInr ? formatCurrency(Number(project.budgetInr)) : "—"}
+              label={`Budget (${project.currency || "INR"})`}
+              value={project.budgetInr ? formatCurrency(Number(project.budgetInr), project.currency || "INR") : "—"}
             />
           )}
           <MetaItem label="Start Date" value={formatDate(project.startDate)} />
@@ -654,12 +654,23 @@ export function ProjectDetailClient({
                 />
               );
             case "team":
-              return <TeamTab projectId={project.id} />;
+              return (
+                <TeamTab
+                  projectId={project.id}
+                  projectStartDate={project.startDate}
+                  projectEndDate={project.plannedEndDate || project.actualEndDate}
+                  currency={project.currency || "INR"}
+                />
+              );
             case "timesheets":
               return <TimesheetsTab projectId={project.id} userRole={userRole} />;
             case "financials":
               return permissions.canViewFinancials ? (
-                <FinancialsTab projectId={project.id} canManageBilling={permissions.canManageInvoices} />
+                <FinancialsTab
+                  projectId={project.id}
+                  canManageBilling={permissions.canManageInvoices}
+                  currency={project.currency || "INR"}
+                />
               ) : null;
             case "risks":
               return <RisksTab risks={risks} />;

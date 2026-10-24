@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { identityDb, projectDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { readJson } from "@/lib/route-helpers";
+import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function GET(
         .where("is_active", true)
         .orderBy("name", "asc"),
       projectDb("projects")
-        .select("id", "code", "name", "status", "category", "project_type")
+        .select("id", "code", "name", "status", "category", "project_type", "start_date", "planned_end_date", "actual_end_date", "currency")
         .whereNotIn("status", ["cancelled", "scrapped"])
         .orderBy("name", "asc"),
       projectDb("project_team_members as ptm")
@@ -125,6 +126,9 @@ export async function GET(
         status: p.status,
         category: p.category,
         projectType: p.project_type,
+        startDate: p.start_date ? toDateInput(p.start_date) : null,
+        endDate: p.planned_end_date ? toDateInput(p.planned_end_date) : (p.actual_end_date ? toDateInput(p.actual_end_date) : null),
+        currency: p.currency || "INR",
       })),
     });
   } catch (err) {

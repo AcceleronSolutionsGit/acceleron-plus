@@ -26,7 +26,7 @@ import {
   prefetchPeople,
   type PickedManager,
 } from "@/components/project/ManagerPicker";
-import { cn, formatCurrency, formatStatus, projectStatusColor } from "@/lib/utils";
+import { cn, formatCurrency, formatStatus, projectStatusColor, compactCurrency } from "@/lib/utils";
 import { formatISODate, parseISODate, todayISO } from "@/lib/dates";
 import {
   PROJECT_TAXONOMY,
@@ -1031,10 +1031,10 @@ const ProjectRow = memo(function ProjectRow({
       {/* Budget */}
       <td className={cn(cell, "text-right")}>
         <span
-          title={p.budgetInr ? formatCurrency(Number(p.budgetInr)) : undefined}
+          title={p.budgetInr ? formatCurrency(Number(p.budgetInr), p.currency) : undefined}
           className={cn("text-[13px] font-semibold tabular-nums", p.budgetInr ? "text-navy-800" : "text-navy-300")}
         >
-          {p.budgetInr ? compactINR(p.budgetInr) : "—"}
+          {p.budgetInr ? compactCurrency(p.budgetInr, p.currency) : "—"}
         </span>
       </td>
     </tr>

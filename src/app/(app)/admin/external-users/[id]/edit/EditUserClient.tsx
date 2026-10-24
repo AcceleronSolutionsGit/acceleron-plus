@@ -52,6 +52,9 @@ interface ProjectOption {
   name: string;
   category?: string | null;
   projectType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  currency?: string;
 }
 
 export function EditUserClient({
@@ -111,7 +114,10 @@ export function EditUserClient({
       setRoles(data.roles || []);
       setProjects(data.projects || []);
       if (data.projects?.length > 0) {
-        setAllocProjectId(data.projects[0].id);
+        const firstP = data.projects[0];
+        setAllocProjectId(firstP.id);
+        if (firstP.startDate) setAllocStart(firstP.startDate);
+        if (firstP.endDate) setAllocEnd(firstP.endDate);
       }
     } catch {
       setError("Network error loading user details.");
@@ -486,7 +492,15 @@ export function EditUserClient({
               </label>
               <select
                 value={allocProjectId}
-                onChange={(e) => setAllocProjectId(e.target.value)}
+                onChange={(e) => {
+                  const pId = e.target.value;
+                  setAllocProjectId(pId);
+                  const p = projects.find((proj) => proj.id === pId);
+                  if (p) {
+                    if (p.startDate) setAllocStart(p.startDate);
+                    if (p.endDate) setAllocEnd(p.endDate);
+                  }
+                }}
                 required
                 className="w-full h-10 rounded-lg border border-navy-900/15 bg-white px-3 text-sm text-navy-900 focus:border-navy-700 focus:outline-none"
               >

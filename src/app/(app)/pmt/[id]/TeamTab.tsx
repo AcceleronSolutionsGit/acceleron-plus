@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { todayISO } from "@/lib/dates";
+import { formatCurrency } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════
 // Who is on this project, what they cost, and whether they are
@@ -40,6 +41,13 @@ interface Commitment {
   endDate: string | null;
 }
 
+interface AllocationPeriodItem {
+  id?: string;
+  startDate: string;
+  endDate: string;
+  allocationPercent: number;
+}
+
 interface Member {
   id: string;
   employeeId: string | null;
@@ -51,6 +59,7 @@ interface Member {
   allocationPercent: number;
   startDate: string | null;
   endDate: string | null;
+  allocationPeriods?: AllocationPeriodItem[] | null;
   isActive: boolean;
   rateBandName: string | null;
   rateBandId: string | null;
@@ -191,7 +200,17 @@ const rupees = (value: number | null | undefined) =>
     ? "—"
     : `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-export function TeamTab({ projectId }: { projectId: string }) {
+export function TeamTab({
+  projectId,
+  projectStartDate,
+  projectEndDate,
+  currency = "INR",
+}: {
+  projectId: string;
+  projectStartDate?: string | null;
+  projectEndDate?: string | null;
+  currency?: string;
+}) {
   const [team, setTeam] = useState<Member[]>([]);
   const [totals, setTotals] = useState<Record<string, number | null> | null>(null);
   const [rateBands, setRateBands] = useState<RateBand[]>([]);
@@ -202,6 +221,9 @@ export function TeamTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [activeCurrency, setActiveCurrency] = useState(currency || "INR");
+  const [projStart, setProjStart] = useState(projectStartDate || "");
+  const [projEnd, setProjEnd] = useState(projectEndDate || "");
 
   const load = useCallback(async () => {
     try {
@@ -218,6 +240,9 @@ export function TeamTab({ projectId }: { projectId: string }) {
       setCanViewCost(Boolean(data.canViewCost));
       if (Array.isArray(data.roles) && data.roles.length > 0) setRoles(data.roles);
       setCanAssignPm(Boolean(data.canAssignPm));
+      if (data.currency) setActiveCurrency(data.currency);
+      if (data.projectStartDate) setProjStart(data.projectStartDate);
+      if (data.projectEndDate) setProjEnd(data.projectEndDate);
       setError("");
     } catch {
       setError("Could not reach the server.");
@@ -249,15 +274,15 @@ export function TeamTab({ projectId }: { projectId: string }) {
           {canViewCost && totals && (
             <>
               <Stat label="Planned days" value={String(totals.plannedDays ?? 0)} />
-              <Stat label="Planned cost" value={rupees(totals.plannedCostInr)} />
+              <Stat label="Planned cost" value={formatCurrency(totals.plannedCostInr, activeCurrency)} />
               <Stat label="Logged so far" value={`${totals.actualDays ?? 0} d`} />
               <Stat
                 label="Actual cost"
-                value={rupees(totals.actualCostInr)}
+                value={formatCurrency(totals.actualCostInr, activeCurrency)}
                 hint={totals.burnPercent !== null ? `${totals.burnPercent}% of plan` : undefined}
                 warn={(totals.burnPercent ?? 0) > 100}
               />
-              <Stat label="Billable value" value={rupees(totals.plannedBillableInr)} />
+              <Stat label="Billable value" value={formatCurrency(totals.plannedBillableInr, activeCurrency)} />
             </>
           )}
         </div>
@@ -281,7 +306,7 @@ export function TeamTab({ projectId }: { projectId: string }) {
       )}
 
       {/* ── The team ──────────────────────────────────────────── */}
-      <Card>
+      <Card className="overflow-hidden">
         {team.length === 0 ? (
           <div className="p-10 text-center">
             <p className="text-sm text-navy-700 font-medium">Nobody is staffed on this project yet.</p>
@@ -297,6 +322,14 @@ export function TeamTab({ projectId }: { projectId: string }) {
           </div>
         ) : (
           <div className="divide-y divide-neutral-100">
+            {/* Crisp Column Headers to keep rows perfectly aligned */}
+            <div className="hidden lg:grid grid-cols-[minmax(240px,1.5fr)_minmax(160px,1fr)_minmax(180px,1.1fr)_minmax(200px,1.2fr)_130px] items-center gap-4 px-5 py-3 bg-neutral-50/80 border-b border-neutral-200/80 text-[11px] font-bold text-navy-600 uppercase tracking-wider">
+              <div>Resource / Member</div>
+              <div>Role &amp; Timeline</div>
+              <div>Allocation %</div>
+              <div>Planned vs Actual</div>
+              <div className="text-right">Actions</div>
+            </div>
             {team.map((member) => (
               <MemberRow
                 key={member.id}
@@ -307,6 +340,7 @@ export function TeamTab({ projectId }: { projectId: string }) {
                 canViewCost={canViewCost}
                 roles={roles}
                 canAssignPm={canAssignPm}
+                currency={activeCurrency}
                 onChanged={load}
               />
             ))}
@@ -321,6 +355,9 @@ export function TeamTab({ projectId }: { projectId: string }) {
           canViewCost={canViewCost}
           roles={roles}
           canAssignPm={canAssignPm}
+          currency={activeCurrency}
+          defaultStartDate={projStart}
+          defaultEndDate={projEnd}
           onClose={() => setAdding(false)}
           onAdded={() => {
             setAdding(false);
@@ -410,6 +447,7 @@ function MemberRow({
   canViewCost,
   roles,
   canAssignPm,
+  currency = "INR",
   onChanged,
 }: {
   member: Member;
@@ -419,6 +457,7 @@ function MemberRow({
   canViewCost: boolean;
   roles: RoleOption[];
   canAssignPm: boolean;
+  currency?: string;
   onChanged: () => void;
 }) {
   // A PM row can only be edited or removed by an admin or another PM.
@@ -436,6 +475,8 @@ function MemberRow({
   const [bandId, setBandId] = useState(member.rateBandId ?? "");
   const [memberType, setMemberType] = useState<"employee" | "intern" | "consultant">(member.memberType ?? "employee");
   const [customCost, setCustomCost] = useState(member.customDailyCostInr ? String(member.customDailyCostInr) : "");
+  const [periods, setPeriods] = useState<AllocationPeriodItem[]>(member.allocationPeriods ?? []);
+  const [showPeriodsEditor, setShowPeriodsEditor] = useState(Boolean(member.allocationPeriods && member.allocationPeriods.length > 1));
 
   const save = async (allowOverallocation = false) => {
     setBusy(true);
@@ -446,6 +487,7 @@ function MemberRow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           allocationPercent: Number(allocation),
+          allocationPeriods: showPeriodsEditor && periods.length > 0 ? periods : null,
           roleInProject: role,
           startDate: startDate || null,
           endDate: endDate || null,
@@ -494,11 +536,25 @@ function MemberRow({
     }
   };
 
+  const addPeriod = () => {
+    const last = periods[periods.length - 1];
+    const newStart = last?.endDate || startDate || todayISO();
+    setPeriods([...periods, { startDate: newStart, endDate: endDate || newStart, allocationPercent: Number(allocation) || 100 }]);
+  };
+
+  const removePeriod = (idx: number) => {
+    setPeriods(periods.filter((_, i) => i !== idx));
+  };
+
+  const updatePeriod = (idx: number, patch: Partial<AllocationPeriodItem>) => {
+    setPeriods(periods.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  };
+
   return (
     <div className={`px-5 py-4 ${member.isActive ? "" : "bg-neutral-50/60"}`}>
-      <div className="flex items-start gap-4 flex-wrap">
-        {/* Person */}
-        <div className="min-w-[220px] flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,1.5fr)_minmax(160px,1fr)_minmax(180px,1.1fr)_minmax(200px,1.2fr)_130px] items-start gap-4">
+        {/* Column 1: Person */}
+        <div>
           <p className="text-sm font-semibold text-navy-900 flex items-center gap-2 flex-wrap">
             {member.userName ?? member.employeeId}
             {member.memberType === "intern" && (
@@ -507,8 +563,8 @@ function MemberRow({
               </span>
             )}
             {member.memberType === "consultant" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-purple-50 text-purple-700 border border-purple-200" title={member.customDailyCostInr ? `CTC: ₹${member.customDailyCostInr}/day` : undefined}>
-                Consultant {member.customDailyCostInr ? `(CTC ₹${member.customDailyCostInr}/d)` : ""}
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-purple-50 text-purple-700 border border-purple-200" title={member.customDailyCostInr ? `CTC: ${formatCurrency(member.customDailyCostInr, currency)}/day` : undefined}>
+                Consultant {member.customDailyCostInr ? `(CTC ${formatCurrency(member.customDailyCostInr, currency)}/d)` : ""}
               </span>
             )}
             {!member.isActive && <Badge>Stood down</Badge>}
@@ -526,73 +582,88 @@ function MemberRow({
           </div>
         </div>
 
-        {/* Role and dates */}
-        <div className="min-w-[150px]">
-          <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">Role</p>
+        {/* Column 2: Role and dates */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold lg:hidden">Role</p>
           <p className="mt-0.5"><RoleBadge role={member.roleInProject} /></p>
-          <p className="text-[11px] text-navy-500">
+          <p className="text-[11px] text-navy-500 mt-1">
             {member.startDate && member.endDate
               ? `${member.startDate} → ${member.endDate}`
-              : "no dates set"}
+              : member.startDate ? `From ${member.startDate}` : "no dates set"}
           </p>
         </div>
 
-        {/* Allocation */}
+        {/* Column 3: Allocation */}
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
+          <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold lg:hidden">
             Allocation
           </p>
           <AllocationBar member={member} />
+          {member.allocationPeriods && member.allocationPeriods.length > 1 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold bg-blue-50 text-blue-700 border border-blue-200" title={member.allocationPeriods.map(p => `${p.startDate} to ${p.endDate}: ${p.allocationPercent}%`).join("\n")}>
+                {member.allocationPeriods.length} multi-periods breakdown
+              </span>
+            </div>
+          )}
           {member.otherProjects.length > 0 && (
             <button
               onClick={() => setShowOther((v) => !v)}
-              className="text-[10px] text-navy-700 underline mt-0.5 cursor-pointer"
+              className="text-[10px] text-navy-700 underline mt-0.5 cursor-pointer block"
             >
               {showOther ? "hide" : `on ${member.otherProjects.length} other project${member.otherProjects.length === 1 ? "" : "s"}`}
             </button>
           )}
         </div>
 
-        {/* Cost */}
-        {canViewCost && member.cost && (
-          <div className="min-w-[190px]">
-            <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-              Planned vs actual
-            </p>
-            <p className="text-sm text-navy-900">
-              {rupees(member.cost.plannedCostInr)}
-              <span className="text-navy-500 text-[11px]">
-                {" "}
-                ({member.cost.plannedDays ?? 0} d
-                {member.rateBandName ? ` · ${member.rateBandName}` : ""})
-              </span>
-            </p>
-            <p
-              className={`text-[11px] ${
-                (member.cost.burnPercent ?? 0) > 100 ? "text-red-600 font-medium" : "text-navy-500"
-              }`}
-            >
-              {rupees(member.cost.actualCostInr)} logged · {member.cost.actualHours} h
-              {member.cost.burnPercent !== null && ` · ${member.cost.burnPercent}% of plan`}
-            </p>
-          </div>
-        )}
+        {/* Column 4: Cost */}
+        <div>
+          {canViewCost && member.cost ? (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold lg:hidden">
+                Planned vs actual
+              </p>
+              <p className="text-sm font-semibold text-navy-900">
+                {formatCurrency(member.cost.plannedCostInr, currency)}
+                <span className="text-navy-500 text-[11px] font-normal">
+                  {" "}
+                  ({member.cost.plannedDays ?? 0} d
+                  {member.rateBandName ? ` · ${member.rateBandName}` : ""})
+                </span>
+              </p>
+              <p
+                className={`text-[11px] mt-0.5 ${
+                  (member.cost.burnPercent ?? 0) > 100 ? "text-red-600 font-medium" : "text-navy-500"
+                }`}
+              >
+                {formatCurrency(member.cost.actualCostInr, currency)} logged · {member.cost.actualHours} h
+                {member.cost.burnPercent !== null && ` · ${member.cost.burnPercent}% of plan`}
+              </p>
+            </div>
+          ) : (
+            <span className="text-xs text-navy-400">—</span>
+          )}
+        </div>
 
-        {canManage && (
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setEditing((v) => !v)} disabled={busy}>
-              {editing ? "Cancel" : "Edit"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={remove}
-              disabled={busy || pmLocked}
-              title={pmLocked ? "Only an administrator or one of this project's PMs can remove a PM." : undefined}
-            >
-              Remove
-            </Button>
-          </div>
-        )}
+        {/* Column 5: Actions */}
+        <div className="flex items-center lg:justify-end gap-2">
+          {canManage && (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setEditing((v) => !v)} disabled={busy}>
+                {editing ? "Cancel" : "Edit"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={remove}
+                disabled={busy || pmLocked}
+                title={pmLocked ? "Only an administrator or one of this project's PMs can remove a PM." : undefined}
+              >
+                Remove
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {showOther && member.otherProjects.length > 0 && (
@@ -619,69 +690,149 @@ function MemberRow({
       )}
 
       {editing && (
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-6 gap-3 bg-neutral-50/70 rounded-lg p-3">
-          <Field label="Member Type">
-            <select
-              value={memberType}
-              onChange={(e) => setMemberType(e.target.value as any)}
-              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white"
-            >
-              <option value="employee">Employee</option>
-              <option value="intern">Intern</option>
-              <option value="consultant">Consultant</option>
-            </select>
-          </Field>
-          <Field label="Role">
-            <RoleSelect
-              value={role}
-              onChange={setRole}
-              roles={roles}
-              canAssignPm={canAssignPm}
-              currentlyPm={isPm}
-            />
-          </Field>
-          <Field label="Allocation %">
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={allocation}
-              onChange={(e) => setAllocation(e.target.value)}
-            />
-          </Field>
-          <Field label="From">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </Field>
-          <Field label="To">
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </Field>
-          {canViewCost && (
-            <Field label={memberType === "consultant" ? "Daily Cost / CTC (₹)" : "Rate band"}>
-              {memberType === "consultant" ? (
-                <Input
-                  type="number"
-                  placeholder="e.g. 4000"
-                  value={customCost}
-                  onChange={(e) => setCustomCost(e.target.value)}
-                />
-              ) : (
-                <select
-                  value={bandId}
-                  onChange={(e) => setBandId(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-navy-500/30 bg-white"
-                >
-                  <option value="">No band</option>
-                  {rateBands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.bandName} ({b.levelCode})
-                      {b.dailyCostInr !== null ? ` — ${rupees(b.dailyCostInr)}/day` : ""}
-                    </option>
-                  ))}
-                </select>
-              )}
+        <div className="mt-4 space-y-3 bg-neutral-50/80 rounded-xl p-4 border border-neutral-200">
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+            <Field label="Member Type">
+              <select
+                value={memberType}
+                onChange={(e) => setMemberType(e.target.value as any)}
+                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white"
+              >
+                <option value="employee">Employee</option>
+                <option value="intern">Intern</option>
+                <option value="consultant">Consultant</option>
+              </select>
             </Field>
-          )}
-          <div className="sm:col-span-6 flex justify-end">
+            <Field label="Role">
+              <RoleSelect
+                value={role}
+                onChange={setRole}
+                roles={roles}
+                canAssignPm={canAssignPm}
+                currentlyPm={isPm}
+              />
+            </Field>
+            <Field label="Default Allocation %">
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={allocation}
+                onChange={(e) => setAllocation(e.target.value)}
+              />
+            </Field>
+            <Field label="From">
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </Field>
+            <Field label="To">
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </Field>
+            {canViewCost && (
+              <Field label={memberType === "consultant" ? `Daily Cost (${currency})` : "Rate band"}>
+                {memberType === "consultant" ? (
+                  <Input
+                    type="number"
+                    placeholder="e.g. 4000"
+                    value={customCost}
+                    onChange={(e) => setCustomCost(e.target.value)}
+                  />
+                ) : (
+                  <select
+                    value={bandId}
+                    onChange={(e) => setBandId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 bg-white text-navy-900"
+                  >
+                    <option value="">No band</option>
+                    {rateBands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.bandName} ({b.levelCode})
+                        {b.dailyCostInr !== null ? ` — ${formatCurrency(b.dailyCostInr, currency)}/day` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            )}
+          </div>
+
+          {/* Multi-period allocation breakdown editor */}
+          <div className="pt-2 border-t border-neutral-200">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`multi-period-${member.id}`}
+                  checked={showPeriodsEditor}
+                  onChange={(e) => {
+                    setShowPeriodsEditor(e.target.checked);
+                    if (e.target.checked && periods.length === 0) {
+                      setPeriods([{ startDate: startDate || todayISO(), endDate: endDate || todayISO(), allocationPercent: Number(allocation) || 100 }]);
+                    }
+                  }}
+                  className="rounded border-neutral-300 text-navy-900 focus:ring-navy-900"
+                />
+                <label htmlFor={`multi-period-${member.id}`} className="text-xs font-semibold text-navy-800 cursor-pointer">
+                  Allocation % changes over time (Multi-period allocation)
+                </label>
+              </div>
+              {showPeriodsEditor && (
+                <Button size="sm" variant="secondary" onClick={addPeriod}>
+                  + Add Period
+                </Button>
+              )}
+            </div>
+
+            {showPeriodsEditor && (
+              <div className="space-y-2 bg-white p-3 rounded-lg border border-neutral-200">
+                {periods.map((p, idx) => (
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
+                    <div>
+                      <span className="text-[10px] text-navy-500 block uppercase font-medium">Period {idx + 1} From</span>
+                      <Input
+                        type="date"
+                        value={p.startDate}
+                        onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-navy-500 block uppercase font-medium">To</span>
+                      <Input
+                        type="date"
+                        value={p.endDate}
+                        onChange={(e) => updatePeriod(idx, { endDate: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-navy-500 block uppercase font-medium">Allocation %</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={String(p.allocationPercent)}
+                        onChange={(e) => updatePeriod(idx, { allocationPercent: Number(e.target.value) || 100 })}
+                      />
+                    </div>
+                    <div className="flex items-end pt-3 sm:pt-0">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => removePeriod(idx)}
+                        disabled={periods.length <= 1}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setEditing(false)} disabled={busy}>
+              Cancel
+            </Button>
             <Button onClick={() => save()} disabled={busy}>
               {busy ? "Saving…" : "Save changes"}
             </Button>
@@ -711,6 +862,9 @@ function AddPersonModal({
   canViewCost,
   roles,
   canAssignPm,
+  currency = "INR",
+  defaultStartDate = "",
+  defaultEndDate = "",
   onClose,
   onAdded,
 }: {
@@ -719,6 +873,9 @@ function AddPersonModal({
   canViewCost: boolean;
   roles: RoleOption[];
   canAssignPm: boolean;
+  currency?: string;
+  defaultStartDate?: string | null;
+  defaultEndDate?: string | null;
   onClose: () => void;
   onAdded: () => void;
 }) {
@@ -732,8 +889,8 @@ function AddPersonModal({
 
   const [role, setRole] = useState("Developer");
   const [allocation, setAllocation] = useState("100");
-  const [startDate, setStartDate] = useState(todayISO());
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(defaultStartDate || todayISO());
+  const [endDate, setEndDate] = useState(defaultEndDate || "");
   const [bandId, setBandId] = useState("");
   const [memberType, setMemberType] = useState<"employee" | "intern" | "consultant">("employee");
   const [customDailyCostInr, setCustomDailyCostInr] = useState("");
