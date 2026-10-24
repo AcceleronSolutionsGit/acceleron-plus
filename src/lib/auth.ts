@@ -416,12 +416,17 @@ export async function projectsManagedBy(
       user?.employee_id ? `emp:${user.employee_id}` : null,
     ].filter(Boolean) as string[];
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const pmUserIds = userKeys.filter((k) => UUID_REGEX.test(k));
+
     const [namedPm, namedDm, team] = await Promise.all([
+      pmUserIds.length > 0
+        ? projectDb("projects")
+            .whereIn("project_manager_user_id", pmUserIds)
+            .pluck("id")
+        : Promise.resolve([]),
       projectDb("projects")
-        .whereIn("project_manager_user_id", userKeys)
-        .pluck("id"),
-      projectDb("projects")
-        .whereIn("delivery_manager_user_id", userKeys)
+        .whereIn("delivery_manager_user_id", pmUserIds.length > 0 ? pmUserIds : userKeys)
         .pluck("id"),
       projectDb("project_team_members")
         .where((qb) => {

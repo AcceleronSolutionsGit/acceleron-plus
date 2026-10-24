@@ -30,6 +30,8 @@ export default async function MyProjectsPage() {
 
   const empId = user?.employee_id || user?.darwinbox_ref || null;
   const userKeys = [session.userId, `user:${session.userId}`, empId, empId ? `emp:${empId}` : null].filter(Boolean) as string[];
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const pmUserIds = userKeys.filter((k) => UUID_REGEX.test(k));
 
   // Find all projects where the user is allocated on the active team or named as PM/DM
   const [teamProjectRows, namedPmRows, namedDmRows] = await Promise.all([
@@ -43,8 +45,13 @@ export default async function MyProjectsPage() {
       })
       .pluck("project_id")
       .catch(() => []),
-    projectDb("projects").whereIn("project_manager_user_id", userKeys).pluck("id").catch(() => []),
-    projectDb("projects").whereIn("delivery_manager_user_id", userKeys).pluck("id").catch(() => []),
+    pmUserIds.length > 0
+      ? projectDb("projects").whereIn("project_manager_user_id", pmUserIds).pluck("id").catch(() => [])
+      : Promise.resolve([]),
+    projectDb("projects")
+      .whereIn("delivery_manager_user_id", pmUserIds.length > 0 ? pmUserIds : userKeys)
+      .pluck("id")
+      .catch(() => []),
   ]);
 
   const allocatedIds = new Set<string>([
