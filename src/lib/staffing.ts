@@ -598,15 +598,7 @@ export async function commitmentsFor(
     .andWhereNot("p.status", "closed")
     .andWhereNot("p.status", "cancelled")
     .select(
-      "ptm.id",
-      "ptm.employee_id",
-      "ptm.user_id",
-      "ptm.project_id",
-      "ptm.role_in_project",
-      "ptm.allocation_percent",
-      "ptm.allocation_periods",
-      "ptm.start_date",
-      "ptm.end_date",
+      "ptm.*",
       "p.code",
       "p.name"
     );

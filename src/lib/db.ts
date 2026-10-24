@@ -194,6 +194,7 @@ const MIGRATION_FOR_COLUMN: Record<string, string> = {
   planned_days: "src/lib/migrations/migrate-resourcing.js",
   planned_cost_inr: "src/lib/migrations/migrate-resourcing.js",
   planned_billable_inr: "src/lib/migrations/migrate-resourcing.js",
+  allocation_periods: "src/lib/migrations/migrate-allocation-periods.js",
   // migrate-assignments
   assigned_count: "src/lib/migrations/migrate-assignments.js",
   assigned_hours: "src/lib/migrations/migrate-assignments.js",

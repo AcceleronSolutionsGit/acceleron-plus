@@ -41,8 +41,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* The content column is capped and centred so a 32-inch monitor
             does not stretch a table to two feet wide, and the page gets
             one orchestrated entrance rather than appearing all at once. */}
-          <main className="flex-1 overflow-y-auto px-6 py-6">
-            <div className="reveal reveal-1 mx-auto max-w-[1400px]">{children}</div>
+          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6">
+            <div className="reveal reveal-1 mx-auto max-w-[1400px] w-full min-w-0">{children}</div>
           </main>
         </div>
       </div>

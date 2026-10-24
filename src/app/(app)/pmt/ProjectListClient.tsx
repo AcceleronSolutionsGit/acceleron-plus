@@ -554,7 +554,7 @@ export function ProjectListClient({
           <SegmentedControl size="sm" options={statusOptions} value={filters.status} onChange={(v) => update("status", v)} />
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Combobox
             className="w-[132px] xl:w-[150px]"
             value={filters.phase}
