@@ -119,12 +119,11 @@ export interface TeamMember {
 // ─── Working days ──────────────────────────────────────────────────
 
 /**
- * Working days between two dates, inclusive, skipping weekends.
+ * Working days between two dates, inclusive, calculated using a fixed standard of 24 days per month.
  *
- * Deliberately not a calendar: public holidays vary by office and
- * nobody maintains that list yet. Counting Mon–Fri is the honest
- * approximation, and the planned days are editable afterwards for the
- * cases where it matters.
+ * Each full calendar month contributes exactly 24 working days.
+ * Partial months contribute proportionally based on active calendar days:
+ *   (activeDays / daysInMonth) * 24
  */
 export function workingDaysBetween(
   start: string | Date | null | undefined,
@@ -134,14 +133,31 @@ export function workingDaysBetween(
   const to = parseISODate(end as string);
   if (!from || !to || to < from) return 0;
 
-  let days = 0;
-  const cursor = new Date(from);
-  while (cursor <= to) {
-    const day = cursor.getDay();
-    if (day !== 0 && day !== 6) days += 1;
-    cursor.setDate(cursor.getDate() + 1);
+  let totalDays = 0;
+  const current = new Date(from.getFullYear(), from.getMonth(), 1);
+  const endMonth = new Date(to.getFullYear(), to.getMonth(), 1);
+
+  while (current <= endMonth) {
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const startDay =
+      year === from.getFullYear() && month === from.getMonth() ? from.getDate() : 1;
+    const endDay =
+      year === to.getFullYear() && month === to.getMonth() ? to.getDate() : daysInMonth;
+
+    const activeDays = Math.max(0, endDay - startDay + 1);
+    if (activeDays >= daysInMonth) {
+      totalDays += 24;
+    } else {
+      totalDays += (activeDays / daysInMonth) * 24;
+    }
+
+    current.setMonth(current.getMonth() + 1);
   }
-  return days;
+
+  return round2(totalDays);
 }
 
 export interface PlannedCost {
