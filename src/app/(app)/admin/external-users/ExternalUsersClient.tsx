@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -86,20 +87,8 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
   const [includeInactive, setIncludeInactive] = useState(false);
 
   // Modals state
-  const [creatingUser, setCreatingUser] = useState(false);
-  const [editingUser, setEditingUser] = useState<ExternalUser | null>(null);
   const [allocatingUser, setAllocatingUser] = useState<ExternalUser | null>(null);
   const [managingAllocationsUser, setManagingAllocationsUser] = useState<ExternalUser | null>(null);
-
-  // Form states
-  const [userForm, setUserForm] = useState({
-    fullName: "",
-    email: "",
-    mobilePhone: "",
-    roleCodes: ["member"],
-  });
-  const [userFormError, setUserFormError] = useState("");
-  const [submittingUser, setSubmittingUser] = useState(false);
 
   // Allocation form state
   const [allocForm, setAllocForm] = useState({
@@ -182,116 +171,30 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
     };
   }, [users]);
 
-  // Handle Add User
-  const handleOpenAddUser = () => {
-    setUserForm({
-      fullName: "",
-      email: "",
-      mobilePhone: "",
-      roleCodes: ["member"],
-    });
-    setUserFormError("");
-    setCreatingUser(true);
-  };
-
-  const handleSaveNewUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userForm.fullName.trim() || !userForm.email.trim()) {
-      setUserFormError("Full name and email are required.");
+  // Handle Delete User
+  const handleDeleteUser = async (user: ExternalUser) => {
+    if (
+      !confirm(
+        `Are you sure you want to PERMANENTLY DELETE user "${user.fullName}" (${user.email})?\n\nThis will revoke their login access, remove their system roles, and delete their project allocations.`
+      )
+    ) {
       return;
     }
-    setSubmittingUser(true);
-    setUserFormError("");
+    setError("");
+    setNotice("");
     try {
-      const res = await fetch("/api/admin/external-users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userForm),
+      const res = await fetch(`/api/admin/external-users/${user.id}`, {
+        method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setUserFormError(data.error || "Could not create user.");
+        setError(data.error || "Could not delete user.");
         return;
       }
-      setCreatingUser(false);
-      setNotice(data.message || `User ${userForm.fullName} created successfully.`);
+      setNotice(`User ${user.fullName} deleted successfully.`);
       await loadData();
     } catch {
-      setUserFormError("Network error. Please try again.");
-    } finally {
-      setSubmittingUser(false);
-    }
-  };
-
-  // Handle Edit User
-  const handleOpenEditUser = (user: ExternalUser) => {
-    setEditingUser(user);
-    setUserForm({
-      fullName: user.fullName,
-      email: user.email,
-      mobilePhone: user.mobilePhone || "",
-      roleCodes: user.roleCodes,
-    });
-    setUserFormError("");
-  };
-
-  const handleSaveEditUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    if (!userForm.fullName.trim() || !userForm.email.trim()) {
-      setUserFormError("Full name and email are required.");
-      return;
-    }
-    setSubmittingUser(true);
-    setUserFormError("");
-    try {
-      const res = await fetch("/api/admin/external-users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: editingUser.id,
-          fullName: userForm.fullName,
-          email: userForm.email,
-          mobilePhone: userForm.mobilePhone,
-          roleCodes: userForm.roleCodes,
-          isActive: editingUser.isActive,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setUserFormError(data.error || "Could not update user.");
-        return;
-      }
-      setEditingUser(null);
-      setNotice(`User ${userForm.fullName} updated successfully.`);
-      await loadData();
-    } catch {
-      setUserFormError("Network error. Please try again.");
-    } finally {
-      setSubmittingUser(false);
-    }
-  };
-
-  // Toggle user active status
-  const handleToggleActive = async (user: ExternalUser) => {
-    try {
-      const res = await fetch("/api/admin/external-users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          isActive: !user.isActive,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Could not update status.");
-        return;
-      }
-      setNotice(`${user.fullName} is now ${!user.isActive ? "active" : "inactive"}.`);
-      await loadData();
-    } catch {
-      setError("Network error.");
+      setError("Network error deleting user.");
     }
   };
 
@@ -373,18 +276,20 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-display text-2xl font-bold tracking-tight text-navy-900">
-            Non-Darwinbox Users & Allocations
+            Non-Darwinbox Users
           </h1>
           <p className="mt-1 text-sm text-navy-500">
-            Maintain consultants, contractors, interns, and standalone team members with roles, and allocate them directly to projects with custom costs.
+            Manage interns, consultants, clients, and team members maintained outside Darwinbox. Their email address serves as their login ID to sign in via OTP.
           </p>
         </div>
-        <Button onClick={handleOpenAddUser} className="shrink-0">
-          <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Non-Darwinbox User
-        </Button>
+        <Link href="/admin/external-users/new">
+          <Button className="shrink-0">
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Non-Darwinbox User
+          </Button>
+        </Link>
       </div>
 
       {/* Notice Banner */}
@@ -483,10 +388,12 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
       ) : filteredUsers.length === 0 ? (
         <Card className="p-8 text-center border-dashed border-2 border-navy-900/10">
           <p className="text-sm font-medium text-navy-700">No non-Darwinbox users found.</p>
-          <p className="mt-1 text-xs text-navy-400">Create consultants, contractors, or interns to allocate them to projects.</p>
-          <Button onClick={handleOpenAddUser} variant="secondary" size="sm" className="mt-4">
-            Add First User
-          </Button>
+          <p className="mt-1 text-xs text-navy-400">Create interns, consultants, clients, or standalone team members to allocate them to projects.</p>
+          <Link href="/admin/external-users/new" className="inline-block mt-4">
+            <Button variant="secondary" size="sm">
+              Add First User
+            </Button>
+          </Link>
         </Card>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs">
@@ -636,13 +543,22 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
                         Allocations ({user.allocationCount})
                       </Button>
                     )}
+                    <Link href={`/admin/external-users/${user.id}/edit`}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs py-1 px-2 text-navy-600"
+                      >
+                        Edit
+                      </Button>
+                    </Link>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleOpenEditUser(user)}
-                      className="text-xs py-1 px-2 text-navy-600"
+                      onClick={() => handleDeleteUser(user)}
+                      className="text-xs py-1 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
-                      Edit
+                      Delete
                     </Button>
                   </td>
                 </tr>
@@ -652,181 +568,6 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
         </div>
       )}
 
-      {/* ── MODAL: Create New User ── */}
-      <Modal
-        isOpen={creatingUser}
-        onClose={() => setCreatingUser(false)}
-        title="Add Non-Darwinbox User"
-        description="Create an account for a consultant, contractor, or intern not managed in Darwinbox."
-      >
-        <form onSubmit={handleSaveNewUser} className="space-y-4 pt-2">
-          {userFormError && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-2.5 text-xs font-medium text-red-700">
-              {userFormError}
-            </div>
-          )}
-
-          <Input
-            label="Full Name *"
-            required
-            value={userForm.fullName}
-            onChange={(e) => setUserForm((f) => ({ ...f, fullName: e.target.value }))}
-            placeholder="e.g. Rahul Sharma"
-          />
-
-          <Input
-            label="Email Address *"
-            type="email"
-            required
-            value={userForm.email}
-            onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))}
-            placeholder="e.g. rahul.sharma@consultant.com"
-          />
-
-          <Input
-            label="Mobile Phone"
-            value={userForm.mobilePhone}
-            onChange={(e) => setUserForm((f) => ({ ...f, mobilePhone: e.target.value }))}
-            placeholder="e.g. +91 98765 43210"
-          />
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700 mb-1.5">
-              System Roles
-            </label>
-            <div className="grid grid-cols-2 gap-2 border border-navy-900/12 rounded-lg p-3 bg-surface-2 max-h-40 overflow-y-auto">
-              {roles.map((r) => {
-                const checked = userForm.roleCodes.includes(r.code);
-                return (
-                  <label key={r.code} className="flex items-center gap-2 text-xs text-navy-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setUserForm((f) => ({
-                          ...f,
-                          roleCodes: checked
-                            ? f.roleCodes.filter((c) => c !== r.code)
-                            : [...f.roleCodes, r.code],
-                        }));
-                      }}
-                      className="rounded border-navy-300 text-navy-900 focus:ring-0"
-                    />
-                    <span>{r.name}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <p className="mt-1 text-[11px] text-navy-400">Select one or more roles for system permissions.</p>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-navy-900/8">
-            <Button type="button" variant="ghost" onClick={() => setCreatingUser(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submittingUser}>
-              {submittingUser ? "Creating..." : "Create User"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── MODAL: Edit User ── */}
-      <Modal
-        isOpen={Boolean(editingUser)}
-        onClose={() => setEditingUser(null)}
-        title="Edit User & Roles"
-        description="Update user contact details and system roles."
-      >
-        <form onSubmit={handleSaveEditUser} className="space-y-4 pt-2">
-          {userFormError && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-2.5 text-xs font-medium text-red-700">
-              {userFormError}
-            </div>
-          )}
-
-          <Input
-            label="Full Name *"
-            required
-            value={userForm.fullName}
-            onChange={(e) => setUserForm((f) => ({ ...f, fullName: e.target.value }))}
-          />
-
-          <Input
-            label="Email Address *"
-            type="email"
-            required
-            value={userForm.email}
-            onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))}
-          />
-
-          <Input
-            label="Mobile Phone"
-            value={userForm.mobilePhone}
-            onChange={(e) => setUserForm((f) => ({ ...f, mobilePhone: e.target.value }))}
-          />
-
-          {editingUser && (
-            <div className="flex items-center justify-between border-y border-navy-900/8 py-3">
-              <div>
-                <span className="text-xs font-semibold text-navy-800">Account Status</span>
-                <p className="text-[11px] text-navy-400">Enable or disable account access</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingUser((u) => (u ? { ...u, isActive: !u.isActive } : null))}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  editingUser.isActive ? "bg-emerald-600" : "bg-neutral-300"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    editingUser.isActive ? "translate-x-4" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700 mb-1.5">
-              System Roles
-            </label>
-            <div className="grid grid-cols-2 gap-2 border border-navy-900/12 rounded-lg p-3 bg-surface-2 max-h-40 overflow-y-auto">
-              {roles.map((r) => {
-                const checked = userForm.roleCodes.includes(r.code);
-                return (
-                  <label key={r.code} className="flex items-center gap-2 text-xs text-navy-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setUserForm((f) => ({
-                          ...f,
-                          roleCodes: checked
-                            ? f.roleCodes.filter((c) => c !== r.code)
-                            : [...f.roleCodes, r.code],
-                        }));
-                      }}
-                      className="rounded border-navy-300 text-navy-900 focus:ring-0"
-                    />
-                    <span>{r.name}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-navy-900/8">
-            <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submittingUser}>
-              {submittingUser ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
 
       {/* ── MODAL: Allocate User to Project ── */}
       <Modal

@@ -321,3 +321,70 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Could not update user." }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/admin/external-users
+ * Deletes a non-Darwinbox user account.
+ */
+export async function DELETE(req: Request) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
+
+  const { searchParams } = new URL(req.url);
+  const userId = searchParams.get("userId")?.trim();
+  if (!userId) {
+    return NextResponse.json({ error: "userId is required." }, { status: 400 });
+  }
+
+  if (userId === auth.session.userId) {
+    return NextResponse.json({ error: "You cannot delete your own account." }, { status: 409 });
+  }
+
+  try {
+    const user = await identityDb("users").where("id", userId).first();
+    if (!user) {
+      return NextResponse.json({ error: "User not found." }, { status: 404 });
+    }
+
+    if (user.darwinbox_ref) {
+      return NextResponse.json(
+        { error: "This is a Darwinbox employee account. Employees cannot be deleted here." },
+        { status: 403 }
+      );
+    }
+
+    const pmProject = await projectDb("projects")
+      .where("project_manager_user_id", userId)
+      .whereNotIn("status", ["closed", "cancelled", "scrapped"])
+      .first("id", "code", "name");
+
+    if (pmProject) {
+      return NextResponse.json(
+        {
+          error: `Cannot delete ${user.full_name} because they are assigned as Lead Project Manager on active project ${pmProject.name} (${pmProject.code}). Please reassign the PM first.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    await projectDb("project_team_members").where("user_id", userId).delete();
+    await identityDb("user_roles").where("user_id", userId).delete();
+
+    try {
+      await identityDb("otps").where("user_id", userId).delete();
+    } catch {
+      // Best-effort
+    }
+
+    await identityDb("users").where("id", userId).delete();
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${user.full_name} has been deleted successfully.`,
+    });
+  } catch (err) {
+    console.error("[admin.external-users.DELETE]", err);
+    return NextResponse.json({ error: "Could not delete user." }, { status: 500 });
+  }
+}
+
