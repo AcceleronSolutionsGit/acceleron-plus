@@ -524,14 +524,15 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
 
                   {/* Actions */}
                   <td className="px-4 py-3 align-top text-right space-x-1 whitespace-nowrap">
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => handleOpenAllocate(user)}
-                      className="text-xs py-1 px-2.5"
-                    >
-                      + Allocate
-                    </Button>
+                    <Link href={`/admin/external-users/${user.id}/allocate`}>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        className="text-xs py-1 px-2.5"
+                      >
+                        + Allocate
+                      </Button>
+                    </Link>
                     {user.allocationCount > 0 && (
                       <Button
                         size="sm"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface Tab {
@@ -15,15 +15,55 @@ interface Tab {
 interface TabsProps {
   tabs: Tab[];
   defaultTab?: string;
+  activeTab?: string;
   onTabChange?: (tabId: string) => void;
   children: (activeTab: string) => React.ReactNode;
   className?: string;
+  storageKey?: string;
+  syncWithUrl?: boolean;
 }
 
-export function Tabs({ tabs, defaultTab, onTabChange, children, className }: TabsProps) {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.id || "");
+export function Tabs({
+  tabs,
+  defaultTab,
+  activeTab: controlledTab,
+  onTabChange,
+  children,
+  className,
+  storageKey,
+  syncWithUrl = true,
+}: TabsProps) {
+  const [internalTab, setInternalTab] = useState(defaultTab || tabs[0]?.id || "");
+  const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
   const listRef = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  // Sync from URL search parameter (?tab=) or sessionStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let initial: string | null = null;
+    if (syncWithUrl) {
+      const urlTab = new URLSearchParams(window.location.search).get("tab");
+      if (urlTab && tabs.some((t) => t.id === urlTab)) {
+        initial = urlTab;
+      }
+    }
+    if (!initial && storageKey) {
+      try {
+        const stored = sessionStorage.getItem(storageKey);
+        if (stored && tabs.some((t) => t.id === stored)) {
+          initial = stored;
+        }
+      } catch {}
+    }
+
+    if (initial && initial !== activeTab) {
+      if (controlledTab === undefined) {
+        setInternalTab(initial);
+      }
+      onTabChange?.(initial);
+    }
+  }, [tabs, syncWithUrl, storageKey]);
 
   // One underline that slides between tabs, rather than a border that
   // blinks off one button and on to another. The movement is what makes
@@ -35,7 +75,21 @@ export function Tabs({ tabs, defaultTab, onTabChange, children, className }: Tab
   }, [activeTab, tabs]);
 
   const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
+    if (controlledTab === undefined) {
+      setInternalTab(tabId);
+    }
+    if (typeof window !== "undefined") {
+      if (syncWithUrl) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", tabId);
+        window.history.replaceState(null, "", url.toString());
+      }
+      if (storageKey) {
+        try {
+          sessionStorage.setItem(storageKey, tabId);
+        } catch {}
+      }
+    }
     onTabChange?.(tabId);
   };
 

@@ -486,7 +486,13 @@ export function ProjectDetailClient({
       </div>
 
       {/* Tabs */}
-      <Tabs key={activeGroup} tabs={tabs} defaultTab={tabs[0]?.id}>
+      <Tabs
+        key={activeGroup}
+        tabs={tabs}
+        defaultTab={tabs[0]?.id}
+        storageKey={`pmt_tab_${project.id}`}
+        syncWithUrl={true}
+      >
         {(activeTab) => {
           switch (activeTab) {
             case "gantt":

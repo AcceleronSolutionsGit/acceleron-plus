@@ -464,13 +464,22 @@ export function EditUserClient({
               Projects staffed by this user with their member type, CTC cost, and allocation %.
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowAddAlloc((prev) => !prev)}
-          >
-            {showAddAlloc ? "Hide Form" : "+ Add Project Allocation"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => router.push(`/admin/external-users/${userId}/allocate`)}
+              className="bg-navy-900 hover:bg-navy-800 text-white font-semibold text-xs"
+            >
+              Browse Projects &amp; Allocate
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowAddAlloc((prev) => !prev)}
+            >
+              {showAddAlloc ? "Hide Quick Form" : "+ Quick Add"}
+            </Button>
+          </div>
         </div>
 
         {/* Add allocation form on page */}

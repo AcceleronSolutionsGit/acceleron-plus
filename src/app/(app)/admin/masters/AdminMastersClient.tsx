@@ -128,7 +128,27 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
 
   useEffect(() => {
     setIsMounted(true);
+    if (typeof window !== "undefined") {
+      const urlTab = new URLSearchParams(window.location.search).get("tab");
+      const storedTab = sessionStorage.getItem("admin_masters_active_tab");
+      const target = (urlTab || storedTab) as any;
+      if (["employees", "rates", "companies", "project-roles"].includes(target)) {
+        setActiveTab(target);
+      }
+    }
   }, []);
+
+  const handleSelectTab = (tab: "employees" | "rates" | "companies" | "project-roles") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.history.replaceState(null, "", url.toString());
+      try {
+        sessionStorage.setItem("admin_masters_active_tab", tab);
+      } catch {}
+    }
+  };
 
   // Stats
   const [stats, setStats] = useState(initialData.stats);
@@ -702,7 +722,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
       <div className="bg-white rounded-2xl border border-navy-500/10 shadow-sm overflow-hidden">
         <div className="border-b border-navy-500/10 px-6 pt-3 flex items-center gap-6">
           <button
-            onClick={() => setActiveTab("employees")}
+            onClick={() => handleSelectTab("employees")}
             className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === "employees"
                 ? "border-navy-900 text-navy-900"
@@ -719,7 +739,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
           </button>
 
           <button
-            onClick={() => setActiveTab("rates")}
+            onClick={() => handleSelectTab("rates")}
             className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === "rates"
                 ? "border-navy-900 text-navy-900"
@@ -753,7 +773,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
           </a>
 
           <button
-            onClick={() => setActiveTab("companies")}
+            onClick={() => handleSelectTab("companies")}
             className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === "companies"
                 ? "border-navy-900 text-navy-900"
@@ -770,7 +790,7 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
           </button>
 
           <button
-            onClick={() => setActiveTab("project-roles")}
+            onClick={() => handleSelectTab("project-roles")}
             className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === "project-roles"
                 ? "border-navy-900 text-navy-900"
