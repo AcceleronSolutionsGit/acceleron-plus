@@ -196,11 +196,21 @@ export async function POST(req: Request, context: Params) {
       );
     }
 
+    const memberType = ["intern", "consultant"].includes(String(body.memberType))
+      ? (String(body.memberType) as "intern" | "consultant")
+      : "employee";
+    const customDailyCostInr =
+      body.customDailyCostInr !== undefined && body.customDailyCostInr !== null && body.customDailyCostInr !== ""
+        ? Number(body.customDailyCostInr)
+        : null;
+
+    const effectiveDailyCost = customDailyCostInr !== null ? customDailyCostInr : (band?.dailyCostInr ?? null);
+
     const planned = plannedCostFor({
       startDate,
       endDate,
       allocationPercent,
-      dailyCostInr: band?.dailyCostInr ?? null,
+      dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr: band?.dailyBillableRateInr ?? null,
       plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
     });
@@ -221,8 +231,10 @@ export async function POST(req: Request, context: Params) {
         allocation_percent: allocationPercent,
         start_date: startDate,
         end_date: endDate,
-        daily_cost_inr: band?.dailyCostInr ?? null,
+        daily_cost_inr: effectiveDailyCost,
         daily_billable_rate_inr: band?.dailyBillableRateInr ?? null,
+        member_type: memberType,
+        custom_daily_cost_inr: customDailyCostInr,
         planned_days: planned.plannedDays,
         planned_cost_inr: planned.plannedCostInr,
         planned_billable_inr: planned.plannedBillableInr,

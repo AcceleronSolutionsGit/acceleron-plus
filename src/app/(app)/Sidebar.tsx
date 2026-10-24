@@ -325,22 +325,26 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               />
             )}
 
-            <NavSection
-              label="Project Management"
-              isCollapsed={isCollapsed}
-            />
-            <NavItem
-              href="/pmt"
-              icon={<FolderIcon />}
-              label="Projects"
-              isCollapsed={isCollapsed}
-            />
-            <NavItem
-              href="/pmt/governance"
-              icon={<ShieldIcon />}
-              label="Governance"
-              isCollapsed={isCollapsed}
-            />
+            {isAdmin && (
+              <>
+                <NavSection
+                  label="Project Management"
+                  isCollapsed={isCollapsed}
+                />
+                <NavItem
+                  href="/pmt"
+                  icon={<FolderIcon />}
+                  label="Projects"
+                  isCollapsed={isCollapsed}
+                />
+                <NavItem
+                  href="/pmt/governance"
+                  icon={<ShieldIcon />}
+                  label="Governance"
+                  isCollapsed={isCollapsed}
+                />
+              </>
+            )}
 
             {/* Timesheet approval and allocation requests. The API scopes what
                 each person sees to their own direct reports; admins see all. */}

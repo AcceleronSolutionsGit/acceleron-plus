@@ -28,6 +28,12 @@ export async function GET(
       actualAmountInr: parseFloat(c.actual_amount_inr || 0),
       status: c.status,
       notes: c.notes,
+      poNumber: c.po_number || null,
+      poValueInr: c.po_value_inr !== null && c.po_value_inr !== undefined ? parseFloat(c.po_value_inr) : null,
+      invoiceNumber: c.invoice_number || null,
+      invoiceValueInr: c.invoice_value_inr !== null && c.invoice_value_inr !== undefined ? parseFloat(c.invoice_value_inr) : null,
+      invoiceDate: c.invoice_date || null,
+      vendorName: c.vendor_name || null,
       createdAt: c.created_at,
       updatedAt: c.updated_at,
     }));
@@ -54,11 +60,26 @@ export async function POST(
     const {
       category = "other",
       description,
-      plannedAmountInr = 0,
-      actualAmountInr = 0,
       status = "planned",
       notes = null,
+      poNumber = null,
+      poValueInr = null,
+      invoiceNumber = null,
+      invoiceValueInr = null,
+      invoiceDate = null,
+      vendorName = null,
     } = body;
+
+    let plannedAmountInr = Number(body.plannedAmountInr) || 0;
+    let actualAmountInr = Number(body.actualAmountInr) || 0;
+
+    // Subcontractor PO: planned cost is PO value, actual cost is invoice value
+    if (poValueInr !== null && poValueInr !== undefined && poValueInr !== "") {
+      plannedAmountInr = Number(poValueInr) || 0;
+    }
+    if (invoiceValueInr !== null && invoiceValueInr !== undefined && invoiceValueInr !== "") {
+      actualAmountInr = Number(invoiceValueInr) || 0;
+    }
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -72,10 +93,16 @@ export async function POST(
         project_id: projectId,
         category: category.trim(),
         description: description.trim(),
-        planned_amount_inr: Number(plannedAmountInr) || 0,
-        actual_amount_inr: Number(actualAmountInr) || 0,
+        planned_amount_inr: plannedAmountInr,
+        actual_amount_inr: actualAmountInr,
         status: status || "planned",
         notes: notes ? String(notes).trim() : null,
+        po_number: poNumber ? String(poNumber).trim() : null,
+        po_value_inr: poValueInr !== null && poValueInr !== "" ? Number(poValueInr) : null,
+        invoice_number: invoiceNumber ? String(invoiceNumber).trim() : null,
+        invoice_value_inr: invoiceValueInr !== null && invoiceValueInr !== "" ? Number(invoiceValueInr) : null,
+        invoice_date: invoiceDate || null,
+        vendor_name: vendorName ? String(vendorName).trim() : null,
       })
       .returning("*");
 
@@ -93,6 +120,12 @@ export async function POST(
         actualAmountInr: parseFloat(created.actual_amount_inr || 0),
         status: created.status,
         notes: created.notes,
+        poNumber: created.po_number || null,
+        poValueInr: created.po_value_inr !== null ? parseFloat(created.po_value_inr) : null,
+        invoiceNumber: created.invoice_number || null,
+        invoiceValueInr: created.invoice_value_inr !== null ? parseFloat(created.invoice_value_inr) : null,
+        invoiceDate: created.invoice_date || null,
+        vendorName: created.vendor_name || null,
         createdAt: created.created_at,
         updatedAt: created.updated_at,
       },

@@ -9,14 +9,43 @@ import { Button } from "@/components/ui/Button";
 
 interface AdditionalCostItem {
   id: string;
-  category: "software" | "cloud_infra" | "travel" | "hardware" | "contractor" | "other" | "itsm_support";
+  category:
+    | "software"
+    | "cloud_infra"
+    | "travel"
+    | "hardware"
+    | "contractor"
+    | "device_software"
+    | "subcontractor_po"
+    | "provisional"
+    | "other"
+    | "itsm_support";
   description: string;
   plannedAmountInr: number;
   actualAmountInr: number;
   varianceInr: number;
   status: "planned" | "incurred" | "approved" | "settled";
   notes?: string;
+  poNumber?: string | null;
+  poValueInr?: number | null;
+  invoiceNumber?: string | null;
+  invoiceValueInr?: number | null;
+  invoiceDate?: string | null;
+  vendorName?: string | null;
 }
+
+const CATEGORY_META: Record<string, { label: string; icon: string; color: string }> = {
+  software: { label: "Software & Licenses", icon: "💻", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  cloud_infra: { label: "Cloud & Infrastructure", icon: "☁️", color: "bg-sky-50 text-sky-700 border-sky-200" },
+  travel: { label: "Travel & Logistics", icon: "✈️", color: "bg-purple-50 text-purple-700 border-purple-200" },
+  hardware: { label: "Hardware & Devices", icon: "🖥️", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  contractor: { label: "Vendor & Contractors", icon: "🤝", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  device_software: { label: "Device / Software (Non-PO)", icon: "📱", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  subcontractor_po: { label: "Subcontractor / Purchase PO", icon: "📜", color: "bg-violet-50 text-violet-700 border-violet-200" },
+  provisional: { label: "Provisional / Contingency", icon: "⏳", color: "bg-rose-50 text-rose-700 border-rose-200" },
+  itsm_support: { label: "ITSM Ops Support", icon: "🎫", color: "bg-teal-50 text-teal-700 border-teal-200" },
+  other: { label: "Other Expenses", icon: "📦", color: "bg-neutral-50 text-neutral-700 border-neutral-200" },
+};
 
 interface CostSummaryData {
   budget: {
@@ -78,16 +107,6 @@ interface CostSummaryData {
   itsmContribution: any;
 }
 
-const CATEGORY_META: Record<string, { label: string; icon: string; color: string }> = {
-  software: { label: "Software & Licenses", icon: "💻", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  cloud_infra: { label: "Cloud & Infrastructure", icon: "☁️", color: "bg-sky-50 text-sky-700 border-sky-200" },
-  travel: { label: "Travel & Logistics", icon: "✈️", color: "bg-purple-50 text-purple-700 border-purple-200" },
-  hardware: { label: "Hardware & Devices", icon: "🖥️", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  contractor: { label: "Vendor & Contractors", icon: "🤝", color: "bg-amber-50 text-amber-700 border-amber-200" },
-  itsm_support: { label: "ITSM Ops Support", icon: "🎫", color: "bg-teal-50 text-teal-700 border-teal-200" },
-  other: { label: "Other Expenses", icon: "📦", color: "bg-neutral-50 text-neutral-700 border-neutral-200" },
-};
-
 export function FinancialsTab({
   projectId,
   canManageBilling,
@@ -109,6 +128,12 @@ export function FinancialsTab({
     actualAmountInr: "",
     status: "planned",
     notes: "",
+    poNumber: "",
+    poValueInr: "",
+    invoiceNumber: "",
+    invoiceValueInr: "",
+    invoiceDate: "",
+    vendorName: "",
   });
   const [savingCost, setSavingCost] = useState(false);
   const [costError, setCostError] = useState("");
@@ -167,6 +192,12 @@ export function FinancialsTab({
       actualAmountInr: "0",
       status: "planned",
       notes: "",
+      poNumber: "",
+      poValueInr: "",
+      invoiceNumber: "",
+      invoiceValueInr: "",
+      invoiceDate: "",
+      vendorName: "",
     });
     setCostError("");
     setIsCostModalOpen(true);
@@ -181,6 +212,12 @@ export function FinancialsTab({
       actualAmountInr: String(item.actualAmountInr || 0),
       status: item.status,
       notes: item.notes || "",
+      poNumber: item.poNumber || "",
+      poValueInr: item.poValueInr ? String(item.poValueInr) : "",
+      invoiceNumber: item.invoiceNumber || "",
+      invoiceValueInr: item.invoiceValueInr ? String(item.invoiceValueInr) : "",
+      invoiceDate: item.invoiceDate || "",
+      vendorName: item.vendorName || "",
     });
     setCostError("");
     setIsCostModalOpen(true);
@@ -196,13 +233,27 @@ export function FinancialsTab({
     setCostError("");
 
     try {
+      const isSubcontractorPo = costForm.category === "subcontractor_po";
+      const plannedVal = isSubcontractorPo && costForm.poValueInr !== ""
+        ? Number(costForm.poValueInr)
+        : Number(costForm.plannedAmountInr) || 0;
+      const actualVal = isSubcontractorPo && costForm.invoiceValueInr !== ""
+        ? Number(costForm.invoiceValueInr)
+        : Number(costForm.actualAmountInr) || 0;
+
       const payload = {
         category: costForm.category,
         description: costForm.description.trim(),
-        plannedAmountInr: Number(costForm.plannedAmountInr) || 0,
-        actualAmountInr: Number(costForm.actualAmountInr) || 0,
+        plannedAmountInr: plannedVal,
+        actualAmountInr: actualVal,
         status: costForm.status,
         notes: costForm.notes.trim() || null,
+        poNumber: costForm.poNumber.trim() || null,
+        poValueInr: costForm.poValueInr !== "" ? Number(costForm.poValueInr) : null,
+        invoiceNumber: costForm.invoiceNumber.trim() || null,
+        invoiceValueInr: costForm.invoiceValueInr !== "" ? Number(costForm.invoiceValueInr) : null,
+        invoiceDate: costForm.invoiceDate || null,
+        vendorName: costForm.vendorName.trim() || null,
       };
 
       const url = editingCost
@@ -603,6 +654,23 @@ export function FinancialsTab({
                     </td>
                     <td className="px-5 py-3">
                       <span className="font-medium text-navy-900 block">{item.description}</span>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {item.vendorName && (
+                          <span className="text-[10px] text-navy-700 font-semibold bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                            Vendor: {item.vendorName}
+                          </span>
+                        )}
+                        {item.poNumber && (
+                          <span className="text-[10px] bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded border border-violet-200 font-medium">
+                            PO: {item.poNumber} {item.poValueInr ? `(${formatCurrency(item.poValueInr)})` : ""}
+                          </span>
+                        )}
+                        {item.invoiceNumber && (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
+                            Inv: {item.invoiceNumber} {item.invoiceValueInr ? `(${formatCurrency(item.invoiceValueInr)})` : ""} {item.invoiceDate ? `· ${item.invoiceDate}` : ""}
+                          </span>
+                        )}
+                      </div>
                       {item.notes && <span className="text-[10px] text-navy-400 block mt-0.5">{item.notes}</span>}
                     </td>
                     <td className="px-5 py-3">
@@ -839,6 +907,9 @@ export function FinancialsTab({
               value={costForm.category}
               onChange={(e) => setCostForm((f) => ({ ...f, category: e.target.value }))}
             >
+              <option value="subcontractor_po">📜 Subcontractor / Purchase PO</option>
+              <option value="device_software">📱 Device / Software (Non-PO)</option>
+              <option value="provisional">⏳ Provisional Cost (No Reference / Contingency)</option>
               <option value="software">💻 Software & Tooling</option>
               <option value="cloud_infra">☁️ Cloud & Infrastructure</option>
               <option value="travel">✈️ Travel & Logistics</option>
@@ -859,34 +930,116 @@ export function FinancialsTab({
             </Select>
           </div>
 
+          {costForm.category === "device_software" && (
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-800">
+              💡 <strong>Non-PO Asset Deployment:</strong> Track costs of deploying existing company-owned software, licenses, or devices to this project without external purchase orders.
+            </div>
+          )}
+
+          {costForm.category === "provisional" && (
+            <div className="p-3 bg-rose-50 rounded-lg border border-rose-200 text-xs text-rose-800">
+              ⏳ <strong>Provisional / Contingency:</strong> Add estimated cost provisions without PO or invoice references.
+            </div>
+          )}
+
+          {costForm.category === "subcontractor_po" && (
+            <div className="p-4 bg-violet-50/70 rounded-xl border border-violet-200 space-y-3">
+              <p className="text-xs font-bold text-violet-900 flex items-center gap-1.5">
+                <span>📜</span> Subcontractor PO & Invoice Details
+              </p>
+              <Input
+                label="Vendor / Subcontractor Name"
+                placeholder="e.g. Infotech Services Pvt Ltd"
+                value={costForm.vendorName}
+                onChange={(e) => setCostForm((f) => ({ ...f, vendorName: e.target.value }))}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Purchase Order (PO) Number"
+                  placeholder="e.g. PO-2026-089"
+                  value={costForm.poNumber}
+                  onChange={(e) => setCostForm((f) => ({ ...f, poNumber: e.target.value }))}
+                />
+                <Input
+                  label="PO Value (INR) — feeds Planned Cost"
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder="0"
+                  value={costForm.poValueInr}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCostForm((f) => ({ ...f, poValueInr: val, plannedAmountInr: val }));
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="Invoice Number"
+                  placeholder="e.g. INV-9921"
+                  value={costForm.invoiceNumber}
+                  onChange={(e) => setCostForm((f) => ({ ...f, invoiceNumber: e.target.value }))}
+                />
+                <Input
+                  label="Invoice Value (INR) — feeds Actual Cost"
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder="0"
+                  value={costForm.invoiceValueInr}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCostForm((f) => ({ ...f, invoiceValueInr: val, actualAmountInr: val }));
+                  }}
+                />
+                <Input
+                  label="Invoice Date"
+                  type="date"
+                  value={costForm.invoiceDate}
+                  onChange={(e) => setCostForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+
           <Input
             label="Description"
-            placeholder="e.g. AWS Production Cluster Hosting (6 months)"
+            placeholder={
+              costForm.category === "subcontractor_po"
+                ? "e.g. Frontend React subcontracting milestones"
+                : costForm.category === "device_software"
+                ? "e.g. Internal proprietary OCR software deployment"
+                : costForm.category === "provisional"
+                ? "e.g. Unforeseen data migration contingency"
+                : "e.g. AWS Production Cluster Hosting (6 months)"
+            }
             required
             value={costForm.description}
             onChange={(e) => setCostForm((f) => ({ ...f, description: e.target.value }))}
           />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Planned Amount (INR)"
-              type="number"
-              min={0}
-              step={100}
-              placeholder="0"
-              value={costForm.plannedAmountInr}
-              onChange={(e) => setCostForm((f) => ({ ...f, plannedAmountInr: e.target.value }))}
-            />
-            <Input
-              label="Actual Incurred Amount (INR)"
-              type="number"
-              min={0}
-              step={100}
-              placeholder="0"
-              value={costForm.actualAmountInr}
-              onChange={(e) => setCostForm((f) => ({ ...f, actualAmountInr: e.target.value }))}
-            />
-          </div>
+          {costForm.category !== "subcontractor_po" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Planned Amount (INR)"
+                type="number"
+                min={0}
+                step={100}
+                placeholder="0"
+                value={costForm.plannedAmountInr}
+                onChange={(e) => setCostForm((f) => ({ ...f, plannedAmountInr: e.target.value }))}
+              />
+              <Input
+                label="Actual Incurred Amount (INR)"
+                type="number"
+                min={0}
+                step={100}
+                placeholder="0"
+                value={costForm.actualAmountInr}
+                onChange={(e) => setCostForm((f) => ({ ...f, actualAmountInr: e.target.value }))}
+              />
+            </div>
+          )}
 
           <Textarea
             label="Notes / PO Reference (Optional)"

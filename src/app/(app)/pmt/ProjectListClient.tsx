@@ -162,9 +162,15 @@ function isTyping(target: EventTarget | null) {
 export function ProjectListClient({
   projects: initialProjects,
   userRole = "member",
+  isMyProjects = false,
+  title,
+  subtitle,
 }: {
   projects: Project[];
   userRole?: AppRole;
+  isMyProjects?: boolean;
+  title?: string;
+  subtitle?: string;
 }) {
   const router = useRouter();
   const canManagePMs = userRole === "admin";
@@ -398,35 +404,49 @@ export function ProjectListClient({
 
   return (
     <div className="space-y-5">
-      <PmtHeaderTabs
-        title="Projects"
-        subtitle={`${projects.length} live project${projects.length === 1 ? "" : "s"} across ${stats.clients} client${stats.clients === 1 ? "" : "s"} — delivery, owners and timelines in one place.`}
-        userRole={userRole}
-        action={
-          <div className="flex items-center gap-2">
-            {userRole === "admin" && (
-              <Link
-                href="/pmt/scrapped"
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-navy-500 transition-colors hover:bg-navy-900/6 hover:text-navy-900"
-              >
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M2.5 4.5h11M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" />
-                </svg>
-                Scrapped
-              </Link>
-            )}
-            {(userRole === "admin" || userRole === "pm") && (
-              <Button data-guide="project:new" onClick={() => router.push('/pmt/new')}>
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-                New project
-                <kbd className="ml-1 hidden rounded border border-white/25 px-1 font-mono text-[10px] leading-4 text-white/70 sm:inline">N</kbd>
-              </Button>
-            )}
-          </div>
-        }
-      />
+      {isMyProjects ? (
+        <div className="mb-6 space-y-1">
+          <h1 className="text-display text-[26px] font-bold leading-tight tracking-[-0.025em] text-navy-900">
+            {title || "My Projects"}
+          </h1>
+          <p className="text-[13.5px] leading-snug text-navy-500">
+            {subtitle || `${projects.length} project${projects.length === 1 ? "" : "s"} allocated to you.`}
+          </p>
+        </div>
+      ) : (
+        <PmtHeaderTabs
+          title={title || "Projects"}
+          subtitle={
+            subtitle ||
+            `${projects.length} live project${projects.length === 1 ? "" : "s"} across ${stats.clients} client${stats.clients === 1 ? "" : "s"} — delivery, owners and timelines in one place.`
+          }
+          userRole={userRole}
+          action={
+            <div className="flex items-center gap-2">
+              {userRole === "admin" && (
+                <Link
+                  href="/pmt/scrapped"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-navy-500 transition-colors hover:bg-navy-900/6 hover:text-navy-900"
+                >
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M2.5 4.5h11M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" />
+                  </svg>
+                  Scrapped
+                </Link>
+              )}
+              {(userRole === "admin" || userRole === "pm") && (
+                <Button data-guide="project:new" onClick={() => router.push('/pmt/new')}>
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                  New project
+                  <kbd className="ml-1 hidden rounded border border-white/25 px-1 font-mono text-[10px] leading-4 text-white/70 sm:inline">N</kbd>
+                </Button>
+              )}
+            </div>
+          }
+        />
+      )}
 
       {/* ── Snapshot — each tile is also a filter ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -628,9 +648,17 @@ export function ProjectListClient({
       {/* ── The list ── */}
       {projects.length === 0 ? (
         <EmptyState
-          title="No projects yet"
-          description="Create the first one, or import sales orders and they will appear here."
-          action={<Button onClick={() => router.push('/pmt/new')}>New project</Button>}
+          title={isMyProjects ? "No projects allocated" : "No projects yet"}
+          description={
+            isMyProjects
+              ? "You are not currently staffed on any project. Contact your project manager or team lead to be allocated."
+              : "Create the first one, or import sales orders and they will appear here."
+          }
+          action={
+            isMyProjects ? undefined : (
+              <Button onClick={() => router.push('/pmt/new')}>New project</Button>
+            )
+          }
           icon={<svg viewBox="0 0 18 18" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 1.5H14a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13z" /></svg>}
         />
       ) : filtered.length === 0 ? (

@@ -41,6 +41,23 @@ export async function PATCH(
     if (body.status !== undefined) updateData.status = String(body.status).trim();
     if (body.notes !== undefined) updateData.notes = body.notes ? String(body.notes).trim() : null;
 
+    if (body.poNumber !== undefined) updateData.po_number = body.poNumber ? String(body.poNumber).trim() : null;
+    if (body.poValueInr !== undefined) {
+      updateData.po_value_inr = body.poValueInr !== null && body.poValueInr !== "" ? Number(body.poValueInr) : null;
+      if (updateData.po_value_inr !== null) {
+        updateData.planned_amount_inr = updateData.po_value_inr;
+      }
+    }
+    if (body.invoiceNumber !== undefined) updateData.invoice_number = body.invoiceNumber ? String(body.invoiceNumber).trim() : null;
+    if (body.invoiceValueInr !== undefined) {
+      updateData.invoice_value_inr = body.invoiceValueInr !== null && body.invoiceValueInr !== "" ? Number(body.invoiceValueInr) : null;
+      if (updateData.invoice_value_inr !== null) {
+        updateData.actual_amount_inr = updateData.invoice_value_inr;
+      }
+    }
+    if (body.invoiceDate !== undefined) updateData.invoice_date = body.invoiceDate || null;
+    if (body.vendorName !== undefined) updateData.vendor_name = body.vendorName ? String(body.vendorName).trim() : null;
+
     const [updated] = await projectDb("project_additional_costs")
       .where({ id: costId, project_id: projectId })
       .update(updateData)
@@ -60,6 +77,12 @@ export async function PATCH(
         actualAmountInr: parseFloat(updated.actual_amount_inr || 0),
         status: updated.status,
         notes: updated.notes,
+        poNumber: updated.po_number || null,
+        poValueInr: updated.po_value_inr !== null ? parseFloat(updated.po_value_inr) : null,
+        invoiceNumber: updated.invoice_number || null,
+        invoiceValueInr: updated.invoice_value_inr !== null ? parseFloat(updated.invoice_value_inr) : null,
+        invoiceDate: updated.invoice_date || null,
+        vendorName: updated.vendor_name || null,
         createdAt: updated.created_at,
         updatedAt: updated.updated_at,
       },

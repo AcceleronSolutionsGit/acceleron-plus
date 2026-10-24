@@ -83,6 +83,19 @@ export async function PATCH(req: Request, context: Params) {
       }
     }
 
+    if (body.memberType !== undefined) {
+      updates.member_type = ["intern", "consultant"].includes(String(body.memberType))
+        ? String(body.memberType)
+        : "employee";
+    }
+
+    if (body.customDailyCostInr !== undefined) {
+      updates.custom_daily_cost_inr =
+        body.customDailyCostInr === null || body.customDailyCostInr === ""
+          ? null
+          : Number(body.customDailyCostInr);
+    }
+
     // Moving somebody to a different band re-prices the assignment from
     // that band's current rate. The old figures are replaced on purpose:
     // the change is a decision, not a drift.
@@ -153,6 +166,15 @@ export async function PATCH(req: Request, context: Params) {
       }
     }
 
+    const effectiveDailyCost =
+      updates.custom_daily_cost_inr !== undefined
+        ? (updates.custom_daily_cost_inr as number | null)
+        : existing.custom_daily_cost_inr !== null && existing.custom_daily_cost_inr !== undefined
+        ? Number(existing.custom_daily_cost_inr)
+        : updates.daily_cost_inr !== undefined
+        ? (updates.daily_cost_inr as number | null)
+        : (existing.daily_cost_inr as number | null);
+
     // Anything that moves the dates, the allocation or the rate moves
     // the planned cost with it, or the two quietly disagree.
     const planned = plannedCostFor({
@@ -160,10 +182,7 @@ export async function PATCH(req: Request, context: Params) {
       endDate: end,
       allocationPercent:
         (updates.allocation_percent as number) ?? Number(existing.allocation_percent ?? 100),
-      dailyCostInr:
-        updates.daily_cost_inr !== undefined
-          ? (updates.daily_cost_inr as number | null)
-          : (existing.daily_cost_inr as number | null),
+      dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr:
         updates.daily_billable_rate_inr !== undefined
           ? (updates.daily_billable_rate_inr as number | null)

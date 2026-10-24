@@ -54,6 +54,8 @@ interface Member {
   isActive: boolean;
   rateBandName: string | null;
   rateBandId: string | null;
+  memberType?: "employee" | "intern" | "consultant";
+  customDailyCostInr?: number | null;
   skills: Skill[];
   otherProjects: Commitment[];
   committedElsewhere: number;
@@ -432,6 +434,8 @@ function MemberRow({
   const [startDate, setStartDate] = useState(member.startDate ?? "");
   const [endDate, setEndDate] = useState(member.endDate ?? "");
   const [bandId, setBandId] = useState(member.rateBandId ?? "");
+  const [memberType, setMemberType] = useState<"employee" | "intern" | "consultant">(member.memberType ?? "employee");
+  const [customCost, setCustomCost] = useState(member.customDailyCostInr ? String(member.customDailyCostInr) : "");
 
   const save = async (allowOverallocation = false) => {
     setBusy(true);
@@ -446,6 +450,8 @@ function MemberRow({
           startDate: startDate || null,
           endDate: endDate || null,
           rateBandId: bandId || null,
+          memberType,
+          customDailyCostInr: customCost ? Number(customCost) : null,
           ...(allowOverallocation ? { allowOverallocation: true } : {}),
         }),
       });
@@ -493,8 +499,18 @@ function MemberRow({
       <div className="flex items-start gap-4 flex-wrap">
         {/* Person */}
         <div className="min-w-[220px] flex-1">
-          <p className="text-sm font-semibold text-navy-900 flex items-center gap-2">
+          <p className="text-sm font-semibold text-navy-900 flex items-center gap-2 flex-wrap">
             {member.userName ?? member.employeeId}
+            {member.memberType === "intern" && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                Intern
+              </span>
+            )}
+            {member.memberType === "consultant" && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-purple-50 text-purple-700 border border-purple-200" title={member.customDailyCostInr ? `CTC: ₹${member.customDailyCostInr}/day` : undefined}>
+                Consultant {member.customDailyCostInr ? `(CTC ₹${member.customDailyCostInr}/d)` : ""}
+              </span>
+            )}
             {!member.isActive && <Badge>Stood down</Badge>}
             {member.overAllocated && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/10 text-red-600 font-medium">
@@ -603,7 +619,18 @@ function MemberRow({
       )}
 
       {editing && (
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-5 gap-3 bg-neutral-50/70 rounded-lg p-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-6 gap-3 bg-neutral-50/70 rounded-lg p-3">
+          <Field label="Member Type">
+            <select
+              value={memberType}
+              onChange={(e) => setMemberType(e.target.value as any)}
+              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white"
+            >
+              <option value="employee">Employee</option>
+              <option value="intern">Intern</option>
+              <option value="consultant">Consultant</option>
+            </select>
+          </Field>
           <Field label="Role">
             <RoleSelect
               value={role}
@@ -629,23 +656,32 @@ function MemberRow({
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </Field>
           {canViewCost && (
-            <Field label="Rate band">
-              <select
-                value={bandId}
-                onChange={(e) => setBandId(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm rounded-lg border border-navy-500/30 bg-white"
-              >
-                <option value="">No band</option>
-                {rateBands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.bandName} ({b.levelCode})
-                    {b.dailyCostInr !== null ? ` — ${rupees(b.dailyCostInr)}/day` : ""}
-                  </option>
-                ))}
-              </select>
+            <Field label={memberType === "consultant" ? "Daily Cost / CTC (₹)" : "Rate band"}>
+              {memberType === "consultant" ? (
+                <Input
+                  type="number"
+                  placeholder="e.g. 4000"
+                  value={customCost}
+                  onChange={(e) => setCustomCost(e.target.value)}
+                />
+              ) : (
+                <select
+                  value={bandId}
+                  onChange={(e) => setBandId(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-navy-500/30 bg-white"
+                >
+                  <option value="">No band</option>
+                  {rateBands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.bandName} ({b.levelCode})
+                      {b.dailyCostInr !== null ? ` — ${rupees(b.dailyCostInr)}/day` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
           )}
-          <div className="sm:col-span-5 flex justify-end">
+          <div className="sm:col-span-6 flex justify-end">
             <Button onClick={() => save()} disabled={busy}>
               {busy ? "Saving…" : "Save changes"}
             </Button>
@@ -699,6 +735,8 @@ function AddPersonModal({
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState("");
   const [bandId, setBandId] = useState("");
+  const [memberType, setMemberType] = useState<"employee" | "intern" | "consultant">("employee");
+  const [customDailyCostInr, setCustomDailyCostInr] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -739,10 +777,11 @@ function AddPersonModal({
   // the default is the one their grade says, not an empty dropdown.
   const [bandTouched, setBandTouched] = useState(false);
   const effectiveDailyCost = useMemo(() => {
+    if (memberType === "consultant" && customDailyCostInr) return Number(customDailyCostInr);
     if (band) return band.dailyCostInr;
     if (picked) return picked.suggestedBand.dailyCostInr;
     return null;
-  }, [band, picked]);
+  }, [band, picked, memberType, customDailyCostInr]);
   useEffect(() => {
     if (!picked || bandTouched) return;
     setBandId(picked.suggestedBand.rateBandId ?? "");
@@ -758,11 +797,13 @@ function AddPersonModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employeeId: picked.employeeId,
-          rateBandId: bandId || null,
+          rateBandId: memberType === "consultant" ? null : (bandId || null),
           roleInProject: role,
           allocationPercent: Number(allocation),
           startDate: startDate || null,
           endDate: endDate || null,
+          memberType,
+          customDailyCostInr: customDailyCostInr ? Number(customDailyCostInr) : null,
           ...(allowOverallocation ? { allowOverallocation: true } : {}),
         }),
       });
@@ -804,7 +845,7 @@ function AddPersonModal({
               Add a person to this project
             </h3>
             <p className="text-xs text-navy-500">
-              Search the employee master, or filter by the skills the work needs.
+              Staff employees, interns, or consultants and track their timesheets and costs.
             </p>
           </div>
           <Button variant="secondary" onClick={onClose}>
@@ -813,6 +854,42 @@ function AddPersonModal({
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Member type / classification */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-neutral-50/80 rounded-xl border border-neutral-200">
+            <Field label="Resource Type">
+              <select
+                value={memberType}
+                onChange={(e) => setMemberType(e.target.value as any)}
+                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="employee">Employee (Standard band rate)</option>
+                <option value="intern">Intern</option>
+                <option value="consultant">Consultant (Actual CTC cost)</option>
+              </select>
+            </Field>
+
+            {memberType === "consultant" && (
+              <Field label="Actual Cost as per CTC (₹ / Day)">
+                <Input
+                  type="number"
+                  placeholder="e.g. 4500"
+                  value={customDailyCostInr}
+                  onChange={(e) => setCustomDailyCostInr(e.target.value)}
+                />
+              </Field>
+            )}
+
+            <div className={memberType === "consultant" ? "sm:col-span-1 flex items-end" : "sm:col-span-2 flex items-end"}>
+              <p className="text-[11px] text-navy-600 pb-1">
+                {memberType === "consultant"
+                  ? "For consultants, provide their actual daily cost based on CTC. Interns and consultants are also enabled to log weekly timesheets."
+                  : memberType === "intern"
+                  ? "Interns are added to the resource list with project allocation and can log timesheets against WBS items."
+                  : "Employees are priced according to their Darwinbox job band level."}
+              </p>
+            </div>
+          </div>
+
           {/* Dates first: they decide who counts as free */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Field label="From">

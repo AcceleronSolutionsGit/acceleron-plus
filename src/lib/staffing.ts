@@ -39,6 +39,8 @@ export interface TeamMemberSkill {
   isPrimary: boolean;
 }
 
+export type MemberType = "employee" | "intern" | "consultant";
+
 export interface TeamMember {
   id: string;
   projectId: string;
@@ -56,6 +58,10 @@ export interface TeamMember {
   notes: string | null;
   rateBandId: string | null;
   rateBandName: string | null;
+  /** employee | intern | consultant */
+  memberType: MemberType;
+  /** Override daily cost — used for consultants whose CTC-derived rate differs from any band. */
+  customDailyCostInr: number | null;
   skills: TeamMemberSkill[];
   /** Present only for someone allowed to see cost. */
   cost?: {
@@ -232,6 +238,12 @@ export async function getProjectTeam(
     const employeeId = row.employee_id ? String(row.employee_id) : null;
     const profile = employeeId ? directory.get(employeeId) : undefined;
 
+    const memberType = (String(row.member_type ?? "employee")) as MemberType;
+    const customDailyCost =
+      row.custom_daily_cost_inr === null || row.custom_daily_cost_inr === undefined
+        ? null
+        : Number(row.custom_daily_cost_inr);
+
     const member: TeamMember = {
       id: String(row.id),
       projectId: String(row.project_id),
@@ -249,14 +261,18 @@ export async function getProjectTeam(
       notes: row.notes ? String(row.notes) : null,
       rateBandId: row.rate_band_id ? String(row.rate_band_id) : null,
       rateBandName: row.rate_band_name ? String(row.rate_band_name) : null,
+      memberType,
+      customDailyCostInr: customDailyCost,
       skills: employeeId ? (skills.get(employeeId) ?? []) : [],
     };
 
     if (options.includeCost) {
-      const dailyCost =
+      // For consultants, custom daily cost overrides the band rate.
+      const bandDailyCost =
         row.daily_cost_inr === null || row.daily_cost_inr === undefined
           ? null
           : Number(row.daily_cost_inr);
+      const dailyCost = customDailyCost !== null ? customDailyCost : bandDailyCost;
       const plannedCost =
         row.planned_cost_inr === null || row.planned_cost_inr === undefined
           ? null

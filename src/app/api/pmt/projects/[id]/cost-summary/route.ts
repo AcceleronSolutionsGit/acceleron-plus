@@ -44,6 +44,9 @@ export async function GET(
       "ts.status",
       "ptm.rate_band_name",
       "ptm.rate_band_id",
+      "ptm.member_type",
+      "ptm.custom_daily_cost_inr",
+      "ptm.daily_cost_inr as member_daily_cost",
       "erb.level_code",
       "erb.daily_cost_inr",
       "erb.daily_billable_rate_inr"
@@ -115,11 +118,16 @@ export async function GET(
 
   for (const ts of timesheets) {
     const band = ts.rate_band_name ?? "Unassigned";
+    const effectiveDailyCost =
+      ts.custom_daily_cost_inr !== null && ts.custom_daily_cost_inr !== undefined
+        ? parseFloat(ts.custom_daily_cost_inr)
+        : parseFloat(ts.member_daily_cost ?? ts.daily_cost_inr ?? 0);
+
     if (!bandMap[band]) {
       bandMap[band] = {
         rateBandName: band,
         levelCode: ts.level_code ?? "—",
-        dailyCostInr: parseFloat(ts.daily_cost_inr ?? 0),
+        dailyCostInr: effectiveDailyCost,
         dailyBillableRateInr: parseFloat(ts.daily_billable_rate_inr ?? 0),
         userIds: new Set(),
         totalHours: 0,
@@ -165,7 +173,11 @@ export async function GET(
     const phase = getPhase(ts.wbs_name);
     if (!phaseMap[phase]) phaseMap[phase] = { totalHours: 0, totalCostInr: 0 };
     const hours = parseFloat(ts.hours_logged);
-    const costPerHour = (parseFloat(ts.daily_cost_inr ?? 0)) / DAILY_HOURS;
+    const effectiveDailyCost =
+      ts.custom_daily_cost_inr !== null && ts.custom_daily_cost_inr !== undefined
+        ? parseFloat(ts.custom_daily_cost_inr)
+        : parseFloat(ts.member_daily_cost ?? ts.daily_cost_inr ?? 0);
+    const costPerHour = effectiveDailyCost / DAILY_HOURS;
     phaseMap[phase].totalHours += hours;
     phaseMap[phase].totalCostInr += hours * costPerHour;
   }
@@ -269,8 +281,12 @@ export async function GET(
   }
 
   const additionalCostItems = additionalCostRows.map((c) => {
-    const planned = parseFloat(c.planned_amount_inr || 0);
-    const actual = parseFloat(c.actual_amount_inr || 0);
+    const planned = c.po_value_inr !== null && c.po_value_inr !== undefined && c.po_value_inr !== ""
+      ? parseFloat(c.po_value_inr)
+      : parseFloat(c.planned_amount_inr || 0);
+    const actual = c.invoice_value_inr !== null && c.invoice_value_inr !== undefined && c.invoice_value_inr !== ""
+      ? parseFloat(c.invoice_value_inr)
+      : parseFloat(c.actual_amount_inr || 0);
     return {
       id: c.id,
       category: c.category || "other",
@@ -280,6 +296,12 @@ export async function GET(
       varianceInr: parseFloat((planned - actual).toFixed(2)),
       status: c.status || "planned",
       notes: c.notes,
+      poNumber: c.po_number || null,
+      poValueInr: c.po_value_inr !== null && c.po_value_inr !== undefined ? parseFloat(c.po_value_inr) : null,
+      invoiceNumber: c.invoice_number || null,
+      invoiceValueInr: c.invoice_value_inr !== null && c.invoice_value_inr !== undefined ? parseFloat(c.invoice_value_inr) : null,
+      invoiceDate: c.invoice_date || null,
+      vendorName: c.vendor_name || null,
     };
   });
 
