@@ -48,7 +48,7 @@ export async function PATCH(req: Request, context: Params) {
     let willBePm = wasPm;
     if (body.roleInProject !== undefined) {
       const roleRaw = String(body.roleInProject ?? "").trim();
-      let role = roleRaw ? toTeamRole(roleRaw) : null;
+      let role: string | null = roleRaw ? toTeamRole(roleRaw) : null;
       if (!role && roleRaw) {
         const customRole = await projectDb("project_custom_roles")
           .where(function () {
@@ -59,10 +59,14 @@ export async function PATCH(req: Request, context: Params) {
           .andWhere(function () {
             this.whereNull("project_id").orWhere("project_id", project.id);
           })
-          .first();
+          .first()
+          .catch(() => null);
         if (customRole) {
           role = customRole.name || customRole.code;
         }
+      }
+      if (!role && roleRaw && existing.role_in_project && roleRaw.toLowerCase() === String(existing.role_in_project).toLowerCase()) {
+        role = String(existing.role_in_project);
       }
       if (!role) errors.push(TEAM_ROLE_REQUIRED);
       else {

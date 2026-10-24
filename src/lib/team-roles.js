@@ -17,19 +17,21 @@
 const PM = "PM";
 const TEAM_LEAD = "Team Lead";
 const DEVELOPER = "Developer";
+const CONSULTANT = "Consultant";
 const FUNCTIONAL_CONSULTANT = "Functional Consultant";
 const TECHNICAL_CONSULTANT = "Technical Consultant";
 
 /** In the order they are offered in a dropdown. */
-const TEAM_ROLES = [DEVELOPER, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD, PM];
+const TEAM_ROLES = [DEVELOPER, CONSULTANT, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD, PM];
 
 /** Roles a person may give themselves. PM is granted, never self-declared. */
-const SELF_SELECTABLE_ROLES = [DEVELOPER, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD];
+const SELF_SELECTABLE_ROLES = [DEVELOPER, CONSULTANT, FUNCTIONAL_CONSULTANT, TECHNICAL_CONSULTANT, TEAM_LEAD];
 
 const DESCRIPTIONS = {
   [PM]: "Runs the project — plan, team and finances.",
   [TEAM_LEAD]: "Edits the plan and work breakdown. No finances.",
   [DEVELOPER]: "Updates their own work and logs time.",
+  [CONSULTANT]: "Delivers specialized advisory and project execution.",
   [FUNCTIONAL_CONSULTANT]: "Handles functional requirements and design.",
   [TECHNICAL_CONSULTANT]: "Handles technical architecture and implementation.",
 };
@@ -42,9 +44,8 @@ function clean(raw) {
 }
 
 /**
- * Strict: one of the three roles, allowing only obvious spellings
- * ("pm", "project manager", "team lead", "tl", "dev"). Anything else is
- * null — the caller should refuse it and list the three.
+ * Strict: one of the allowed roles, allowing only obvious spellings
+ * ("pm", "project manager", "team lead", "tl", "dev", "consultant").
  */
 function toTeamRole(raw) {
   const v = clean(raw);
@@ -52,6 +53,7 @@ function toTeamRole(raw) {
   if (v === "pm" || v === "project manager") return PM;
   if (v === "team lead" || v === "teamlead" || v === "tl" || v === "lead") return TEAM_LEAD;
   if (v === "developer" || v === "dev") return DEVELOPER;
+  if (v === "consultant" || v === "senior consultant" || v === "lead consultant") return CONSULTANT;
   if (v === "functional consultant" || v === "fc") return FUNCTIONAL_CONSULTANT;
   if (v === "technical consultant" || v === "tc") return TECHNICAL_CONSULTANT;
   return null;
@@ -63,9 +65,7 @@ function isClientContactRole(raw) {
 }
 
 /**
- * Lenient: maps the old free-text titles onto the three. Used by the
- * one-off migration and by the allocation import, where the sheet may
- * still carry last year's dropdown. Blank becomes Developer.
+ * Lenient: maps the old free-text titles onto the roles.
  */
 function legacyToTeamRole(raw) {
   const strict = toTeamRole(raw);
@@ -75,6 +75,7 @@ function legacyToTeamRole(raw) {
   if (/(lead|architect|principal|scrum master)/.test(v)) return TEAM_LEAD;
   if (/(functional)/.test(v)) return FUNCTIONAL_CONSULTANT;
   if (/(technical|tech consultant)/.test(v)) return TECHNICAL_CONSULTANT;
+  if (/(consultant)/.test(v)) return CONSULTANT;
   return DEVELOPER;
 }
 
@@ -82,6 +83,7 @@ module.exports = {
   PM,
   TEAM_LEAD,
   DEVELOPER,
+  CONSULTANT,
   FUNCTIONAL_CONSULTANT,
   TECHNICAL_CONSULTANT,
   TEAM_ROLES,

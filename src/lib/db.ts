@@ -177,6 +177,16 @@ const MIGRATION_FOR: Record<string, string> = {
   darwinbox_sync_runs: "src/lib/migrations/migrate-darwinbox-autosync.js",
   wbs_assignments: "src/lib/migrations/migrate-assignments.js",
   sales_orders: "src/lib/migrations/migrate-sales-orders.js",
+  project_custom_roles: "src/lib/migrations/migrate-project-custom-roles.js",
+  project_additional_costs: "src/lib/migrations/migrate-project-additional-costs.js",
+  project_allocation_requests: "src/lib/migrations/migrate-phase1.js",
+  wbs_client_comments: "src/lib/migrations/migrate_governance_invoices_comments.js",
+  invoices: "src/lib/migrations/migrate_governance_invoices_comments.js",
+  user_roles: "src/lib/migrations/migrate-user-roles-table.js",
+  ticket_attachments: "src/lib/migrations/migrate-ticket-attachments.js",
+  project_documents: "src/lib/migrations/migrate-documents.js",
+  document_access_logs: "src/lib/migrations/migrate-documents.js",
+  service_group_members: "src/lib/migrations/migrate-itsm-groups.js",
 };
 
 /**
@@ -212,4 +222,13 @@ const MIGRATION_FOR_COLUMN: Record<string, string> = {
   raw_payload: "src/lib/migrations/migrate-employee-master.js",
   group_company_code: "src/lib/migrations/migrate-employee-master.js",
   date_of_exit: "src/lib/migrations/migrate-employee-master.js",
+  // migrate-pmt-enhancements
+  member_type: "src/lib/migrations/migrate-pmt-enhancements.js",
+  custom_daily_cost_inr: "src/lib/migrations/migrate-pmt-enhancements.js",
+  po_number: "src/lib/migrations/migrate-pmt-enhancements.js",
+  po_value_inr: "src/lib/migrations/migrate-pmt-enhancements.js",
+  invoice_number: "src/lib/migrations/migrate-pmt-enhancements.js",
+  invoice_value_inr: "src/lib/migrations/migrate-pmt-enhancements.js",
+  invoice_date: "src/lib/migrations/migrate-pmt-enhancements.js",
+  vendor_name: "src/lib/migrations/migrate-pmt-enhancements.js",
 };

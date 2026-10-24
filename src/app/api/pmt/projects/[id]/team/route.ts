@@ -184,7 +184,7 @@ export async function POST(req: Request, context: Params) {
     const validation = validateAssignment(body);
     // Developer, Team Lead or PM or any custom project role. Blank is Developer.
     const roleRaw = String(body.roleInProject ?? "").trim();
-    let role = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
+    let role: string | null = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
     if (!role && roleRaw) {
       // Check if it's an active custom role
       const customRole = await projectDb("project_custom_roles")
@@ -196,7 +196,8 @@ export async function POST(req: Request, context: Params) {
         .andWhere(function () {
           this.whereNull("project_id").orWhere("project_id", project.id);
         })
-        .first();
+        .first()
+        .catch(() => null);
       if (customRole) {
         role = customRole.name || customRole.code;
       }
