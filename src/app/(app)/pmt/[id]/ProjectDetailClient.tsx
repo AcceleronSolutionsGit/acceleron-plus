@@ -305,9 +305,26 @@ export function ProjectDetailClient({
               </div>
             </div>
 
-            <p className="font-mono text-xs font-bold text-navy-600 bg-neutral-100 inline-block px-2 py-0.5 rounded border border-neutral-200">
-              {project.code}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-mono text-xs font-bold text-navy-600 bg-neutral-100 inline-block px-2 py-0.5 rounded border border-neutral-200">
+                {project.code}
+              </p>
+              {project.category && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {project.category}
+                </span>
+              )}
+              {project.projectType && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  {project.projectType}
+                </span>
+              )}
+              {project.classification && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase bg-neutral-100 text-neutral-600 border border-neutral-200">
+                  {project.classification === "group" ? "Group" : "Non-Group"}
+                </span>
+              )}
+            </div>
 
             {project.description && (
               <p className="text-sm text-navy-700 max-w-3xl leading-relaxed">{project.description}</p>

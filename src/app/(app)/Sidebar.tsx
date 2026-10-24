@@ -129,6 +129,15 @@ const PeopleIcon = icon(
   </>
 );
 
+const UserPlusIcon = icon(
+  <>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="8.5" cy="7" r="4" />
+    <line x1="19" y1="8" x2="19" y2="14" />
+    <line x1="22" y1="11" x2="16" y2="11" />
+  </>
+);
+
 const ChartIcon = icon(
   <>
     <path d="M4 20V4" />
@@ -415,6 +424,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavItem href="/admin/allocations" icon={<ChartIcon />} label="Resource Allocation" isCollapsed={isCollapsed} />
             <NavItem href="/admin/masters" icon={<DatabaseIcon />} label="Master Data" isCollapsed={isCollapsed} />
             <NavItem href="/admin/roles" icon={<PeopleIcon />} label="People & Roles" isCollapsed={isCollapsed} />
+            <NavItem href="/admin/external-users" icon={<UserPlusIcon />} label="Non-Darwinbox Users" isCollapsed={isCollapsed} />
             <NavItem href="/admin/skills" icon={<SkillIcon />} label="Skills" isCollapsed={isCollapsed} />
             <NavItem href="/admin/audit-logs" icon={<ActivityIcon />} label="Audit Logs" isCollapsed={isCollapsed} />
             <NavItem href="/admin/settings" icon={<SettingsIcon />} label="Settings" isCollapsed={isCollapsed} />

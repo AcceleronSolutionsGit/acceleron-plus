@@ -28,6 +28,12 @@ import {
 } from "@/components/project/ManagerPicker";
 import { cn, formatCurrency, formatStatus, projectStatusColor } from "@/lib/utils";
 import { formatISODate, parseISODate, todayISO } from "@/lib/dates";
+import {
+  PROJECT_TAXONOMY,
+  ALL_CATEGORIES,
+  ALL_PROJECT_TYPES,
+  getTypesForCategory,
+} from "@/lib/project-types";
 
 export const PHASES = [
   "Discovery",
@@ -88,13 +94,14 @@ interface Filters {
   status: StatusGroup;
   phase: string;
   category: string;
+  projectType: string;
   classification: string;
   client: string;
   manager: string; // "all" | "none" | a manager key
   sort: SortKey;
 }
 
-const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", classification: "all", client: "all", manager: "all", sort: "recent" };
+const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", projectType: "all", classification: "all", client: "all", manager: "all", sort: "recent" };
 const FILTER_STORAGE_KEY = "pmt.projects.filters.v1";
 const PAGE = 30;
 
@@ -229,6 +236,7 @@ export function ProjectListClient({
     const byGroup = { active: 0, pipeline: 0, on_hold: 0, closed: 0 };
     const byPhase = new Map<string, number>();
     const byCategory = new Map<string, number>();
+    const byProjectType = new Map<string, number>();
     const byManager = new Map<string, { name: string; count: number }>();
     const clients = new Set<string>();
     let noManager = 0;
@@ -242,6 +250,10 @@ export function ProjectListClient({
         const cat = p.category.trim();
         byCategory.set(cat, (byCategory.get(cat) ?? 0) + 1);
       }
+      if (p.projectType) {
+        const pt = p.projectType.trim();
+        byProjectType.set(pt, (byProjectType.get(pt) ?? 0) + 1);
+      }
       if (p.clientCompanyName) clients.add(p.clientCompanyName.trim().toLowerCase());
       const managers = p.managers ?? [];
       if (managers.length === 0) noManager += 1;
@@ -252,7 +264,7 @@ export function ProjectListClient({
       }
       if (timelineFor(p, today).tone === "late") overdue += 1;
     }
-    return { byGroup, byPhase, byCategory, byManager, clients: clients.size, noManager, overdue };
+    return { byGroup, byPhase, byCategory, byProjectType, byManager, clients: clients.size, noManager, overdue };
   }, [projects, today]);
 
   // ── Filter + sort ─────────────────────────────────────────────
@@ -262,6 +274,7 @@ export function ProjectListClient({
       if (filters.status !== "all" && !STATUS_GROUPS[filters.status].includes(p.status)) return false;
       if (filters.phase !== "all" && (p.currentPhase || "Discovery") !== filters.phase) return false;
       if (filters.category !== "all" && (p.category || "Uncategorized").toLowerCase() !== filters.category.toLowerCase()) return false;
+      if (filters.projectType !== "all" && (p.projectType || "").toLowerCase() !== filters.projectType.toLowerCase()) return false;
       if (filters.classification !== "all" && (p.classification || "non_group") !== filters.classification) return false;
       if (filters.client !== "all" && (p.clientCompanyName || "Internal") !== filters.client) return false;
       const managers = p.managers ?? [];
@@ -554,26 +567,49 @@ export function ProjectListClient({
             ]}
           />
           <Combobox
-            className="w-[132px] xl:w-[150px]"
+            className="w-[130px]"
             value={filters.category}
-            onChange={(v) => update("category", v)}
+            onChange={(v) => {
+              update("category", v);
+              if (v !== "all") {
+                const types = getTypesForCategory(v);
+                if (!types.includes(filters.projectType)) {
+                  update("projectType", "all");
+                }
+              }
+            }}
             placeholder="All categories"
             searchThreshold={99}
             options={[
               { value: "all", label: "All categories" },
-              ...Array.from(stats.byCategory.entries())
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([c, count]) => ({ value: c, label: c, hint: String(count) })),
+              ...Array.from(new Set([...ALL_CATEGORIES, ...Array.from(stats.byCategory.keys())]))
+                .sort()
+                .map((c) => ({ value: c, label: c, hint: String(stats.byCategory.get(c) ?? 0) })),
             ]}
           />
           <Combobox
-            className="w-[132px] xl:w-[150px]"
-            value={filters.classification}
-            onChange={(v) => update("classification", v)}
-            placeholder="All classifications"
+            className="w-[145px]"
+            value={filters.projectType}
+            onChange={(v) => update("projectType", v)}
+            placeholder="All types"
             searchThreshold={99}
             options={[
               { value: "all", label: "All types" },
+              ...getTypesForCategory(filters.category !== "all" ? filters.category : null).map((t) => ({
+                value: t,
+                label: t,
+                hint: String(stats.byProjectType.get(t) ?? 0),
+              })),
+            ]}
+          />
+          <Combobox
+            className="w-[125px]"
+            value={filters.classification}
+            onChange={(v) => update("classification", v)}
+            placeholder="All classes"
+            searchThreshold={99}
+            options={[
+              { value: "all", label: "All classes" },
               { value: "group", label: "Group" },
               { value: "non_group", label: "Non-Group" },
             ]}
@@ -673,19 +709,19 @@ export function ProjectListClient({
           icon={<svg viewBox="0 0 16 16" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>}
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs xl:overflow-x-visible">
-          <table className="w-full table-fixed min-w-[1200px] border-separate border-spacing-0 text-sm">
+        <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs">
+          <table className="w-full table-fixed min-w-[1180px] border-separate border-spacing-0 text-sm">
             <thead>
                <tr>
                 {[
-                  ["Project", "w-[280px]"],
-                  ["Client", "w-[160px]"],
-                  ["Phase", "w-[100px]"],
-                  ["Class", "w-[90px]"],
-                  ["Category", "w-[120px]"],
-                  ["Status", "w-[110px]"],
-                  ["Project managers", "w-[180px]"],
-                  ["Start & End Date", "w-[160px]"],
+                  ["Project", "w-[260px]"],
+                  ["Client", "w-[150px]"],
+                  ["Phase", "w-[95px]"],
+                  ["Class", "w-[85px]"],
+                  ["Category & Type", "w-[160px]"],
+                  ["Status", "w-[100px]"],
+                  ["Project managers", "w-[160px]"],
+                  ["Start & End Date", "w-[145px]"],
                   ["Deal Value", "text-right w-[100px]"],
                 ].map(([label, cls], i, all) => (
                   <th
@@ -909,24 +945,33 @@ const ProjectRow = memo(function ProjectRow({
         </span>
       </td>
 
-      {/* Category */}
+      {/* Category & Type */}
       <td className={cell}>
-        {p.category ? (
-          <span className={cn(
-            "inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ring-inset",
-            p.category.toUpperCase() === "SAP" ? "bg-indigo-50 text-indigo-700 ring-indigo-600/20" :
-            p.category.toUpperCase() === "SOFTWARE" ? "bg-blue-50 text-blue-700 ring-blue-700/20" :
-            p.category.toUpperCase() === "SUPPORT" ? "bg-teal-50 text-teal-700 ring-teal-700/20" :
-            p.category.toUpperCase() === "INFRA" ? "bg-purple-50 text-purple-700 ring-purple-600/20" :
-            (p.category.toUpperCase() === "LICENCE" || p.category.toUpperCase() === "LICENSE") ? "bg-amber-50 text-amber-700 ring-amber-600/20" :
-            p.category.toUpperCase() === "AUDIT" ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" :
-            "bg-gray-50 text-gray-700 ring-gray-600/20"
-          )}>
-            {p.category}
-          </span>
-        ) : (
-          <span className="text-navy-300">—</span>
-        )}
+        <div className="flex flex-col gap-1 items-start min-w-0">
+          {p.category ? (
+            <span className={cn(
+              "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ring-1 ring-inset",
+              p.category.toUpperCase() === "SAP" ? "bg-indigo-50 text-indigo-700 ring-indigo-600/20" :
+              p.category.toUpperCase().includes("SOFTWARE") ? "bg-blue-50 text-blue-700 ring-blue-700/20" :
+              p.category.toUpperCase().includes("SUPPORT") ? "bg-teal-50 text-teal-700 ring-teal-700/20" :
+              p.category.toUpperCase().includes("INFRA") ? "bg-purple-50 text-purple-700 ring-purple-600/20" :
+              p.category.toUpperCase().includes("ZOHO") ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" :
+              p.category.toUpperCase().includes("MANAGED") ? "bg-amber-50 text-amber-700 ring-amber-600/20" :
+              (p.category.toUpperCase() === "LICENCE" || p.category.toUpperCase() === "LICENSE") ? "bg-amber-50 text-amber-700 ring-amber-600/20" :
+              p.category.toUpperCase() === "AUDIT" ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" :
+              "bg-gray-50 text-gray-700 ring-gray-600/20"
+            )}>
+              {p.category}
+            </span>
+          ) : (
+            <span className="text-navy-300 text-xs">—</span>
+          )}
+          {p.projectType && (
+            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10.5px] font-medium text-navy-700 bg-navy-50 border border-navy-200/60 max-w-[145px] truncate" title={p.projectType}>
+              {p.projectType}
+            </span>
+          )}
+        </div>
       </td>
 
       {/* Status */}

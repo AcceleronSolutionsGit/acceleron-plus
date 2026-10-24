@@ -8,6 +8,7 @@ import { ManagerField, type PickedManager } from "@/components/project/ManagerPi
 import { cn, formatCurrency } from "@/lib/utils";
 import { toDateInput } from "@/lib/dates";
 import { Project } from "@/lib/types";
+import { PROJECT_TAXONOMY, getTypesForCategory } from "@/lib/project-types";
 
 const PHASES = [
   "Discovery",
@@ -55,6 +56,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
     clientCompanyName: project.clientCompanyName || "",
     status: project.status,
     currentPhase: project.currentPhase || "Discovery",
+    category: project.category || "SAP",
+    projectType: project.projectType || "",
     budgetInr: project.budgetInr ? String(project.budgetInr) : "",
     overheadPercent: project.overheadPercent !== undefined && project.overheadPercent !== null ? String(project.overheadPercent) : "0",
     startDate: toDateInput(project.startDate),
@@ -163,6 +166,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
         status: draft.status,
         currentPhase: draft.currentPhase,
         classification: draft.classification,
+        category: draft.category || null,
+        projectType: draft.projectType || null,
         zohoSalesOrderRef: draft.zohoSalesOrderRef.trim() || null,
         poDetails: draft.poDetails.trim() || null,
         startDate: draft.startDate || null,
@@ -274,6 +279,40 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                 >
                   <option value="group">Group</option>
                   <option value="non_group">Non-Group</option>
+                </Select>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Select
+                  label="Category"
+                  value={draft.category}
+                  onChange={(e) => {
+                    const newCat = e.target.value;
+                    const validTypes = getTypesForCategory(newCat);
+                    setDraft((d) => ({
+                      ...d,
+                      category: newCat,
+                      projectType: validTypes.includes(d.projectType) ? d.projectType : (validTypes[0] || ""),
+                    }));
+                    setTouched(true);
+                  }}
+                >
+                  {PROJECT_TAXONOMY.map((item) => (
+                    <option key={item.category} value={item.category}>
+                      {item.category}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Project Type"
+                  value={draft.projectType}
+                  onChange={(e) => set("projectType", e.target.value)}
+                >
+                  <option value="">Select project type</option>
+                  {getTypesForCategory(draft.category).map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
                 </Select>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">

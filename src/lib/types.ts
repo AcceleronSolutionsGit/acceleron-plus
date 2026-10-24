@@ -91,6 +91,7 @@ export interface Project {
   solutionApproach?: string;
   scopeBaseline?: string;
   category?: string;
+  projectType?: string | null;
   classification?: 'group' | 'non_group';
   overheadPercent?: number;
   createdAt: string;

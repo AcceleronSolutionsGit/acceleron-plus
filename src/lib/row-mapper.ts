@@ -118,6 +118,9 @@ export function mapProjectRow(row: any, userMap?: Map<string, User>): Project {
   if (row.overhead_percent !== undefined && row.overhead_percent !== null) {
     p.overheadPercent = Number(row.overhead_percent);
   }
+  if (row.project_type !== undefined) {
+    p.projectType = row.project_type ? String(row.project_type) : null;
+  }
   
   return p;
 }
