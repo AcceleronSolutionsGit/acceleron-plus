@@ -18,7 +18,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { projectDb } from "./db";
-import { getProjectTeam, teamTotals, HOURS_PER_DAY } from "./staffing";
+import { getProjectTeam, teamTotals, HOURS_PER_DAY, plannedCostFor, parseAllocationPeriods } from "./staffing";
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -182,13 +182,33 @@ export async function repriceToTarget(
 
   const members = (await projectDb("project_team_members")
     .where({ project_id: projectId, is_active: true })
-    .select("id", "user_name", "daily_cost_inr", "planned_days")) as Record<string, unknown>[];
+    .select(
+      "id",
+      "user_name",
+      "daily_cost_inr",
+      "custom_daily_cost_inr",
+      "member_type",
+      "planned_days",
+      "start_date",
+      "end_date",
+      "allocation_percent",
+      "allocation_periods"
+    )) as Record<string, unknown>[];
 
   const skipped: { userName: string | null; reason: string }[] = [];
   let updated = 0;
 
   for (const member of members) {
-    const cost = member.daily_cost_inr === null ? null : Number(member.daily_cost_inr);
+    const customCost =
+      member.custom_daily_cost_inr !== null && member.custom_daily_cost_inr !== undefined && Number(member.custom_daily_cost_inr) > 0
+        ? Number(member.custom_daily_cost_inr)
+        : null;
+    const bandCost =
+      member.daily_cost_inr !== null && member.daily_cost_inr !== undefined && Number(member.daily_cost_inr) > 0
+        ? Number(member.daily_cost_inr)
+        : null;
+    const cost = customCost ?? bandCost;
+
     if (!cost || cost <= 0) {
       skipped.push({
         userName: member.user_name ? String(member.user_name) : null,
@@ -206,11 +226,26 @@ export async function repriceToTarget(
       continue;
     }
 
-    const days = Number(member.planned_days ?? 0);
+    let days = Number(member.planned_days ?? 0);
+    if (days <= 0 && member.start_date) {
+      const planned = plannedCostFor({
+        startDate: member.start_date as string,
+        endDate: member.end_date as string,
+        allocationPercent: Number(member.allocation_percent ?? 100),
+        allocationPeriods: parseAllocationPeriods(member.allocation_periods),
+        dailyCostInr: cost,
+        dailyBillableRateInr: rate,
+      });
+      days = planned.plannedDays;
+    }
+
     await projectDb("project_team_members")
       .where("id", String(member.id))
       .update({
+        daily_cost_inr: cost,
         daily_billable_rate_inr: rate,
+        planned_days: days,
+        planned_cost_inr: round2(days * cost),
         planned_billable_inr: round2(days * rate),
         updated_at: new Date(),
       });

@@ -12,6 +12,7 @@ import {
 import { canAssignProjectManagers, normaliseProjectRole } from "@/lib/permissions";
 import { PM, toTeamRole } from "@/lib/team-roles";
 import { plannedCostFor, allocationPictureFor, describeOverallocation, parseAllocationPeriods } from "@/lib/staffing";
+import { rateForMargin } from "@/lib/margin";
 import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
@@ -129,8 +130,10 @@ export async function PATCH(req: Request, context: Params) {
       if (body.rateBandId === null || body.rateBandId === "") {
         updates.rate_band_id = null;
         updates.rate_band_name = null;
-        updates.daily_cost_inr = null;
-        updates.daily_billable_rate_inr = null;
+        if (body.customDailyCostInr === undefined && !existing.custom_daily_cost_inr) {
+          updates.daily_cost_inr = null;
+          updates.daily_billable_rate_inr = null;
+        }
       } else {
         const band = await projectDb("employee_rate_bands")
           .where({ id: String(body.rateBandId), is_active: true })
@@ -201,6 +204,28 @@ export async function PATCH(req: Request, context: Params) {
         ? (updates.daily_cost_inr as number | null)
         : (existing.daily_cost_inr as number | null);
 
+    if (effectiveDailyCost !== null) {
+      updates.daily_cost_inr = effectiveDailyCost;
+    }
+
+    let effectiveBillableRate =
+      updates.daily_billable_rate_inr !== undefined
+        ? (updates.daily_billable_rate_inr as number | null)
+        : (existing.daily_billable_rate_inr as number | null);
+
+    if (
+      effectiveBillableRate === null &&
+      effectiveDailyCost !== null &&
+      project.target_margin_percent !== null &&
+      project.target_margin_percent !== undefined
+    ) {
+      const derived = rateForMargin(effectiveDailyCost, Number(project.target_margin_percent));
+      if (derived !== null) {
+        effectiveBillableRate = derived;
+        updates.daily_billable_rate_inr = derived;
+      }
+    }
+
     // Anything that moves the dates, the allocation or the rate moves
     // the planned cost with it, or the two quietly disagree.
     const effectivePeriods =
@@ -215,10 +240,7 @@ export async function PATCH(req: Request, context: Params) {
         (updates.allocation_percent as number) ?? Number(existing.allocation_percent ?? 100),
       allocationPeriods: effectivePeriods,
       dailyCostInr: effectiveDailyCost,
-      dailyBillableRateInr:
-        updates.daily_billable_rate_inr !== undefined
-          ? (updates.daily_billable_rate_inr as number | null)
-          : (existing.daily_billable_rate_inr as number | null),
+      dailyBillableRateInr: effectiveBillableRate,
       plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
     });
     updates.planned_days = planned.plannedDays;

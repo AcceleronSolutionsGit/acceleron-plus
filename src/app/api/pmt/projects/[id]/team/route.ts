@@ -23,6 +23,7 @@ import {
   describeBandSource,
   parseAllocationPeriods,
 } from "@/lib/staffing";
+import { rateForMargin } from "@/lib/margin";
 import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
@@ -275,13 +276,26 @@ export async function POST(req: Request, context: Params) {
 
     const effectiveDailyCost = customDailyCostInr !== null ? customDailyCostInr : (band?.dailyCostInr ?? null);
 
+    let effectiveBillableRate = band?.dailyBillableRateInr ?? null;
+    if (
+      effectiveBillableRate === null &&
+      effectiveDailyCost !== null &&
+      project.target_margin_percent !== null &&
+      project.target_margin_percent !== undefined
+    ) {
+      const derived = rateForMargin(effectiveDailyCost, Number(project.target_margin_percent));
+      if (derived !== null) {
+        effectiveBillableRate = derived;
+      }
+    }
+
     const planned = plannedCostFor({
       startDate,
       endDate,
       allocationPercent,
       allocationPeriods,
       dailyCostInr: effectiveDailyCost,
-      dailyBillableRateInr: band?.dailyBillableRateInr ?? null,
+      dailyBillableRateInr: effectiveBillableRate,
       plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
     });
 
@@ -303,7 +317,7 @@ export async function POST(req: Request, context: Params) {
         end_date: endDate,
         allocation_periods: allocationPeriods ? JSON.stringify(allocationPeriods) : null,
         daily_cost_inr: effectiveDailyCost,
-        daily_billable_rate_inr: band?.dailyBillableRateInr ?? null,
+        daily_billable_rate_inr: effectiveBillableRate,
         member_type: memberType,
         custom_daily_cost_inr: customDailyCostInr,
         planned_days: planned.plannedDays,

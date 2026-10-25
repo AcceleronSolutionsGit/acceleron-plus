@@ -3,6 +3,7 @@ import { identityDb, projectDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { readJson } from "@/lib/route-helpers";
 import { plannedCostFor } from "@/lib/staffing";
+import { rateForMargin } from "@/lib/margin";
 import { toDateInput } from "@/lib/dates";
 
 export const runtime = "nodejs";
@@ -88,11 +89,21 @@ export async function POST(
       );
     }
 
+    const targetMargin =
+      project.target_margin_percent !== null && project.target_margin_percent !== undefined
+        ? Number(project.target_margin_percent)
+        : null;
+    const billableRate =
+      customDailyCostInr && targetMargin !== null
+        ? rateForMargin(customDailyCostInr, targetMargin)
+        : null;
+
     const planned = plannedCostFor({
       startDate,
       endDate,
       allocationPercent,
       dailyCostInr: customDailyCostInr,
+      dailyBillableRateInr: billableRate,
     });
 
     const [allocation] = await projectDb("project_team_members")
@@ -104,6 +115,7 @@ export async function POST(
         member_type: memberType,
         custom_daily_cost_inr: customDailyCostInr,
         daily_cost_inr: customDailyCostInr,
+        daily_billable_rate_inr: billableRate,
         allocation_percent: allocationPercent,
         start_date: startDate,
         end_date: endDate,

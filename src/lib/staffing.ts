@@ -303,7 +303,7 @@ export async function getProjectTeam(
     options.includeCost ? listRateBands() : Promise.resolve([]),
     projectDb("projects")
       .where("id", projectId)
-      .select("start_date", "planned_end_date", "actual_end_date")
+      .select("start_date", "planned_end_date", "actual_end_date", "target_margin_percent")
       .first<Record<string, unknown> | undefined>()
       .catch(() => undefined),
   ]);
@@ -364,10 +364,25 @@ export async function getProjectTeam(
       }
       const dailyCost = customDailyCost !== null ? customDailyCost : bandDailyCost;
 
-      const billableRate =
+      let billableRate =
         row.daily_billable_rate_inr !== null && row.daily_billable_rate_inr !== undefined
           ? Number(row.daily_billable_rate_inr)
           : (matchedBand?.dailyBillableRateInr ?? null);
+
+      // If billableRate is not explicitly set on the row (e.g. consultants/interns without a rate band),
+      // and the project has a target margin, derive the billable rate so margin calculations include them.
+      if (
+        (billableRate === null || billableRate === 0) &&
+        dailyCost !== null &&
+        dailyCost > 0 &&
+        projectRow?.target_margin_percent !== null &&
+        projectRow?.target_margin_percent !== undefined
+      ) {
+        const targetMargin = Number(projectRow.target_margin_percent);
+        if (Number.isFinite(targetMargin) && targetMargin < 100) {
+          billableRate = round2(dailyCost / (1 - targetMargin / 100));
+        }
+      }
 
       const allocation = Number(row.allocation_percent ?? 100);
       const parsedPeriods = parseAllocationPeriods(row.allocation_periods);

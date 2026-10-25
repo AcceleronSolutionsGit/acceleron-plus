@@ -26,6 +26,7 @@ export interface ResolvedProject {
   planned_end_date?: string | null;
   actual_end_date?: string | null;
   currency?: string | null;
+  target_margin_percent?: string | number | null;
 }
 
 /**
@@ -52,7 +53,8 @@ export async function resolveProjectOr404(
           "start_date",
           "planned_end_date",
           "actual_end_date",
-          "currency"
+          "currency",
+          "target_margin_percent"
         )
         .first<ResolvedProject | undefined>()
     : undefined;

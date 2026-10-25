@@ -48,6 +48,7 @@ export async function GET(
       "ptm.member_type",
       "ptm.custom_daily_cost_inr",
       "ptm.daily_cost_inr as member_daily_cost",
+      "ptm.daily_billable_rate_inr as member_daily_billable",
       "erb.level_code",
       "erb.daily_cost_inr",
       "erb.daily_billable_rate_inr"
@@ -115,7 +116,7 @@ export async function GET(
         rateBandName: band,
         levelCode: ts.level_code ?? "—",
         dailyCostInr: effectiveDailyCost,
-        dailyBillableRateInr: parseFloat(ts.daily_billable_rate_inr ?? 0),
+        dailyBillableRateInr: parseFloat(ts.member_daily_billable ?? ts.daily_billable_rate_inr ?? 0),
         userIds: new Set(),
         totalHours: 0,
       };
