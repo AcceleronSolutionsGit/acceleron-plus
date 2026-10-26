@@ -397,15 +397,15 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
         </Card>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs">
-          <table className="w-full table-fixed min-w-[1000px] border-separate border-spacing-0 text-sm">
+          <table className="w-full table-fixed min-w-[1090px] border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="bg-surface-2 text-left text-[11px] font-semibold uppercase tracking-wider text-navy-500">
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[240px]">User</th>
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[180px]">System Roles</th>
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[300px]">Project Allocations</th>
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[120px]">Allocation</th>
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[90px]">Status</th>
-                <th className="px-4 py-3 border-b border-navy-900/10 w-[180px] text-right">Actions</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[220px]">User</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[130px]">System Roles</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[360px]">Project Allocations</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[110px]">Allocation</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[80px]">Status</th>
+                <th className="px-4 py-3 border-b border-navy-900/10 w-[190px] text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-900/6">
@@ -453,21 +453,29 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
                         {user.allocations.map((alloc) => (
                           <div
                             key={alloc.id}
-                            className="flex items-center justify-between gap-2 rounded-lg bg-navy-50/70 border border-navy-200/50 px-2 py-1 text-xs"
+                            className="flex items-center justify-between gap-2.5 rounded-lg bg-navy-50/70 border border-navy-200/50 px-2.5 py-1.5 text-xs"
                           >
-                            <div className="min-w-0">
-                              <span className="font-semibold text-navy-800">{alloc.projectCode}</span>
-                              <span className="text-navy-500 ml-1 truncate" title={alloc.projectName}>
-                                {alloc.projectName}
-                              </span>
-                              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-navy-400">
-                                <span>{alloc.roleInProject}</span>
-                                <span>•</span>
-                                <span className="capitalize">{alloc.memberType}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-semibold text-navy-900 whitespace-nowrap shrink-0 font-mono text-xs">
+                                  [{alloc.projectCode}]
+                                </span>
+                                <Link
+                                  href={`/pmt/${alloc.projectCode}?tab=team`}
+                                  className="text-navy-700 truncate min-w-0 block font-medium hover:text-navy-900 hover:underline"
+                                  title={`[${alloc.projectCode}] ${alloc.projectName}`}
+                                >
+                                  {alloc.projectName}
+                                </Link>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-navy-400 min-w-0">
+                                <span className="truncate shrink min-w-0">{alloc.roleInProject}</span>
+                                <span className="shrink-0">•</span>
+                                <span className="capitalize shrink-0">{alloc.memberType}</span>
                                 {alloc.customDailyCostInr !== null && (
                                   <>
-                                    <span>•</span>
-                                    <span className="font-medium text-navy-700">
+                                    <span className="shrink-0">•</span>
+                                    <span className="font-medium text-navy-700 shrink-0">
                                       ₹{alloc.customDailyCostInr.toLocaleString()}/d
                                     </span>
                                   </>
@@ -597,7 +605,7 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
               <option value="">Select project</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} — {p.name} {p.projectType ? `(${p.projectType})` : p.category ? `(${p.category})` : ""}
+                  [{p.code}] {p.name} {p.projectType ? `(${p.projectType})` : p.category ? `(${p.category})` : ""}
                 </option>
               ))}
             </select>
@@ -731,8 +739,13 @@ export function ExternalUsersClient({ currentUserId }: { currentUserId: string }
                 <div key={a.id} className="py-3 flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-navy-900 text-sm">{a.projectCode}</span>
-                      <span className="text-sm text-navy-700 font-medium">{a.projectName}</span>
+                      <span className="font-bold text-navy-900 text-sm whitespace-nowrap shrink-0 font-mono">[{a.projectCode}]</span>
+                      <Link
+                        href={`/pmt/${a.projectCode}?tab=team`}
+                        className="text-sm text-navy-700 font-medium hover:text-navy-900 hover:underline"
+                      >
+                        {a.projectName}
+                      </Link>
                       <span className="rounded bg-navy-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-navy-700 capitalize">
                         {a.memberType}
                       </span>

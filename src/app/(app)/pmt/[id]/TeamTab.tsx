@@ -286,7 +286,14 @@ export function TeamTab({
             </>
           )}
         </div>
-        {canManage && <Button onClick={() => setAdding(true)}>Add a person</Button>}
+        {canManage && (
+          <Button
+            variant={adding ? "secondary" : "primary"}
+            onClick={() => setAdding((v) => !v)}
+          >
+            {adding ? "Hide Add Person Form" : "+ Add a person"}
+          </Button>
+        )}
       </div>
 
       {overAllocatedCount > 0 && (
@@ -303,6 +310,24 @@ export function TeamTab({
         <div role="alert" className="bg-red-600/5 border border-red-600/20 text-red-600 text-sm rounded-lg px-4 py-3">
           {error}
         </div>
+      )}
+
+      {adding && (
+        <AddPersonPanel
+          projectId={projectId}
+          rateBands={rateBands}
+          canViewCost={canViewCost}
+          roles={roles}
+          canAssignPm={canAssignPm}
+          currency={activeCurrency}
+          defaultStartDate={projStart}
+          defaultEndDate={projEnd}
+          onClose={() => setAdding(false)}
+          onAdded={() => {
+            setAdding(false);
+            void load();
+          }}
+        />
       )}
 
       {/* ── The team ──────────────────────────────────────────── */}
@@ -347,24 +372,6 @@ export function TeamTab({
           </div>
         )}
       </Card>
-
-      {adding && (
-        <AddPersonModal
-          projectId={projectId}
-          rateBands={rateBands}
-          canViewCost={canViewCost}
-          roles={roles}
-          canAssignPm={canAssignPm}
-          currency={activeCurrency}
-          defaultStartDate={projStart}
-          defaultEndDate={projEnd}
-          onClose={() => setAdding(false)}
-          onAdded={() => {
-            setAdding(false);
-            void load();
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -856,7 +863,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ─── Adding somebody ───────────────────────────────────────────────
 
-function AddPersonModal({
+function AddPersonPanel({
   projectId,
   rateBands,
   canViewCost,
@@ -994,21 +1001,20 @@ function AddPersonModal({
   }, [catalogue]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/40 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl">
-        <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between sticky top-0 bg-white z-10">
-          <div>
-            <h3 className="text-lg font-bold text-navy-900 font-[family-name:var(--font-league-spartan)]">
-              Add a person to this project
-            </h3>
-            <p className="text-xs text-navy-500">
-              Staff employees, interns, or consultants and track their timesheets and costs.
-            </p>
-          </div>
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
+    <div className="w-full rounded-2xl border-2 border-navy-900/15 bg-white shadow-sm overflow-hidden mb-6 animate-fade-in">
+      <div className="px-6 py-4 bg-navy-50/70 border-b border-navy-900/10 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-navy-900 font-[family-name:var(--font-league-spartan)] flex items-center gap-2">
+            <span>Add a person to this project</span>
+          </h3>
+          <p className="text-xs text-navy-500">
+            Staff employees, interns, or consultants and track their timesheets and costs.
+          </p>
         </div>
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          Cancel / Close Form
+        </Button>
+      </div>
 
         <div className="p-6 space-y-4">
           {/* Member type / classification */}
@@ -1270,7 +1276,7 @@ function AddPersonModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-between gap-3 sticky bottom-0 bg-white">
+        <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-between gap-3 bg-neutral-50/60">
           <p className="text-xs text-navy-500">
             {picked ? `Adding ${picked.fullName}` : "Choose somebody from the list above."}
           </p>
@@ -1283,7 +1289,6 @@ function AddPersonModal({
             </Button>
           </div>
         </div>
-      </div>
     </div>
   );
 }

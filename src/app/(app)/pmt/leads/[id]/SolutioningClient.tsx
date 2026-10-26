@@ -35,6 +35,85 @@ const DARWINBOX_GRADE_RANK: Record<string, number> = {
   G5: 10,
 };
 
+interface Skill {
+  id: string;
+  name: string;
+  category: string | null;
+  proficiency: number;
+  yearsExperience: number | null;
+  isPrimary: boolean;
+}
+
+interface CatalogueSkill {
+  id: string;
+  name: string;
+  category: string | null;
+  peopleCount: number;
+}
+
+interface Commitment {
+  projectCode: string;
+  projectName: string;
+  allocationPercent: number;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+interface Candidate {
+  employeeId: string;
+  fullName: string;
+  email: string | null;
+  designation: string | null;
+  department: string | null;
+  jobLevel: string | null;
+  location: string | null;
+  avatarUrl: string | null;
+  skills: Skill[];
+  otherProjects: Commitment[];
+  committedElsewhere: number;
+  availablePercent: number;
+  suggestedBand: {
+    grade: string;
+    rateBandId: string | null;
+    bandName: string;
+    dailyCostInr: number;
+    dailyBillableRateInr: number | null;
+    source: "level_code" | "band_name" | "grade_default";
+  };
+  bandNote: string;
+}
+
+const PROFICIENCY: Record<number, string> = {
+  1: "Aware",
+  2: "Working",
+  3: "Proficient",
+  4: "Advanced",
+  5: "Expert",
+};
+
+function CandidateSkillChips({ skills, limit = 5 }: { skills: Skill[]; limit?: number }) {
+  if (!skills || skills.length === 0) {
+    return <span className="text-[10px] text-navy-400 italic">No skills recorded</span>;
+  }
+  const shown = skills.slice(0, limit);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {shown.map((s) => (
+        <span
+          key={s.id}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-navy-700 border border-neutral-200"
+          title={`${PROFICIENCY[s.proficiency] || ""}${s.yearsExperience ? ` · ${s.yearsExperience} yrs` : ""}`}
+        >
+          {s.name} <span className="text-navy-400 font-semibold">{s.proficiency}</span>
+        </span>
+      ))}
+      {skills.length > limit && (
+        <span className="text-[10px] text-navy-400 px-1 py-0.5">+{skills.length - limit}</span>
+      )}
+    </div>
+  );
+}
+
 export function SolutioningClient({
   lead,
   rateBands,
@@ -80,6 +159,93 @@ export function SolutioningClient({
   >([]);
   const [overheadMargin, setOverheadMargin] = useState(0);
   const [actualMargin, setActualMargin] = useState(0);
+
+  // Skill-based Resource Allocator State for Effort Solutioning
+  const [showResourceMatcher, setShowResourceMatcher] = useState(false);
+  const [skillsCatalogue, setSkillsCatalogue] = useState<CatalogueSkill[]>([]);
+  const [chosenSkills, setChosenSkills] = useState<string[]>([]);
+  const [minProficiency, setMinProficiency] = useState(3);
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [searchingCandidates, setSearchingCandidates] = useState(false);
+  const [activePickingLineIdx, setActivePickingLineIdx] = useState<number | null>(null);
+  const [assignedToast, setAssignedToast] = useState<string | null>(null);
+
+  // Fetch Skills Catalogue
+  useEffect(() => {
+    void fetch("/api/skills")
+      .then((r) => r.json())
+      .then((d) => setSkillsCatalogue(d.skills ?? []))
+      .catch(() => setSkillsCatalogue([]));
+  }, []);
+
+  // Search Candidates by skills & bandwidth
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setSearchingCandidates(true);
+      try {
+        const params = new URLSearchParams();
+        if (candidateQuery.trim()) params.set("q", candidateQuery.trim());
+        if (chosenSkills.length > 0) {
+          params.set("skills", chosenSkills.join(","));
+          params.set("minProficiency", String(minProficiency));
+        }
+        const res = await fetch(`/api/pmt/leads/${lead.id}/available?${params}`);
+        const data = await res.json().catch(() => ({}));
+        setCandidates(data.people ?? []);
+      } finally {
+        setSearchingCandidates(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [candidateQuery, chosenSkills, minProficiency, lead.id]);
+
+  const groupedSkills = useMemo(() => {
+    const map = new Map<string, CatalogueSkill[]>();
+    for (const skill of skillsCatalogue) {
+      const key = skill.category ?? "Other";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(skill);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [skillsCatalogue]);
+
+  const handleAssignCandidate = (candidate: Candidate, targetLineIdx?: number) => {
+    const targetIdx = targetLineIdx !== undefined ? targetLineIdx : (activePickingLineIdx !== null ? activePickingLineIdx : null);
+    const updated = [...lineItems];
+
+    // Find matching rate band by suggested rateBandId or level code
+    const matchedBand = candidate.suggestedBand?.rateBandId 
+      ? rateBands.find((b) => b.id === candidate.suggestedBand.rateBandId) 
+      : (candidate.jobLevel ? rateBands.find((b) => b.level_code.toUpperCase() === candidate.jobLevel?.toUpperCase()) : null);
+    const chosenRateBandId = matchedBand?.id || candidate.suggestedBand?.rateBandId || rateBands[0]?.id || "";
+
+    if (targetIdx === null || targetIdx < 0 || targetIdx >= updated.length) {
+      // Add as new line item
+      updated.push({
+        id: crypto.randomUUID(),
+        phaseName: "Delivery & Execution",
+        taskDescription: `${candidate.fullName} (${candidate.jobLevel || candidate.designation || "Resource"})`,
+        rateBandId: chosenRateBandId,
+        quantityResources: 1,
+        estimatedDays: 10,
+        employeeId: candidate.employeeId,
+      });
+      setAssignedToast(`Added new effort row for ${candidate.fullName}`);
+    } else {
+      updated[targetIdx].employeeId = candidate.employeeId;
+      if (!updated[targetIdx].taskDescription || updated[targetIdx].taskDescription === "Requirement Gathering & Architecture") {
+        updated[targetIdx].taskDescription = `${candidate.fullName} (${candidate.jobLevel || candidate.designation || "Resource"})`;
+      }
+      if (chosenRateBandId) {
+        updated[targetIdx].rateBandId = chosenRateBandId;
+      }
+      setAssignedToast(`Assigned ${candidate.fullName} to Row ${targetIdx + 1}`);
+    }
+
+    setLineItems(updated);
+    setTimeout(() => setAssignedToast(null), 3500);
+  };
 
   /**
    * Finalizing is what turns somebody's working estimate into the
@@ -500,13 +666,240 @@ export function SolutioningClient({
                     Select by Darwinbox consultant grade or assign from live Darwinbox staff. Daily costs map directly from the grade rate card.
                   </p>
                 </div>
-                <button
-                  onClick={handleAddLineItem}
-                  className="self-start sm:self-auto text-xs font-bold px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
-                >
-                  + Add Effort Row
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowResourceMatcher((v) => !v)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      showResourceMatcher
+                        ? "bg-navy-900 text-white border-navy-900 shadow-sm"
+                        : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                    }`}
+                  >
+                    <span>🎯</span>
+                    <span>{showResourceMatcher ? "Hide Resource Matcher" : "Staff by Skills & Bandwidth"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddLineItem}
+                    className="self-start sm:self-auto text-xs font-bold px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                  >
+                    + Add Effort Row
+                  </button>
+                </div>
               </div>
+
+              {assignedToast && (
+                <div className="mb-3 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold rounded-lg flex items-center gap-2 animate-fade-in shadow-xs">
+                  <span>✓</span>
+                  <span>{assignedToast}</span>
+                </div>
+              )}
+
+              {/* ── Skill-Based Resource Matcher & Staffing Panel ── */}
+              {showResourceMatcher && (
+                <div className="mb-5 rounded-2xl border-2 border-emerald-600/30 bg-white p-4 shadow-sm space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-navy-900/8">
+                    <div>
+                      <h4 className="font-bold text-navy-900 text-sm flex items-center gap-2">
+                        <span>Staff by Skills &amp; Live Bandwidth</span>
+                        <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Resource Matcher
+                        </span>
+                      </h4>
+                      <p className="text-xs text-navy-500">
+                        Filter Darwinbox talent by technical skills, check real-time availability across projects, and map Darwinbox grade rates.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-navy-600">Assign to:</span>
+                      <select
+                        value={activePickingLineIdx !== null ? String(activePickingLineIdx) : "new"}
+                        onChange={(e) => setActivePickingLineIdx(e.target.value === "new" ? null : Number(e.target.value))}
+                        className="bg-navy-50 border border-navy-200 text-navy-900 text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none"
+                      >
+                        <option value="new">+ Add as New Effort Row</option>
+                        {lineItems.map((item, idx) => (
+                          <option key={item.id} value={String(idx)}>
+                            Row {idx + 1}: {item.phaseName || "Phase"} · {item.taskDescription ? item.taskDescription.slice(0, 30) : "Task"}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowResourceMatcher(false)}
+                        className="text-xs text-navy-400 hover:text-navy-700 font-semibold px-2 py-1"
+                      >
+                        ✕ Close
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Skills Catalogue Selection */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <span className="text-[11px] uppercase tracking-wider text-navy-600 font-bold">
+                        Filter by Required Skills
+                      </span>
+                      <label className="text-[11px] text-navy-600 flex items-center gap-1.5">
+                        Minimum Proficiency:
+                        <select
+                          value={minProficiency}
+                          onChange={(e) => setMinProficiency(Number(e.target.value))}
+                          className="text-xs border border-navy-200 rounded px-2 py-0.5 bg-white font-medium"
+                        >
+                          {[1, 2, 3, 4, 5].map((lvl) => (
+                            <option key={lvl} value={lvl}>
+                              {lvl} · {PROFICIENCY[lvl]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="max-h-32 overflow-y-auto border border-navy-900/10 rounded-xl p-2.5 space-y-1.5 bg-neutral-50/60">
+                      {groupedSkills.length === 0 ? (
+                        <p className="text-xs text-navy-400 py-1">Loading skills catalogue...</p>
+                      ) : (
+                        groupedSkills.map(([category, skills]) => (
+                          <div key={category} className="flex items-start gap-2">
+                            <span className="text-[10px] uppercase tracking-wider text-navy-400 font-bold w-24 shrink-0 pt-1">
+                              {category}
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {skills.map((skill) => {
+                                const on = chosenSkills.includes(skill.id);
+                                return (
+                                  <button
+                                    key={skill.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setChosenSkills((prev) =>
+                                        on ? prev.filter((s) => s !== skill.id) : [...prev, skill.id]
+                                      )
+                                    }
+                                    className={`text-[10.5px] px-2 py-0.5 rounded-full border transition-all cursor-pointer font-medium ${
+                                      on
+                                        ? "bg-navy-900 text-white border-navy-900 shadow-xs"
+                                        : "bg-white text-navy-700 border-neutral-300 hover:border-navy-400"
+                                    }`}
+                                  >
+                                    {skill.name}
+                                    <span className={on ? "text-white/70" : "text-navy-400"}> {skill.peopleCount}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Search input */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={candidateQuery}
+                      onChange={(e) => setCandidateQuery(e.target.value)}
+                      placeholder="Search talent by name, designation, department, email or location..."
+                      className="w-full bg-surface border border-navy-900/15 rounded-xl px-3.5 py-2 text-xs text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-900/20"
+                    />
+                    {candidateQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setCandidateQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-700 text-xs font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Candidate Results List */}
+                  <div className="border border-navy-900/10 rounded-xl divide-y divide-navy-900/8 max-h-72 overflow-y-auto bg-white">
+                    {searchingCandidates && candidates.length === 0 && (
+                      <p className="p-6 text-center text-xs text-navy-500">Searching matching candidates...</p>
+                    )}
+                    {!searchingCandidates && candidates.length === 0 && (
+                      <div className="p-6 text-center text-xs text-navy-500">
+                        <p className="font-semibold text-navy-700 mb-1">No matching resources found.</p>
+                        <p className="text-navy-400">Try selecting fewer skills, adjusting the proficiency requirement, or clearing search filters.</p>
+                      </div>
+                    )}
+                    {candidates.map((person) => {
+                      const isFree = person.availablePercent >= 75;
+                      const isPartlyFree = person.availablePercent > 0 && person.availablePercent < 75;
+                      const matchedRateBand = person.suggestedBand?.rateBandId
+                        ? rateBands.find((b) => b.id === person.suggestedBand.rateBandId)
+                        : (person.jobLevel ? rateBands.find((b) => b.level_code.toUpperCase() === person.jobLevel?.toUpperCase()) : null);
+
+                      return (
+                        <div
+                          key={person.employeeId}
+                          className="p-3.5 hover:bg-navy-50/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-xs text-navy-900">{person.fullName}</span>
+                              <span className="font-mono text-[10.5px] text-navy-500 bg-neutral-100 px-1 rounded">
+                                {person.employeeId}
+                              </span>
+                              {person.jobLevel && (
+                                <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-200">
+                                  Grade {person.jobLevel}
+                                </span>
+                              )}
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isFree
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : isPartlyFree
+                                      ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                      : "bg-red-50 text-red-600 border border-red-200"
+                                }`}
+                              >
+                                {person.availablePercent}% available
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-navy-500">
+                              {[person.designation, person.department, person.location].filter(Boolean).join(" · ")}
+                            </p>
+
+                            <CandidateSkillChips skills={person.skills} limit={6} />
+
+                            {person.otherProjects.length > 0 && (
+                              <p className="text-[10px] text-navy-500">
+                                Currently committed on: {person.otherProjects.map((c) => `${c.projectCode} (${c.allocationPercent}%)`).join(", ")}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex sm:flex-col items-end justify-between sm:justify-center gap-2 shrink-0">
+                            {matchedRateBand && (
+                              <span className="text-[11px] font-semibold text-navy-700">
+                                {matchedRateBand.band_name}
+                                {canSeeCosts && ` · ${formatCurrency(Number(matchedRateBand.daily_cost_inr))}/d`}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleAssignCandidate(person)}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
+                            >
+                              {activePickingLineIdx !== null
+                                ? `Assign to Row ${activePickingLineIdx + 1}`
+                                : "+ Add as Effort Row"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Visual Darwinbox Grade Progression Hierarchy Bar */}
               <div className="bg-navy-900 text-white rounded-xl p-3 mb-4 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -570,18 +963,48 @@ export function SolutioningClient({
                           </td>
 
                           <td className="px-3 py-3 space-y-2">
-                            <select
-                              value={item.employeeId || ""}
-                              onChange={(e) => handleAssignEmployee(idx, e.target.value)}
-                              className="w-full bg-neutral-50 border border-navy-500/15 rounded-lg px-2 py-1.5 text-xs text-navy-800 focus:outline-none focus:ring-1 focus:ring-navy-900"
-                            >
-                              <option value="">— Pick Darwinbox Staff (Optional) —</option>
-                              {darwinboxEmployees.map((e) => (
-                                <option key={e.employee_id} value={e.employee_id}>
-                                  {e.full_name} ({e.job_level || "No Grade"})
-                                </option>
-                              ))}
-                            </select>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={item.employeeId || ""}
+                                onChange={(e) => handleAssignEmployee(idx, e.target.value)}
+                                className="flex-1 min-w-0 bg-neutral-50 border border-navy-500/15 rounded-lg px-2 py-1.5 text-xs text-navy-800 focus:outline-none focus:ring-1 focus:ring-navy-900"
+                              >
+                                <option value="">— Pick Darwinbox Staff —</option>
+                                {darwinboxEmployees.map((e) => (
+                                  <option key={e.employee_id} value={e.employee_id}>
+                                    {e.full_name} ({e.job_level || "No Grade"})
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePickingLineIdx(idx);
+                                  setShowResourceMatcher(true);
+                                }}
+                                title="Match by Skills & Bandwidth"
+                                className="shrink-0 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <span>🎯</span>
+                                <span className="hidden sm:inline">Skills</span>
+                              </button>
+                            </div>
+
+                            {item.employeeId && (
+                              <div className="flex items-center justify-between text-[11px] bg-emerald-50/80 border border-emerald-200 rounded-md px-2 py-1 text-emerald-900 font-medium">
+                                <span className="truncate">
+                                  Assigned: <strong>{darwinboxEmployees.find((e) => e.employee_id === item.employeeId)?.full_name || candidates.find((c) => c.employeeId === item.employeeId)?.fullName || item.employeeId}</strong>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAssignEmployee(idx, "")}
+                                  className="text-red-500 hover:text-red-700 ml-1.5 font-bold"
+                                  title="Unassign resource"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
 
                             <div className="flex items-center gap-1.5">
                               {rank && (

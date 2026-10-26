@@ -523,9 +523,13 @@ export function AllocateUserClient({
                         <div className="flex items-start gap-2.5">
                           <CodeChip className="shrink-0 mt-0.5">{p.code}</CodeChip>
                           <div>
-                            <span className="font-bold text-navy-900 block text-xs">
-                              {p.name}
-                            </span>
+                            <Link
+                              href={`/pmt/${p.code || p.id}?tab=team`}
+                              className="font-bold text-navy-900 block text-xs hover:underline"
+                              title={`[${p.code}] ${p.name}`}
+                            >
+                              [{p.code}] {p.name}
+                            </Link>
                             {p.description && (
                               <p className="text-[11px] text-navy-400 line-clamp-1 mt-0.5">
                                 {p.description}
@@ -645,7 +649,9 @@ export function AllocateUserClient({
             <div className="rounded-xl bg-navy-50/80 border border-navy-900/10 p-3.5">
               <div className="flex items-center gap-2">
                 <CodeChip>{selectedProject.code}</CodeChip>
-                <span className="font-bold text-sm text-navy-900">{selectedProject.name}</span>
+                <span className="font-bold text-sm text-navy-900">
+                  [{selectedProject.code}] {selectedProject.name}
+                </span>
               </div>
               <div className="flex items-center gap-4 text-xs text-navy-500 mt-1.5">
                 <span>Client: <strong className="text-navy-700">{selectedProject.clientCompanyName || "Internal"}</strong></span>

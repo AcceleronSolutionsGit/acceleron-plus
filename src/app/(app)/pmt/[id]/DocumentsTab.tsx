@@ -111,7 +111,8 @@ function UploadModal({ projectId, onSuccess, onClose }: {
     fd.append("file", file);
     Object.entries(form).forEach(([k, v]) => {
       if (k === "accessLevels") {
-        fd.append("accessLevel", (v as string[]).join(","));
+        const levels = v as string[];
+        fd.append("accessLevel", levels[0] || "team");
       } else {
         fd.append(k, String(v));
       }

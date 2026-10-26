@@ -459,12 +459,17 @@ function Row({ row, slots }: { row: AllocationRow; slots: number }) {
           <td key={i} className="px-4 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-medium text-navy-800" title={p.projectName}>
-                  {p.projectName}
+                <div className="truncate text-[13px] font-medium text-navy-800" title={`[${p.projectCode}] ${p.projectName}`}>
+                  <Link
+                    href={`/pmt/${p.projectCode}?tab=team`}
+                    className="hover:text-navy-950 hover:underline"
+                  >
+                    <span className="font-mono text-xs font-semibold text-navy-600 mr-1.5">[{p.projectCode}]</span>
+                    {p.projectName}
+                  </Link>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-navy-400">
-                  <span className="font-mono">{p.projectCode}</span>
-                  {p.roleInProject && <span className="truncate">· {p.roleInProject}</span>}
+                  {p.roleInProject && <span className="truncate">{p.roleInProject}</span>}
                 </div>
               </div>
               <span className="shrink-0 text-[13px] font-bold tabular-nums text-navy-900">

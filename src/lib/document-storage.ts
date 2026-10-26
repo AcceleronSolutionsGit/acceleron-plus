@@ -28,10 +28,41 @@ export const ALLOWED_MIME_TYPES: Record<string, string> = {
   "text/csv":                                                            "csv",
   "image/png":                                                           "png",
   "image/jpeg":                                                          "jpg",
+  "image/jpg":                                                           "jpg",
   "image/gif":                                                           "gif",
   "image/webp":                                                          "webp",
   "application/zip":                                                     "zip",
+  "application/x-zip-compressed":                                        "zip",
 };
+
+export const EXTENSION_MIME_MAP: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".txt": "text/plain",
+  ".csv": "text/csv",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".zip": "application/zip",
+};
+
+export function resolveMimeType(fileName: string, detectedMime?: string | null): string | null {
+  if (detectedMime && ALLOWED_MIME_TYPES[detectedMime]) {
+    return detectedMime;
+  }
+  const ext = path.extname(fileName).toLowerCase();
+  if (ext && EXTENSION_MIME_MAP[ext]) {
+    return EXTENSION_MIME_MAP[ext];
+  }
+  return null;
+}
 
 export interface SavedFile {
   storedFileName: string;
@@ -58,11 +89,12 @@ export async function saveDocument(
   if (buffer.byteLength > MAX_FILE_SIZE_BYTES) {
     throw new Error(`File exceeds max size of ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB`);
   }
-  if (!ALLOWED_MIME_TYPES[mimeType]) {
+  const effectiveMime = resolveMimeType(originalFileName, mimeType);
+  if (!effectiveMime || !ALLOWED_MIME_TYPES[effectiveMime]) {
     throw new Error(`File type '${mimeType}' is not allowed`);
   }
 
-  const ext = path.extname(originalFileName) || `.${ALLOWED_MIME_TYPES[mimeType]}`;
+  const ext = path.extname(originalFileName) || `.${ALLOWED_MIME_TYPES[effectiveMime]}`;
   const uniqueId = crypto.randomUUID();
   const storedFileName = `${uniqueId}${ext}`;
   const dir = await ensureProjectDir(projectId);
@@ -77,7 +109,7 @@ export async function saveDocument(
     storedFileName,
     filePath: relativePath,
     fileSizeBytes: buffer.byteLength,
-    mimeType,
+    mimeType: effectiveMime,
     checksumSha256: checksum,
   };
 }

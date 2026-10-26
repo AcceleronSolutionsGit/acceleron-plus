@@ -906,7 +906,7 @@ const ProjectRow = memo(function ProjectRow({
               prefetch={false}
               className="block font-semibold text-navy-900 break-words underline-offset-2 transition-colors hover:text-navy-700 hover:underline"
             >
-              {p.name}
+              [{p.code}] {p.name}
             </Link>
             <p className="mt-0.5 line-clamp-2 text-[12px] text-navy-400">{p.description || "No description"}</p>
           </div>

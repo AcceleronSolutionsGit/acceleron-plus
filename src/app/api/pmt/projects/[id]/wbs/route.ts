@@ -69,6 +69,23 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       values.sequence = (last?.max ?? 0) + 1;
     }
 
+    if (values.progress_percent !== undefined) {
+      if (values.progress_percent === null || !Number.isFinite(Number(values.progress_percent))) {
+        values.progress_percent = 0;
+      } else {
+        values.progress_percent = Math.max(0, Math.min(100, Math.round(Number(values.progress_percent))));
+      }
+    } else {
+      values.progress_percent = 0;
+    }
+
+    if (values.parent_wbs_id === "" || values.parent_wbs_id === "none") {
+      values.parent_wbs_id = null;
+    }
+    if (values.sprint_id === "" || values.sprint_id === "none") {
+      values.sprint_id = null;
+    }
+
     if (!values.code) {
       values.code = `WBS-${String(values.sequence).padStart(3, "0")}`;
     }

@@ -130,6 +130,10 @@ export function coerceFields(
         errors.push(`${label} cannot be empty.`);
         continue;
       }
+      if (spec.kind === "int" && spec.column === "progress_percent") {
+        values[spec.column] = spec.min ?? 0;
+        continue;
+      }
       values[spec.column] = null;
       continue;
     }

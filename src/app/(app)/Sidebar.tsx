@@ -179,6 +179,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
   // My Skills. Delivery, the service desk and My Tasks stay visible but
   // greyed out. Admins and PMs see everything. (See lib/rollout.ts.)
   const phase1 = isPhase1Restricted(appRole);
+  const isPmOrAdmin = isAdmin || allRoles.includes("pm") || allRoles.some(r => /pm|manager/i.test(r)) || !phase1;
   // Approvals are for reporting managers. A member nobody reports to
   // would only ever see an empty list, so the section is left out.
   const showTeam = !phase1 || hasDirectReports;
@@ -321,6 +322,9 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               <NavItem href="/my-tasks" icon={<TaskIcon />} label="My Tasks" isCollapsed={isCollapsed} />
             )}
             <NavItem href="/my-projects" icon={<FolderPlusIcon />} label="My Projects" isCollapsed={isCollapsed} />
+            {!isPmOrAdmin && (
+              <NavItem href="/pmt/mis" icon={<ChartIcon />} label="Project MIS" isCollapsed={isCollapsed} />
+            )}
             <NavItem href="/my-timesheet" icon={<ClockIcon />} label="My Timesheet" isCollapsed={isCollapsed} />
             <NavItem href="/my-skills" icon={<SkillIcon />} label="My Skills" isCollapsed={isCollapsed} />
             {phase1 && (
@@ -334,7 +338,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
               />
             )}
 
-            {isAdmin && (
+            {isPmOrAdmin && (
               <>
                 <NavSection
                   label="Project Management"
@@ -344,6 +348,12 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
                   href="/pmt"
                   icon={<FolderIcon />}
                   label="Projects"
+                  isCollapsed={isCollapsed}
+                />
+                <NavItem
+                  href="/pmt/mis"
+                  icon={<ChartIcon />}
+                  label="Project MIS"
                   isCollapsed={isCollapsed}
                 />
                 <NavItem

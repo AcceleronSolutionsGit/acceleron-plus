@@ -271,6 +271,7 @@ export function ProjectDetailClient({
           <div className="space-y-2.5">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-navy-900 font-[family-name:var(--font-league-spartan)]">
+                <span className="text-navy-500 font-mono text-xl mr-2">[{project.code}]</span>
                 {project.name}
               </h1>
               <ColorBadge colorClass={projectStatusColor(project.status)}>

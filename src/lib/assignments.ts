@@ -198,20 +198,27 @@ export async function recalculateWbsItem(wbsItemId: string): Promise<Rollup | nu
     return null;
   }
 
-  const totalHours = rows.reduce((sum, r) => sum + Number(r.planned_hours ?? 0), 0);
+  const safeNum = (v: unknown): number => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
 
-  const progress =
+  const totalHours = rows.reduce((sum, r) => sum + Math.max(0, safeNum(r.planned_hours)), 0);
+
+  const rawProgress =
     totalHours > 0
       ? rows.reduce(
-          (sum, r) => sum + Number(r.progress_percent ?? 0) * Number(r.planned_hours ?? 0),
+          (sum, r) => sum + Math.max(0, safeNum(r.progress_percent)) * Math.max(0, safeNum(r.planned_hours)),
           0
         ) / totalHours
-      : rows.reduce((sum, r) => sum + Number(r.progress_percent ?? 0), 0) / rows.length;
+      : rows.reduce((sum, r) => sum + Math.max(0, safeNum(r.progress_percent)), 0) / (rows.length || 1);
+
+  const cleanProgress = Math.max(0, Math.min(100, Math.round(Number.isFinite(rawProgress) ? rawProgress : 0)));
 
   const rollup: Rollup = {
     assignedCount: rows.length,
-    assignedHours: round2(totalHours),
-    progressPercent: Math.round(progress),
+    assignedHours: round2(Math.max(0, Number.isFinite(totalHours) ? totalHours : 0)),
+    progressPercent: cleanProgress,
   };
 
   // Everyone finished means the package is finished; anybody actually
@@ -219,7 +226,7 @@ export async function recalculateWbsItem(wbsItemId: string): Promise<Rollup | nu
   // one blocked assignee does not necessarily stop the package.
   const everyoneDone = rows.every((r) => r.status === "completed");
   const anyoneStarted = rows.some(
-    (r) => r.status === "in_progress" || Number(r.progress_percent ?? 0) > 0
+    (r) => r.status === "in_progress" || safeNum(r.progress_percent) > 0
   );
 
   const update: Record<string, unknown> = {

@@ -14,6 +14,7 @@ interface PmtHeaderTabsProps {
 
 const TABS = [
   { label: "Active Projects", href: "/pmt", badge: "Delivery", exact: true },
+  { label: "Project MIS", href: "/pmt/mis", badge: "Milestones & Delays", exact: true },
   { label: "Portfolio Dashboard", href: "/pmt/dashboard", badge: "KPIs", exact: true },
   { label: "Leads & Pipeline", href: "/pmt/leads", badge: "Pre-Sales", exact: false },
   { label: "Enterprise Governance", href: "/pmt/governance", badge: "Stage-Gates", exact: false },

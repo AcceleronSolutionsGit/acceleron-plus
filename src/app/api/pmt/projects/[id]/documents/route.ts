@@ -1,10 +1,11 @@
 // GET  /api/pmt/projects/[id]/documents  — list all documents for a project
 // POST /api/pmt/projects/[id]/documents  — upload a new document
 
+import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
 import { requireProjectCapability, can } from "@/lib/auth";
-import { saveDocument, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, formatFileSize } from "@/lib/document-storage";
+import { saveDocument, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, formatFileSize, resolveMimeType } from "@/lib/document-storage";
 
 // ─── GET — List Documents ──────────────────────────────────────────
 
@@ -118,12 +119,12 @@ export async function POST(
 
   const file          = formData.get("file") as File | null;
   const title         = (formData.get("title") as string)?.trim();
-  const documentType  = (formData.get("documentType") as string) ?? "other";
-  const category      = (formData.get("category") as string) ?? "general";
+  const documentType  = ((formData.get("documentType") as string) ?? "other").toLowerCase();
+  const category      = ((formData.get("category") as string) ?? "general").toLowerCase();
   const description   = (formData.get("description") as string) ?? "";
   const version       = (formData.get("version") as string) ?? "1.0";
   const tags          = (formData.get("tags") as string) ?? "";
-  const accessLevel   = (formData.get("accessLevel") as string) ?? "team";
+  const rawAccess     = (formData.get("accessLevel") as string) ?? "team";
   const supersedesId  = (formData.get("supersedesDocumentId") as string) ?? null;
 
   // ── Validation ───────────────────────────────────────────────────
@@ -131,21 +132,39 @@ export async function POST(
   if (!file)  errors.push({ field: "file",  message: "A file is required" });
   if (!title) errors.push({ field: "title", message: "Document title is required" });
 
-  const validTypes = ["scope","sop","proposal","po","contract","sow","test_plan","meeting_minutes","phase_report","risk_register","other"];
+  const validTypes = [
+    "scope",
+    "solution_approach",
+    "solution",
+    "architecture",
+    "sop",
+    "proposal",
+    "po",
+    "contract",
+    "sow",
+    "test_plan",
+    "meeting_minutes",
+    "phase_report",
+    "risk_register",
+    "other",
+    "general"
+  ];
   if (!validTypes.includes(documentType)) {
     errors.push({ field: "documentType", message: `Invalid document type` });
   }
-  const validAccess = ["team", "pm_only", "client_visible"];
-  if (!validAccess.includes(accessLevel)) {
-    errors.push({ field: "accessLevel", message: "Invalid access level" });
-  }
 
+  const validAccess = ["team", "pm_only", "client_visible"];
+  const accessParts = rawAccess.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const matchedAccess = accessParts.find((p) => validAccess.includes(p)) || "team";
+  const accessLevel = matchedAccess;
+
+  let effectiveMime = file ? resolveMimeType(file.name, file.type) : null;
   if (file) {
     if (file.size > MAX_FILE_SIZE_BYTES) {
       errors.push({ field: "file", message: `File too large. Max is ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB` });
     }
-    if (!ALLOWED_MIME_TYPES[file.type]) {
-      errors.push({ field: "file", message: `File type '${file.type}' is not supported` });
+    if (!effectiveMime || !ALLOWED_MIME_TYPES[effectiveMime]) {
+      errors.push({ field: "file", message: `File type '${file.type || path.extname(file.name)}' is not supported` });
     }
   }
 
@@ -157,7 +176,7 @@ export async function POST(
   const buffer = Buffer.from(await file!.arrayBuffer());
   let saved;
   try {
-    saved = await saveDocument(projectId, file!.name, file!.type, buffer);
+    saved = await saveDocument(projectId, file!.name, effectiveMime || file!.type, buffer);
   } catch (err: any) {
     return NextResponse.json({ success: false, error: "STORAGE_ERROR", message: err?.message }, { status: 422 });
   }

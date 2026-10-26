@@ -119,6 +119,30 @@ export async function PATCH(req: Request, context: Params) {
       values.status = "completed";
     }
 
+    // Strict sanitization for integer & reference fields to prevent Postgres int/UUID coercion crashes
+    if (values.progress_percent !== undefined) {
+      if (values.progress_percent === null || !Number.isFinite(Number(values.progress_percent))) {
+        values.progress_percent = 0;
+      } else {
+        values.progress_percent = Math.max(0, Math.min(100, Math.round(Number(values.progress_percent))));
+      }
+    }
+
+    if (values.sequence !== undefined) {
+      if (values.sequence === null || !Number.isFinite(Number(values.sequence))) {
+        delete values.sequence;
+      } else {
+        values.sequence = Math.round(Number(values.sequence));
+      }
+    }
+
+    if (values.parent_wbs_id === "" || values.parent_wbs_id === "none") {
+      values.parent_wbs_id = null;
+    }
+    if (values.sprint_id === "" || values.sprint_id === "none") {
+      values.sprint_id = null;
+    }
+
     const [updated] = await projectDb("wbs_items")
       .where({ id: itemId, project_id: project.id })
       .update({ ...values, updated_at: new Date() })
