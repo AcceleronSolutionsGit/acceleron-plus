@@ -150,3 +150,50 @@ test("7. Zero Order Value handling", () => {
   assert.equal(result.actualMargin, -60000);
   assert.equal(result.actualMarginPercent, null);
 });
+
+test("8. Order Value and Target Margin compute Target Cost correctly", () => {
+  const result1 = calculateCostingMetrics({
+    orderValue: 2000000,
+    targetMarginPercent: 25,
+    plannedCost: 1400000,
+    actualCost: 1200000,
+  });
+  assert.equal(result1.orderValue, 2000000, "Order Value should be 20,00,000");
+  assert.equal(result1.targetMarginPercent, 25, "Target margin should be 25%");
+  assert.equal(result1.targetCost, 1500000, "Target Cost must be 20,00,000 * (1 - 0.25) = 15,00,000");
+  assert.equal(result1.targetVsPlannedBalance, 100000, "Planned cost is favorable by 1,00,000");
+  assert.equal(result1.targetVsPlannedStatus, "favorable");
+
+  const result2 = calculateCostingMetrics({
+    orderValue: 500000,
+    targetMarginPercent: null,
+    plannedCost: 400000,
+    actualCost: 450000,
+  });
+  assert.equal(result2.orderValue, 500000);
+  assert.equal(result2.targetMarginPercent, null);
+  assert.equal(result2.targetCost, 500000, "Target Cost defaults to Order Value when margin is unconfigured");
+});
+
+test("9. Financial redaction hides budgetInr, targetMarginPercent, and targetCostInr for non-financial viewers", async () => {
+  const { redactProjectFinancials } = await import("../src/lib/permissions.ts");
+
+  const project = {
+    id: "proj-1",
+    name: "Confidential Project",
+    budgetInr: 1000000,
+    targetMarginPercent: 20,
+    targetCostInr: 800000,
+    status: "in_progress",
+    category: "SOFTWARE",
+  };
+
+  const redacted = redactProjectFinancials(project);
+  assert.equal(redacted.name, "Confidential Project");
+  assert.equal(redacted.status, "in_progress");
+  assert.equal(redacted.category, "SOFTWARE");
+  assert.equal("budgetInr" in redacted, false, "budgetInr should be redacted");
+  assert.equal("targetMarginPercent" in redacted, false, "targetMarginPercent should be redacted");
+  assert.equal("targetCostInr" in redacted, false, "targetCostInr should be redacted");
+});
+
