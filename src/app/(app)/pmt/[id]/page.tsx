@@ -14,6 +14,8 @@ import { getPreDeliveryStages } from "@/lib/lifecycle";
 import { projectDb } from "@/lib/db";
 import { ProjectDetailClient } from "./ProjectDetailClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const project = await getProject(id);

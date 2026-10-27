@@ -163,6 +163,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (body.status !== undefined) projectUpdate.status = body.status;
     if (body.budgetInr !== undefined) projectUpdate.budget_inr = body.budgetInr;
     if (body.budget_inr !== undefined) projectUpdate.budget_inr = body.budget_inr;
+    if (body.targetMarginPercent !== undefined) {
+      projectUpdate.target_margin_percent = body.targetMarginPercent === null || body.targetMarginPercent === "" ? null : Number(body.targetMarginPercent);
+    }
+    if (body.target_margin_percent !== undefined) {
+      projectUpdate.target_margin_percent = body.target_margin_percent === null || body.target_margin_percent === "" ? null : Number(body.target_margin_percent);
+    }
     if (body.overheadPercent !== undefined) projectUpdate.overhead_percent = Number(body.overheadPercent) || 0;
     if (body.overhead_percent !== undefined) projectUpdate.overhead_percent = Number(body.overhead_percent) || 0;
     if (body.startDate !== undefined) projectUpdate.start_date = body.startDate;

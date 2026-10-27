@@ -94,6 +94,8 @@ export interface Project {
   projectType?: string | null;
   classification?: 'group' | 'non_group';
   overheadPercent?: number;
+  targetMarginPercent?: number | null;
+  targetCostInr?: number | null;
   createdAt: string;
   updatedAt: string;
   // Joined/computed

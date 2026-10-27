@@ -16,6 +16,8 @@ export default async function AdminMastersPage() {
     rawRateBands,
     companies,
     lastSyncRes,
+    catCountRes,
+    typeCountRes,
   ] = await Promise.all([
     identityDb("employee_master as e")
       .leftJoin("employee_master as m", "e.direct_manager_employee_id", "m.employee_id")
@@ -41,6 +43,8 @@ export default async function AdminMastersPage() {
     projectDb("employee_rate_bands").select("*"),
     itsmDb("companies").select("*").orderBy("name", "asc"),
     identityDb("employee_master").max<{ max: string }>("last_synced_at as max").first(),
+    projectDb("project_categories").where("is_active", true).count<{ count: string }>("* as count").first().catch(() => null),
+    projectDb("project_types").where("is_active", true).count<{ count: string }>("* as count").first().catch(() => null),
   ]);
 
   const totalEmployees = parseInt(empCountRes?.count ?? "0", 10);
@@ -83,6 +87,8 @@ export default async function AdminMastersPage() {
       totalEmployees,
       totalRateBands: rateBands.filter((r) => r.is_active).length,
       totalCompanies: companies.length,
+      totalCategories: parseInt(catCountRes?.count ?? "0", 10),
+      totalProjectTypes: parseInt(typeCountRes?.count ?? "0", 10),
       locationsCount: locations.length,
       lastSyncedAt,
     },

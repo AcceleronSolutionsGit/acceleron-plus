@@ -710,19 +710,20 @@ export function ProjectListClient({
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-navy-900/8 bg-surface shadow-xs">
-          <table className="w-full table-fixed min-w-[1180px] border-separate border-spacing-0 text-sm">
+          <table className="w-full table-fixed min-w-[1260px] border-separate border-spacing-0 text-sm">
             <thead>
                <tr>
                 {[
-                  ["Project", "w-[275px]"],
-                  ["Client", "w-[150px]"],
+                  ["Project", "w-[260px]"],
+                  ["Client", "w-[140px]"],
                   ["Phase", "w-[95px]"],
                   ["Class", "w-[85px]"],
-                  ["Category & Type", "w-[160px]"],
+                  ["Category & Type", "w-[150px]"],
                   ["Status", "w-[100px]"],
-                  ["Project managers", "w-[160px]"],
-                  ["Start & End Date", "w-[145px]"],
+                  ["Project managers", "w-[150px]"],
+                  ["Start & End Date", "w-[140px]"],
                   ["Order Value", "text-right w-[110px]"],
+                  ["Target Cost", "text-right w-[115px]"],
                 ].map(([label, cls], i, all) => (
                   <th
                     key={label}
@@ -1050,7 +1051,7 @@ const ProjectRow = memo(function ProjectRow({
         </div>
       </td>
 
-      {/* Budget */}
+      {/* Order Value */}
       <td className={cn(cell, "text-right")}>
         <span
           title={p.budgetInr ? formatCurrency(Number(p.budgetInr), p.currency) : undefined}
@@ -1058,6 +1059,27 @@ const ProjectRow = memo(function ProjectRow({
         >
           {p.budgetInr ? compactCurrency(p.budgetInr, p.currency) : "—"}
         </span>
+      </td>
+
+      {/* Target Cost */}
+      <td className={cn(cell, "text-right")}>
+        {p.targetCostInr ? (
+          <div>
+            <span
+              title={`Target Cost: ${formatCurrency(Number(p.targetCostInr), p.currency)}`}
+              className="text-[13px] font-semibold tabular-nums text-emerald-800"
+            >
+              {compactCurrency(p.targetCostInr, p.currency)}
+            </span>
+            {p.targetMarginPercent !== null && p.targetMarginPercent !== undefined && (
+              <span className="block text-[10.5px] text-navy-400 font-medium">
+                {p.targetMarginPercent}% margin
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-navy-300">—</span>
+        )}
       </td>
     </tr>
   );

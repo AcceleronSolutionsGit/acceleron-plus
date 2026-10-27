@@ -428,10 +428,32 @@ export function ProjectDetailClient({
           />
           <MetaItem label="Client" value={project.clientCompanyName || "Internal"} />
           {permissions.canViewFinancials && (
-            <MetaItem
-              label={`Order Value (${project.currency || "INR"})`}
-              value={project.budgetInr ? formatCurrency(Number(project.budgetInr), project.currency || "INR") : "—"}
-            />
+            <>
+              <MetaItem
+                label={`Order Value (${project.currency || "INR"})`}
+                value={project.budgetInr ? formatCurrency(Number(project.budgetInr), project.currency || "INR") : "—"}
+              />
+              <MetaItem
+                label={`Target Cost (${project.currency || "INR"})`}
+                value={
+                  project.targetCostInr !== undefined && project.targetCostInr !== null
+                    ? formatCurrency(Number(project.targetCostInr), project.currency || "INR")
+                    : project.budgetInr
+                    ? formatCurrency(
+                        project.targetMarginPercent !== undefined && project.targetMarginPercent !== null
+                          ? Math.round(Number(project.budgetInr) * (1 - Number(project.targetMarginPercent) / 100))
+                          : Number(project.budgetInr),
+                        project.currency || "INR"
+                      )
+                    : "—"
+                }
+                subtext={
+                  project.targetMarginPercent !== null && project.targetMarginPercent !== undefined
+                    ? `${project.targetMarginPercent}% target margin`
+                    : undefined
+                }
+              />
+            </>
           )}
           <MetaItem label="Start Date" value={formatDate(project.startDate)} />
           <MetaItem label="Planned End" value={formatDate(project.plannedEndDate)} />

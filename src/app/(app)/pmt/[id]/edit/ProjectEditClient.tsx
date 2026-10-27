@@ -64,6 +64,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
     category: initialCategory,
     projectType: project.projectType || "",
     budgetInr: project.budgetInr ? String(project.budgetInr) : "",
+    targetMarginPercent: project.targetMarginPercent !== undefined && project.targetMarginPercent !== null ? String(project.targetMarginPercent) : "",
     overheadPercent: project.overheadPercent !== undefined && project.overheadPercent !== null ? String(project.overheadPercent) : "0",
     startDate: toDateInput(project.startDate),
     plannedEndDate: toDateInput(project.plannedEndDate),
@@ -104,6 +105,25 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
   const [serverError, setServerError] = useState<string | null>(null);
   const [clientNames, setClientNames] = useState<string[]>([]);
   const clientListId = useId();
+  const [taxonomy, setTaxonomy] = useState<{ code: string; name: string; label?: string; types: { name: string }[] }[]>(() =>
+    PROJECT_TAXONOMY.map((item) => ({
+      code: item.category,
+      name: item.label || item.category,
+      label: item.label || item.category,
+      types: item.types.map((t) => ({ name: t })),
+    }))
+  );
+
+  useEffect(() => {
+    fetch("/api/pmt/taxonomy")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data?.categories?.length > 0) {
+          setTaxonomy(data.categories);
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   useEffect(() => {
     fetch("/api/pmt/projects")
@@ -199,6 +219,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
       }
       if (permissions.canViewFinancials) {
         payload.budgetInr = draft.budgetInr ? Number(draft.budgetInr) : null;
+        payload.targetMarginPercent = draft.targetMarginPercent !== "" ? Number(draft.targetMarginPercent) : null;
         payload.overheadPercent = draft.overheadPercent !== "" ? Number(draft.overheadPercent) : 0;
       }
 
@@ -221,6 +242,14 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
   };
 
   const budgetWords = lakhs(draft.budgetInr);
+  const orderValueNum = Number(draft.budgetInr) || 0;
+  const targetMarginNum = draft.targetMarginPercent !== "" ? Number(draft.targetMarginPercent) : null;
+  const targetCostNum = orderValueNum > 0
+    ? targetMarginNum !== null && Number.isFinite(targetMarginNum)
+      ? Math.round(orderValueNum * (1 - targetMarginNum / 100))
+      : orderValueNum
+    : 0;
+  const targetMarginAmount = orderValueNum > 0 && targetMarginNum !== null ? Math.round(orderValueNum * (targetMarginNum / 100)) : 0;
 
   return (
     <div className="flex h-[calc(100vh-64px)] flex-col bg-surface-2 md:flex-row">
@@ -292,7 +321,8 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                   value={draft.category}
                   onChange={(e) => {
                     const newCat = e.target.value;
-                    const validTypes = getTypesForCategory(newCat);
+                    const catObj = taxonomy.find((c) => c.code.toUpperCase() === newCat.toUpperCase());
+                    const validTypes = catObj?.types?.map((t) => t.name) || getTypesForCategory(newCat);
                     setDraft((d) => ({
                       ...d,
                       category: newCat,
@@ -301,9 +331,9 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                     setTouched(true);
                   }}
                 >
-                  {PROJECT_TAXONOMY.map((item) => (
-                    <option key={item.category} value={item.category}>
-                      {item.label || item.category}
+                  {taxonomy.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.label || item.name || item.code}
                     </option>
                   ))}
                 </Select>
@@ -312,7 +342,15 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                   value={draft.projectType}
                   onChange={(e) => {
                     const newType = e.target.value;
-                    const inferredCat = getCategoryForType(newType);
+                    let inferredCat: string | null = null;
+                    for (const cat of taxonomy) {
+                      if (cat.types?.some((t) => t.name.toLowerCase() === newType.toLowerCase())) {
+                        inferredCat = cat.code;
+                        break;
+                      }
+                    }
+                    if (!inferredCat) inferredCat = getCategoryForType(newType);
+
                     setDraft((d) => ({
                       ...d,
                       projectType: newType,
@@ -322,11 +360,19 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                   }}
                 >
                   <option value="">Select project type</option>
-                  {getTypesForCategory(draft.category).map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
+                  {(() => {
+                    const activeCat = taxonomy.find((c) => c.code.toUpperCase() === draft.category.toUpperCase());
+                    const validTypes = activeCat?.types?.map((t) => t.name) || getTypesForCategory(draft.category);
+                    const list = [...validTypes];
+                    if (draft.projectType && !list.includes(draft.projectType)) {
+                      list.unshift(draft.projectType);
+                    }
+                    return list.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ));
+                  })()}
                 </Select>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -437,42 +483,85 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                 />
               </div>
               {permissions.canViewFinancials ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    label="Order Value"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1000}
-                    leading="₹"
-                    value={draft.budgetInr}
-                    onChange={(e) => set("budgetInr", e.target.value)}
-                    placeholder="0"
-                    error={show("budgetInr")}
-                    hint={
-                      draft.budgetInr && Number(draft.budgetInr) > 0
-                        ? `${formatCurrency(Number(draft.budgetInr))}${budgetWords ? ` · ${budgetWords}` : ""}`
-                        : undefined
-                    }
-                  />
-                  <Input
-                    label="Overhead Margin (%)"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={draft.overheadPercent}
-                    onChange={(e) => set("overheadPercent", e.target.value)}
-                    placeholder="e.g. 10"
-                    hint="Applied to labor costs for overhead loading."
-                  />
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Input
+                      label="Order Value (Billable Value)"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1000}
+                      leading="₹"
+                      value={draft.budgetInr}
+                      onChange={(e) => set("budgetInr", e.target.value)}
+                      placeholder="0"
+                      error={show("budgetInr")}
+                      hint={
+                        draft.budgetInr && Number(draft.budgetInr) > 0
+                          ? `${formatCurrency(Number(draft.budgetInr))}${budgetWords ? ` · ${budgetWords}` : ""}`
+                          : "Total billable value of the order."
+                      }
+                    />
+                    <Input
+                      label="Target Margin (%)"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={draft.targetMarginPercent}
+                      onChange={(e) => set("targetMarginPercent", e.target.value)}
+                      placeholder="e.g. 25"
+                      hint={
+                        targetMarginNum !== null && orderValueNum > 0
+                          ? `Margin: ${formatCurrency(targetMarginAmount)} (${targetMarginNum}%)`
+                          : "Target profitability margin %"
+                      }
+                    />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* System Calculated Target Cost */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-navy-500 mb-1">
+                        Target Cost (Cost Ceiling)
+                      </label>
+                      <div className="flex flex-col justify-center rounded-xl border border-emerald-600/20 bg-emerald-50/50 p-3 min-h-[58px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-base font-bold text-emerald-950 tabular-nums">
+                            {orderValueNum > 0 ? formatCurrency(targetCostNum) : "—"}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10.5px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Auto-Calculated
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-emerald-700">
+                          {targetMarginNum !== null && orderValueNum > 0
+                            ? `Order Value (₹${orderValueNum.toLocaleString()}) − ${targetMarginNum}% margin`
+                            : "Order Value − Target Margin (read-only ceiling)"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Input
+                      label="Overhead Margin (%)"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={draft.overheadPercent}
+                      onChange={(e) => set("overheadPercent", e.target.value)}
+                      placeholder="e.g. 10"
+                      hint="Applied to labor costs for overhead loading."
+                    />
+                  </div>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1">Order Value</label>
+                  <label className="block text-sm font-medium text-navy-700 mb-1">Order Value & Financials</label>
                   <div className="px-3 py-2 border rounded bg-gray-50 text-gray-500 text-sm">
-                    Hidden
+                    Hidden (Restricted view)
                   </div>
                 </div>
               )}

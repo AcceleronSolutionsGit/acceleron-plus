@@ -7,18 +7,22 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
-    const [empCountRes, rateCountRes, compCountRes, lastSyncRes] = await Promise.all([
+    const [empCountRes, rateCountRes, compCountRes, lastSyncRes, catCountRes, typeCountRes] = await Promise.all([
       identityDb("employee_master").count<{ count: string }>("* as count").first(),
       projectDb("employee_rate_bands").count<{ count: string }>("* as count").first(),
       itsmDb("companies").count<{ count: string }>("* as count").first(),
       identityDb("employee_master")
         .max<{ max: string }>("last_synced_at as max")
         .first(),
+      projectDb("project_categories").where("is_active", true).count<{ count: string }>("* as count").first().catch(() => null),
+      projectDb("project_types").where("is_active", true).count<{ count: string }>("* as count").first().catch(() => null),
     ]);
 
     const totalEmployees = parseInt(empCountRes?.count ?? "0", 10);
     const totalRateBands = parseInt(rateCountRes?.count ?? "0", 10);
     const totalCompanies = parseInt(compCountRes?.count ?? "0", 10);
+    const totalCategories = parseInt(catCountRes?.count ?? "0", 10);
+    const totalProjectTypes = parseInt(typeCountRes?.count ?? "0", 10);
     const lastSyncedAt = lastSyncRes?.max ?? null;
 
     return NextResponse.json({
@@ -27,6 +31,8 @@ export async function GET() {
         totalEmployees,
         totalRateBands,
         totalCompanies,
+        totalCategories,
+        totalProjectTypes,
         lastSyncedAt,
       },
     });

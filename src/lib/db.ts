@@ -187,6 +187,8 @@ const MIGRATION_FOR: Record<string, string> = {
   project_documents: "src/lib/migrations/migrate-documents.js",
   document_access_logs: "src/lib/migrations/migrate-documents.js",
   service_group_members: "src/lib/migrations/migrate-itsm-groups.js",
+  project_categories: "src/lib/migrations/migrate-project-categories-and-types.js",
+  project_types: "src/lib/migrations/migrate-project-categories-and-types.js",
 };
 
 /**

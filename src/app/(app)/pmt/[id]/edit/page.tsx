@@ -5,6 +5,8 @@ import { getSession, getProjectAccess } from "@/lib/auth";
 import { can, describeAccess, redactProjectFinancials } from "@/lib/permissions";
 import { ProjectEditClient } from "./ProjectEditClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const project = await getProject(id);

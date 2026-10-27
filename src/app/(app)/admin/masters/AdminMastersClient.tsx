@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { DarwinboxAutosync } from "./DarwinboxAutosync";
 import { ProjectRolesTab } from "./ProjectRolesTab";
+import { ProjectCategoriesTab } from "./ProjectCategoriesTab";
 
 interface Employee {
   employee_id: string;
@@ -115,6 +116,8 @@ interface AdminMastersClientProps {
       totalEmployees: number;
       totalRateBands: number;
       totalCompanies: number;
+      totalCategories?: number;
+      totalProjectTypes?: number;
       locationsCount: number;
       lastSyncedAt: string | null;
     };
@@ -123,7 +126,7 @@ interface AdminMastersClientProps {
 
 export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"employees" | "rates" | "companies" | "project-roles">("employees");
+  const [activeTab, setActiveTab] = useState<"employees" | "rates" | "companies" | "project-roles" | "categories">("employees");
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -132,13 +135,13 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
       const urlTab = new URLSearchParams(window.location.search).get("tab");
       const storedTab = sessionStorage.getItem("admin_masters_active_tab");
       const target = (urlTab || storedTab) as any;
-      if (["employees", "rates", "companies", "project-roles"].includes(target)) {
+      if (["employees", "rates", "companies", "project-roles", "categories"].includes(target)) {
         setActiveTab(target);
       }
     }
   }, []);
 
-  const handleSelectTab = (tab: "employees" | "rates" | "companies" | "project-roles") => {
+  const handleSelectTab = (tab: "employees" | "rates" | "companies" | "project-roles" | "categories") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -803,6 +806,25 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
             </svg>
             <span>Custom Project Roles</span>
           </button>
+
+          <button
+            onClick={() => handleSelectTab("categories")}
+            className={`pb-3.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === "categories"
+                ? "border-navy-900 text-navy-900"
+                : "border-transparent text-navy-500 hover:text-navy-700"
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+            </svg>
+            <span>Categories & Types</span>
+            {stats.totalCategories ? (
+              <span className="px-2 py-0.5 text-xs rounded-full bg-navy-100 text-navy-900 font-bold">
+                {stats.totalCategories}
+              </span>
+            ) : null}
+          </button>
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
@@ -1348,6 +1370,11 @@ export function AdminMastersClient({ initialData }: AdminMastersClientProps) {
             TAB 4: CUSTOM PROJECT ROLES MASTER
             ════════════════════════════════════════════════════════════════ */}
         {activeTab === "project-roles" && <ProjectRolesTab />}
+
+        {/* ════════════════════════════════════════════════════════════════
+            TAB 5: CATEGORIES & PROJECT TYPES MASTER
+            ════════════════════════════════════════════════════════════════ */}
+        {activeTab === "categories" && <ProjectCategoriesTab />}
       </div>
 
       {/* ════════════════════════════════════════════════════════════════

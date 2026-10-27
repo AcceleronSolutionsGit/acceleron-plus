@@ -4,6 +4,8 @@ import { getSession, projectsManagedBy, projectsAllocatedTo } from "@/lib/auth";
 import { canSeeProjectFinancials, redactProjectFinancials } from "@/lib/permissions";
 import { ProjectListClient } from "./ProjectListClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function PMTProjectsPage() {
   const [projects, session] = await Promise.all([getProjects(), getSession()]);
   const isAdmin = session?.role === "admin" || Boolean(session?.additionalRoles?.includes("admin"));
