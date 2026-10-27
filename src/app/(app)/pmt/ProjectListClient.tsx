@@ -26,7 +26,7 @@ import {
   prefetchPeople,
   type PickedManager,
 } from "@/components/project/ManagerPicker";
-import { cn, formatCurrency, formatStatus, projectStatusColor, compactCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatStatus, projectStatusColor, compactCurrency, cleanProjectName, cleanProjectDesc } from "@/lib/utils";
 import { formatISODate, parseISODate, todayISO } from "@/lib/dates";
 import {
   PROJECT_TAXONOMY,
@@ -283,7 +283,7 @@ export function ProjectListClient({
         return false;
       }
       if (terms.length === 0) return true;
-      const haystack = [p.code, p.name, p.clientCompanyName, p.description, ...managers.map((m) => m.fullName)]
+      const haystack = [p.code, p.name, p.clientCompanyName, p.description, p.zohoSalesOrderRef, p.poDetails, ...managers.map((m) => m.fullName)]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -675,7 +675,7 @@ export function ProjectListClient({
               { value: "recent", label: "Newest first" },
               { value: "name", label: "Name A–Z" },
               { value: "end", label: "Ending soonest" },
-              { value: "budget", label: "Largest budget" },
+              { value: "budget", label: "Largest order value" },
             ]}
           />
         </span>
@@ -714,7 +714,7 @@ export function ProjectListClient({
             <thead>
                <tr>
                 {[
-                  ["Project", "w-[260px]"],
+                  ["Project", "w-[275px]"],
                   ["Client", "w-[150px]"],
                   ["Phase", "w-[95px]"],
                   ["Class", "w-[85px]"],
@@ -722,7 +722,7 @@ export function ProjectListClient({
                   ["Status", "w-[100px]"],
                   ["Project managers", "w-[160px]"],
                   ["Start & End Date", "w-[145px]"],
-                  ["Deal Value", "text-right w-[100px]"],
+                  ["Order Value", "text-right w-[110px]"],
                 ].map(([label, cls], i, all) => (
                   <th
                     key={label}
@@ -906,9 +906,31 @@ const ProjectRow = memo(function ProjectRow({
               prefetch={false}
               className="block font-semibold text-navy-900 break-words underline-offset-2 transition-colors hover:text-navy-700 hover:underline"
             >
-              [{p.code}] {p.name}
+              {cleanProjectName(p.name, p.code)}
             </Link>
-            <p className="mt-0.5 line-clamp-2 text-[12px] text-navy-400">{p.description || "No description"}</p>
+            <p className="mt-0.5 line-clamp-2 text-[12px] text-navy-400">{cleanProjectDesc(p.description, p.code) || "No description"}</p>
+            {(p.zohoSalesOrderRef || p.poDetails) && (
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                {p.zohoSalesOrderRef && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded bg-navy-50/90 px-1.5 py-0.5 font-mono text-[11px] text-navy-700 border border-navy-200/70"
+                    title={`Zoho Sales Order No: ${p.zohoSalesOrderRef}`}
+                  >
+                    <span className="font-sans text-[9.5px] font-bold uppercase tracking-wider text-navy-400">SO:</span>
+                    <span className="font-medium">{p.zohoSalesOrderRef}</span>
+                  </span>
+                )}
+                {p.poDetails && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded bg-amber-50/90 px-1.5 py-0.5 font-mono text-[11px] text-amber-900 border border-amber-200/70"
+                    title={`PO Details: ${p.poDetails}`}
+                  >
+                    <span className="font-sans text-[9.5px] font-bold uppercase tracking-wider text-amber-700">PO:</span>
+                    <span className="truncate max-w-[140px] font-medium">{p.poDetails}</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </td>

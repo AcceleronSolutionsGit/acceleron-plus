@@ -109,17 +109,18 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
       ? null
       : Number(project.target_margin_percent);
 
-  // Actual billable follows the same rate the plan used, applied to the
-  // days actually logged — so the comparison is like for like.
-  const actualBillable = round2(
-    team.reduce((sum, member) => {
-      const rate = member.cost?.dailyBillableRateInr ?? 0;
-      return sum + (member.cost?.actualDays ?? 0) * rate;
-    }, 0)
-  );
+  const orderValue =
+    project?.budget_inr !== null && project?.budget_inr !== undefined
+      ? Number(project.budget_inr)
+      : null;
 
-  const plannedMargin = marginPercent(totals.plannedBillableInr, totals.plannedCostInr);
-  const actualMargin = marginPercent(actualBillable, totals.actualCostInr);
+  // Order value is billable only:
+  // Planned Margin = Order Value - Planned Cost
+  // Actual Margin = Order Value - Actual Cost
+  const billableValue = orderValue !== null && orderValue > 0 ? orderValue : totals.plannedBillableInr;
+
+  const plannedMargin = marginPercent(billableValue, totals.plannedCostInr);
+  const actualMargin = marginPercent(billableValue, totals.actualCostInr);
 
   return {
     targetPercent: target,
@@ -129,8 +130,8 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
 
     planned: {
       costInr: totals.plannedCostInr,
-      billableInr: totals.plannedBillableInr,
-      marginInr: round2(totals.plannedBillableInr - totals.plannedCostInr),
+      billableInr: billableValue,
+      marginInr: round2(billableValue - totals.plannedCostInr),
       marginPercent: plannedMargin,
       variancePoints:
         target !== null && plannedMargin !== null ? round2(plannedMargin - target) : null,
@@ -138,18 +139,15 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
 
     actual: {
       costInr: totals.actualCostInr,
-      billableInr: actualBillable,
-      marginInr: round2(actualBillable - totals.actualCostInr),
+      billableInr: billableValue,
+      marginInr: round2(billableValue - totals.actualCostInr),
       marginPercent: actualMargin,
       variancePoints:
         target !== null && actualMargin !== null ? round2(actualMargin - target) : null,
       daysLogged: totals.actualDays,
     },
 
-    budgetInr:
-      project?.budget_inr === null || project?.budget_inr === undefined
-        ? null
-        : Number(project.budget_inr),
+    budgetInr: orderValue,
     headcount: totals.headcount,
     belowTarget: target !== null && plannedMargin !== null && plannedMargin < target,
   };

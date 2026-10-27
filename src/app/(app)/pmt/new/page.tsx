@@ -78,7 +78,7 @@ export default function NewProjectPage() {
       e.plannedEndDate = "The end date is before the start date.";
     }
     if (draft.budgetInr && (!Number.isFinite(Number(draft.budgetInr)) || Number(draft.budgetInr) < 0)) {
-      e.budgetInr = "Enter the budget as a number of rupees.";
+      e.budgetInr = "Enter the order value as a number of rupees.";
     }
     return e;
   }, [draft]);
@@ -215,7 +215,7 @@ export default function NewProjectPage() {
             </div>
           </Section>
 
-          <Section title="Schedule & budget">
+          <Section title="Schedule & order value">
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
                 label="Start date"
@@ -232,7 +232,7 @@ export default function NewProjectPage() {
                 error={show("plannedEndDate")}
               />
               <Input
-                label="Budget"
+                label="Order Value"
                 type="number"
                 inputMode="numeric"
                 min={0}

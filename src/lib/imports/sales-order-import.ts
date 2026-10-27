@@ -26,6 +26,7 @@ export interface ZohoSalesOrderRow {
   salesOrderNumber: string;
   rowLabel: string | null;
   category: string | null;
+  explicitCategory?: string | null;
   currency: string;
   materialInfo: string | null;
   productName: string | null;
@@ -494,6 +495,7 @@ export async function runSalesOrderImport(opts: {
       salesOrderNumber: effectiveSoNum,
       rowLabel: rawRowLabel || currentGroupLabel,
       category: deriveCategory(rawCategory || currentCategory, effectiveDesc, prodName),
+      explicitCategory: rawCategory || null,
       currency: effectiveCurrency,
       materialInfo: matInfo || null,
       productName: prodName || null,
@@ -624,7 +626,7 @@ export async function runSalesOrderImport(opts: {
               budget_inr: row.currency === "INR" ? amt : existingProj.budget_inr,
               invoiced_amount: inv,
               balance_amount: bal,
-              category: row.category || existingProj.category,
+              category: row.explicitCategory ? row.category : (existingProj.category || row.category),
               currency: row.currency,
               product_name: row.productName,
               material_info: row.materialInfo,

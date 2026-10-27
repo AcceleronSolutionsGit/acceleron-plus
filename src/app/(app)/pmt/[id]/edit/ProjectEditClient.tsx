@@ -8,7 +8,8 @@ import { ManagerField, type PickedManager } from "@/components/project/ManagerPi
 import { cn, formatCurrency } from "@/lib/utils";
 import { toDateInput } from "@/lib/dates";
 import { Project } from "@/lib/types";
-import { PROJECT_TAXONOMY, getTypesForCategory } from "@/lib/project-types";
+import { PROJECT_TAXONOMY, getTypesForCategory, getCategoryForType, normalizeCategory } from "@/lib/project-types";
+import { withBase } from "@/lib/base-path";
 
 const PHASES = [
   "Discovery",
@@ -50,13 +51,17 @@ function Section({ title, children, className }: { title: string; children: Reac
 export function ProjectEditClient({ project, permissions }: { project: Project, permissions: any }) {
   const router = useRouter();
 
+  const initialCategory = normalizeCategory(
+    project.category || (project.projectType ? getCategoryForType(project.projectType) : null) || "SAP"
+  );
+
   const [draft, setDraft] = useState({
     name: project.name,
     description: project.description || "",
     clientCompanyName: project.clientCompanyName || "",
     status: project.status,
     currentPhase: project.currentPhase || "Discovery",
-    category: project.category || "SAP",
+    category: initialCategory,
     projectType: project.projectType || "",
     budgetInr: project.budgetInr ? String(project.budgetInr) : "",
     overheadPercent: project.overheadPercent !== undefined && project.overheadPercent !== null ? String(project.overheadPercent) : "0",
@@ -208,7 +213,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
       }
 
       router.refresh();
-      router.push(`/pmt/${project.code || project.id}`);
+      window.location.href = withBase(`/pmt/${project.code || project.id}`);
     } catch (err: any) {
       setServerError(err.message || "A network error occurred.");
       setSubmitting(false);
@@ -298,14 +303,23 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                 >
                   {PROJECT_TAXONOMY.map((item) => (
                     <option key={item.category} value={item.category}>
-                      {item.category}
+                      {item.label || item.category}
                     </option>
                   ))}
                 </Select>
                 <Select
                   label="Project Type"
                   value={draft.projectType}
-                  onChange={(e) => set("projectType", e.target.value)}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const inferredCat = getCategoryForType(newType);
+                    setDraft((d) => ({
+                      ...d,
+                      projectType: newType,
+                      ...(inferredCat ? { category: inferredCat } : {}),
+                    }));
+                    setTouched(true);
+                  }}
                 >
                   <option value="">Select project type</option>
                   {getTypesForCategory(draft.category).map((type) => (
@@ -405,7 +419,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
               </div>
             </Section>
 
-            <Section title="Schedule & budget">
+            <Section title="Schedule & order value">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input
                   label="Start date"
@@ -425,7 +439,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
               {permissions.canViewFinancials ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Input
-                    label="Budget"
+                    label="Order Value"
                     type="number"
                     inputMode="numeric"
                     min={0}
@@ -456,7 +470,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1">Budget</label>
+                  <label className="block text-sm font-medium text-navy-700 mb-1">Order Value</label>
                   <div className="px-3 py-2 border rounded bg-gray-50 text-gray-500 text-sm">
                     Hidden
                   </div>

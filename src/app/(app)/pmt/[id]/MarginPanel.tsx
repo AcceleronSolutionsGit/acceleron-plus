@@ -40,7 +40,13 @@ interface Margin {
   belowTarget: boolean;
 }
 
-export function MarginPanel({ projectId }: { projectId: string }) {
+export function MarginPanel({
+  projectId,
+  onUpdate,
+}: {
+  projectId: string;
+  onUpdate?: () => void;
+}) {
   const [margin, setMargin] = useState<Margin | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -92,6 +98,7 @@ export function MarginPanel({ projectId }: { projectId: string }) {
       }
       setMargin(data.margin);
       setEditing(false);
+      onUpdate?.();
     } finally {
       setBusy(false);
     }
@@ -122,6 +129,7 @@ export function MarginPanel({ projectId }: { projectId: string }) {
       }
       setMargin(data.margin);
       setHint(data.message);
+      onUpdate?.();
     } finally {
       setBusy(false);
     }
@@ -233,30 +241,6 @@ export function MarginPanel({ projectId }: { projectId: string }) {
           muted={(margin.actual.daysLogged ?? 0) === 0}
         />
       </div>
-
-      {margin.budgetInr !== null && (
-        <Card>
-          <div className="px-5 py-4 flex gap-8 flex-wrap items-center">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-                Project budget
-              </p>
-              <p className="text-lg font-bold text-navy-900">{rupees(margin.budgetInr)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-                Planned billable value
-              </p>
-              <p className="text-lg font-bold text-navy-900">{rupees(margin.planned.billableInr)}</p>
-            </div>
-            <p className="text-xs text-navy-500 flex-1 min-w-[200px]">
-              {margin.planned.billableInr > margin.budgetInr
-                ? "The staffing plan bills past the agreed budget. Either the budget moves or the plan does."
-                : "The staffing plan sits inside the agreed budget."}
-            </p>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }
@@ -312,7 +296,7 @@ function MarginSide({
         <p className="text-[11px] text-navy-500 mt-0.5">{subtitle}</p>
 
         <div className="mt-3 space-y-1 text-sm">
-          <Line label="Billable" value={rupees(side.billableInr)} />
+          <Line label="Order Value" value={rupees(side.billableInr)} />
           <Line label="Cost" value={rupees(side.costInr)} />
           <Line
             label="Margin"

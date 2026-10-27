@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { projectDb, itsmDb } from "@/lib/db";
 import { requireProjectCapability } from "@/lib/auth";
 import { getProjectTeam } from "@/lib/staffing";
+import { calculateCostingMetrics } from "@/lib/costing";
 
 const DAILY_HOURS = 8;
 
@@ -354,12 +355,20 @@ export async function GET(
   const legacyMarginPct = budgetedFeeInr > 0 ? (legacyMarginInr / budgetedFeeInr) * 100 : 0;
   const budgetUtilPct = budgetedFeeInr > 0 ? (totalActualCostInr / budgetedFeeInr) * 100 : 0;
 
+  const costingSummary = calculateCostingMetrics({
+    orderValue: budgetedFeeInr,
+    targetMarginPercent: project.target_margin_percent,
+    plannedCost: totalPlannedCostInr,
+    actualCost: totalActualCostInr,
+  });
+
   return NextResponse.json({
     success: true,
     data: {
       projectId,
       projectCode: project.code,
       projectName: project.name,
+      costingSummary,
       budget: {
         budgetedFeeInr:    parseFloat(budgetedFeeInr.toFixed(2)),
         poValueInr:        parseFloat(poValue.toFixed(2)),
@@ -372,8 +381,8 @@ export async function GET(
         totalHoursLogged:        parseFloat(totalAllHours.toFixed(2)),
         totalInternalCostInr:    parseFloat(totalInternalCostInr.toFixed(2)),
         totalBillableValueInr:   parseFloat(totalBillableValueInr.toFixed(2)),
-        marginInr:               parseFloat(actualMarginInr.toFixed(2)),
-        marginPercent:           parseFloat(actualMarginPercent.toFixed(2)),
+        marginInr:               costingSummary.actualMargin,
+        marginPercent:           costingSummary.actualMarginPercent ?? 0,
         budgetUtilizedPercent:   parseFloat(budgetUtilPct.toFixed(2)),
         // Legacy backward compatibility
         legacyMarginInr:         parseFloat(legacyMarginInr.toFixed(2)),
@@ -404,13 +413,18 @@ export async function GET(
         byCategory:      additionalCostByCategory,
       },
       totals: {
-        plannedTotalCostInr:  totalPlannedCostInr,
-        actualTotalCostInr:   totalActualCostInr,
-        varianceCostInr:      totalCostVarianceInr,
-        plannedMarginInr:     plannedMarginInr,
-        plannedMarginPercent: plannedMarginPercent,
-        actualMarginInr:      actualMarginInr,
-        actualMarginPercent:  actualMarginPercent,
+        orderValueInr:             costingSummary.orderValue,
+        targetCostInr:             costingSummary.targetCost,
+        targetMarginPercent:       costingSummary.targetMarginPercent,
+        targetVsPlannedBalanceInr: costingSummary.targetVsPlannedBalance,
+        targetVsActualBalanceInr:  costingSummary.targetVsActualBalance,
+        plannedTotalCostInr:       totalPlannedCostInr,
+        actualTotalCostInr:        totalActualCostInr,
+        varianceCostInr:           totalCostVarianceInr,
+        plannedMarginInr:          costingSummary.plannedMargin,
+        plannedMarginPercent:      costingSummary.plannedMarginPercent ?? 0,
+        actualMarginInr:           costingSummary.actualMargin,
+        actualMarginPercent:       costingSummary.actualMarginPercent ?? 0,
       },
       costByBand,
       costByPhase,

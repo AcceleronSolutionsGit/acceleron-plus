@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/Input";
 import {
   formatDate, formatStatus, formatCurrency,
   projectStatusColor, milestoneStatusColor, riskStatusColor, impactColor, ticketStatusColor, priorityColor,
-  ticketTypeColor, ticketTypeDotColor, cn,
+  ticketTypeColor, ticketTypeDotColor, cn, cleanProjectName, cleanProjectDesc,
 } from "@/lib/utils";
 import { toDateInput } from "@/lib/dates";
 import { phaseColorClass } from "../ProjectListClient";
@@ -271,8 +271,7 @@ export function ProjectDetailClient({
           <div className="space-y-2.5">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-navy-900 font-[family-name:var(--font-league-spartan)]">
-                <span className="text-navy-500 font-mono text-xl mr-2">[{project.code}]</span>
-                {project.name}
+                {cleanProjectName(project.name, project.code)}
               </h1>
               <ColorBadge colorClass={projectStatusColor(project.status)}>
                 {formatStatus(project.status)}
@@ -311,7 +310,17 @@ export function ProjectDetailClient({
                 {project.code}
               </p>
               {project.category && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <span className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border",
+                  project.category.toUpperCase() === "SAP" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                  project.category.toUpperCase().includes("SOFTWARE") ? "bg-blue-50 text-blue-700 border-blue-200" :
+                  project.category.toUpperCase().includes("SUPPORT") ? "bg-teal-50 text-teal-700 border-teal-200" :
+                  project.category.toUpperCase().includes("INFRA") ? "bg-purple-50 text-purple-700 border-purple-200" :
+                  project.category.toUpperCase().includes("ZOHO") ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                  project.category.toUpperCase().includes("LICEN") ? "bg-amber-50 text-amber-700 border-amber-200" :
+                  project.category.toUpperCase() === "AUDIT" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                  "bg-neutral-100 text-neutral-700 border-neutral-200"
+                )}>
                   {project.category}
                 </span>
               )}
@@ -325,10 +334,28 @@ export function ProjectDetailClient({
                   {project.classification === "group" ? "Group" : "Non-Group"}
                 </span>
               )}
+              {project.zohoSalesOrderRef && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-mono font-medium bg-navy-50 text-navy-800 border border-navy-200/80 shadow-2xs"
+                  title="Zoho Sales Order No"
+                >
+                  <span className="text-[10px] uppercase font-sans font-bold text-navy-500">Zoho SO:</span>
+                  <span className="font-semibold">{project.zohoSalesOrderRef}</span>
+                </span>
+              )}
+              {project.poDetails && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-mono font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs"
+                  title="PO Details"
+                >
+                  <span className="text-[10px] uppercase font-sans font-bold text-amber-700">PO:</span>
+                  <span className="font-semibold">{project.poDetails}</span>
+                </span>
+              )}
             </div>
 
             {project.description && (
-              <p className="text-sm text-navy-700 max-w-3xl leading-relaxed">{project.description}</p>
+              <p className="text-sm text-navy-700 max-w-3xl leading-relaxed">{cleanProjectDesc(project.description, project.code)}</p>
             )}
           </div>
 
@@ -402,7 +429,7 @@ export function ProjectDetailClient({
           <MetaItem label="Client" value={project.clientCompanyName || "Internal"} />
           {permissions.canViewFinancials && (
             <MetaItem
-              label={`Budget (${project.currency || "INR"})`}
+              label={`Order Value (${project.currency || "INR"})`}
               value={project.budgetInr ? formatCurrency(Number(project.budgetInr), project.currency || "INR") : "—"}
             />
           )}
@@ -413,6 +440,12 @@ export function ProjectDetailClient({
             value={project.itsmContextId ? "Linked (Active)" : "Pending"}
             isBadge={true}
           />
+          {project.zohoSalesOrderRef && (
+            <MetaItem label="Zoho Sales Order No" value={project.zohoSalesOrderRef} />
+          )}
+          {project.poDetails && (
+            <MetaItem label="PO Details" value={project.poDetails} />
+          )}
         </div>
       </Card>
 

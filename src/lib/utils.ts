@@ -363,3 +363,32 @@ export function buildWBSTree(items: WBSItem[]): WBSItem[] {
 
   return roots.sort((a, b) => a.sequence - b.sequence);
 }
+
+/**
+ * Strips duplicate project ID/code (e.g. "[ACC-194] ", "ACC-194 - ") from a project's name
+ * so that project names/descriptions do not repeat the project ID.
+ */
+export function cleanProjectName(name?: string | null, code?: string | null): string {
+  if (!name) return "";
+  let cleaned = name.trim();
+  if (code) {
+    const escapedCode = code.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    cleaned = cleaned.replace(new RegExp(`^\\[?\\s*${escapedCode}\\s*\\]?[\\s-:]*`, "i"), "").trim();
+  }
+  cleaned = cleaned.replace(/^\[?\s*ACC-\d+\s*\]?[\s-:]*/i, "").trim();
+  return cleaned || name.trim();
+}
+
+/**
+ * Strips duplicate project ID/code from project description.
+ */
+export function cleanProjectDesc(desc?: string | null, code?: string | null): string {
+  if (!desc) return "";
+  let cleaned = desc.trim();
+  if (code) {
+    const escapedCode = code.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    cleaned = cleaned.replace(new RegExp(`^\\[?\\s*${escapedCode}\\s*\\]?[\\s-:]*`, "i"), "").trim();
+  }
+  cleaned = cleaned.replace(/^\[?\s*ACC-\d+\s*\]?[\s-:]*/i, "").trim();
+  return cleaned;
+}

@@ -282,7 +282,6 @@ export function TeamTab({
                 hint={totals.burnPercent !== null ? `${totals.burnPercent}% of plan` : undefined}
                 warn={(totals.burnPercent ?? 0) > 100}
               />
-              <Stat label="Billable value" value={formatCurrency(totals.plannedBillableInr, activeCurrency)} />
             </>
           )}
         </div>

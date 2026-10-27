@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { formatCurrency } from "@/lib/utils";
+import { calculateCostingMetrics, type CostingMetrics } from "@/lib/costing";
 import { MarginPanel } from "./MarginPanel";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -93,7 +94,13 @@ interface CostSummaryData {
       count: number;
     }[];
   };
+  costingSummary?: CostingMetrics;
   totals: {
+    orderValueInr?: number;
+    targetCostInr?: number;
+    targetMarginPercent?: number | null;
+    targetVsPlannedBalanceInr?: number;
+    targetVsActualBalanceInr?: number;
     plannedTotalCostInr: number;
     actualTotalCostInr: number;
     varianceCostInr: number;
@@ -340,20 +347,354 @@ export function FinancialsTab({
   const plannedMarginPercent = data.totals?.plannedMarginPercent ?? (budgetInr > 0 ? ((budgetInr - plannedTotalCost) / budgetInr) * 100 : 0);
   const actualMarginPercent = data.totals?.actualMarginPercent ?? (budgetInr > 0 ? ((budgetInr - actualTotalCost) / budgetInr) * 100 : 0);
 
+  const costing = data.costingSummary || calculateCostingMetrics({
+    orderValue: budgetInr,
+    targetMarginPercent: data.totals?.targetMarginPercent,
+    plannedCost: plannedTotalCost,
+    actualCost: actualTotalCost,
+  });
+
   return (
     <div className="space-y-6">
-      <MarginPanel projectId={projectId} />
+      <MarginPanel projectId={projectId} onUpdate={fetchCost} />
 
-      {/* ── 1. Comprehensive Executive Overview Cards ── */}
+      {/* ── 1. Order Costing & Target Margin Summary (Executive Metrics) ── */}
+      <div className="bg-white rounded-xl border border-navy-500/10 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-navy-500/10 bg-navy-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-navy-900 text-sm">Order Cost & Margin Reconciled Summary</h3>
+              <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                Costing Engine
+              </span>
+            </div>
+            <p className="text-xs text-navy-500 mt-0.5">
+              Automated reconciliation of Order Value, Target Cost, Planned Cost, Actual Cost, and profit margins.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-navy-600 bg-white px-2.5 py-1 rounded-md border border-navy-200 font-mono">
+              Target Margin: <strong className="text-navy-900">{costing.targetMarginPercent !== null ? `${costing.targetMarginPercent}%` : "Not set"}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* 4 Primary Costing Pillars */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-navy-100 border-b border-navy-500/10">
+          {/* 1. Order Value */}
+          <div className="bg-white p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+                Order Value
+              </span>
+              <span className="text-[10px] font-medium text-navy-400">Billable Value</span>
+            </div>
+            <p className="text-2xl font-bold text-navy-900 mt-1">
+              {formatCurrency(costing.orderValue, currency)}
+            </p>
+            <p className="text-[11.5px] text-navy-500 mt-1">
+              Contract billable revenue
+            </p>
+          </div>
+
+          {/* 2. Target Cost */}
+          <div className="bg-white p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+                Target Cost
+              </span>
+              <span className="text-[10px] font-medium text-navy-400">System Calculated</span>
+            </div>
+            <p className="text-2xl font-bold text-indigo-700 mt-1">
+              {formatCurrency(costing.targetCost, currency)}
+            </p>
+            <p className="text-[11.5px] text-navy-500 mt-1">
+              {costing.targetMarginPercent !== null
+                ? `Order Value − ${costing.targetMarginPercent}% margin`
+                : "No target margin configured"}
+            </p>
+          </div>
+
+          {/* 3. Planned Cost */}
+          <div className="bg-white p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+                Planned Cost
+              </span>
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  costing.targetVsPlannedStatus === "favorable"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : costing.targetVsPlannedStatus === "unfavorable"
+                      ? "bg-red-50 text-red-700"
+                      : "bg-navy-50 text-navy-600"
+                }`}
+              >
+                {costing.targetVsPlannedStatus === "favorable"
+                  ? "Under Target"
+                  : costing.targetVsPlannedStatus === "unfavorable"
+                    ? "Over Target"
+                    : "On Target"}
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-navy-900 mt-1">
+              {formatCurrency(costing.plannedCost, currency)}
+            </p>
+            <p className="text-[11.5px] text-navy-500 mt-1">
+              Dev: <strong className={costing.targetVsPlannedStatus === "favorable" ? "text-emerald-600" : costing.targetVsPlannedStatus === "unfavorable" ? "text-red-600" : "text-navy-700"}>
+                {costing.targetVsPlannedBalance > 0 ? "+" : ""}{formatCurrency(costing.targetVsPlannedBalance, currency)}
+              </strong>
+            </p>
+          </div>
+
+          {/* 4. Actual Cost */}
+          <div className="bg-white p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+                Actual Cost
+              </span>
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  costing.targetVsActualStatus === "favorable"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : costing.targetVsActualStatus === "unfavorable"
+                      ? "bg-red-50 text-red-700"
+                      : "bg-navy-50 text-navy-600"
+                }`}
+              >
+                {costing.targetVsActualStatus === "favorable"
+                  ? "Under Target"
+                  : costing.targetVsActualStatus === "unfavorable"
+                    ? "Over Target"
+                    : "On Target"}
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-navy-900 mt-1">
+              {formatCurrency(costing.actualCost, currency)}
+            </p>
+            <p className="text-[11.5px] text-navy-500 mt-1">
+              Dev: <strong className={costing.targetVsActualStatus === "favorable" ? "text-emerald-600" : costing.targetVsActualStatus === "unfavorable" ? "text-red-600" : "text-navy-700"}>
+                {costing.targetVsActualBalance > 0 ? "+" : ""}{formatCurrency(costing.targetVsActualBalance, currency)}
+              </strong>
+            </p>
+          </div>
+        </div>
+
+        {/* Detailed 8-Metric Reconciled Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-navy-50/40 text-navy-500 border-b border-navy-500/10 text-xs uppercase font-semibold">
+              <tr>
+                <th className="px-5 py-3">Metric</th>
+                <th className="px-5 py-3">Formula / Basis</th>
+                <th className="px-5 py-3 text-right">Value ({currency})</th>
+                <th className="px-5 py-3 text-center">Status / Result</th>
+                <th className="px-5 py-3">Interpretation</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-navy-500/10">
+              {/* Row 1: Order Value */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Order Value</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Billable Value</td>
+                <td className="px-5 py-3.5 text-right font-bold font-mono text-navy-900">
+                  {formatCurrency(costing.orderValue, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                    Billable Baseline
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-500">
+                  Total contracted billable value of the project / order.
+                </td>
+              </tr>
+
+              {/* Row 2: Target Cost */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Target Cost</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Order Value − Target Margin</td>
+                <td className="px-5 py-3.5 text-right font-bold font-mono text-indigo-700">
+                  {formatCurrency(costing.targetCost, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    System Calculated
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-500">
+                  {costing.targetMarginPercent !== null
+                    ? `Deducts applicable margin (${costing.targetMarginPercent}%) from Order Value.`
+                    : "Equals Order Value (no target margin percentage configured)."}
+                </td>
+              </tr>
+
+              {/* Row 3: Planned Cost */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Planned Cost</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Existing Planned Cost</td>
+                <td className="px-5 py-3.5 text-right font-bold font-mono text-navy-900">
+                  {formatCurrency(costing.plannedCost, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-navy-50 text-navy-700 border border-navy-200">
+                    Planned Delivery
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-500">
+                  Total projected cost of labor, overhead loading, and additional expenses.
+                </td>
+              </tr>
+
+              {/* Row 4: Target vs Planned Balance */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Target vs Planned Balance</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Target Cost − Planned Cost</td>
+                <td className={`px-5 py-3.5 text-right font-bold font-mono ${costing.targetVsPlannedBalance > 0 ? "text-emerald-600" : costing.targetVsPlannedBalance < 0 ? "text-red-600" : "text-navy-700"}`}>
+                  {costing.targetVsPlannedBalance > 0 ? "+" : ""}{formatCurrency(costing.targetVsPlannedBalance, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
+                    costing.targetVsPlannedStatus === "favorable"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : costing.targetVsPlannedStatus === "unfavorable"
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : "bg-navy-50 text-navy-700 border-navy-200"
+                  }`}>
+                    {costing.targetVsPlannedStatus === "favorable" ? "Favorable" : costing.targetVsPlannedStatus === "unfavorable" ? "Unfavorable" : "Balanced"}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-600">
+                  {costing.targetVsPlannedStatus === "favorable"
+                    ? "Positive balance: Planned Cost is below Target Cost."
+                    : costing.targetVsPlannedStatus === "unfavorable"
+                      ? "Negative balance: Planned Cost exceeds Target Cost."
+                      : "Zero balance: Planned Cost matches Target Cost."}
+                </td>
+              </tr>
+
+              {/* Row 5: Actual Cost */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Actual Cost</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Existing Actual Cost</td>
+                <td className="px-5 py-3.5 text-right font-bold font-mono text-navy-900">
+                  {formatCurrency(costing.actualCost, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-navy-50 text-navy-700 border border-navy-200">
+                    Actual Incurred
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-500">
+                  All logged labor timesheets, loaded overheads, and actual incurred costs.
+                </td>
+              </tr>
+
+              {/* Row 6: Target vs Actual Balance */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Target vs Actual Balance</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Target Cost − Actual Cost</td>
+                <td className={`px-5 py-3.5 text-right font-bold font-mono ${costing.targetVsActualBalance > 0 ? "text-emerald-600" : costing.targetVsActualBalance < 0 ? "text-red-600" : "text-navy-700"}`}>
+                  {costing.targetVsActualBalance > 0 ? "+" : ""}{formatCurrency(costing.targetVsActualBalance, currency)}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
+                    costing.targetVsActualStatus === "favorable"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : costing.targetVsActualStatus === "unfavorable"
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : "bg-navy-50 text-navy-700 border-navy-200"
+                  }`}>
+                    {costing.targetVsActualStatus === "favorable" ? "Favorable" : costing.targetVsActualStatus === "unfavorable" ? "Unfavorable" : "Balanced"}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-600">
+                  {costing.targetVsActualStatus === "favorable"
+                    ? "Positive balance: Actual Cost is below Target Cost."
+                    : costing.targetVsActualStatus === "unfavorable"
+                      ? "Negative balance: Actual Cost exceeds Target Cost."
+                      : "Zero balance: Actual Cost matches Target Cost."}
+                </td>
+              </tr>
+
+              {/* Row 7: Planned Margin */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Planned Margin</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Order Value − Planned Cost</td>
+                <td className={`px-5 py-3.5 text-right font-bold font-mono ${costing.plannedMargin > 0 ? "text-emerald-600" : costing.plannedMargin < 0 ? "text-red-600" : "text-navy-700"}`}>
+                  {costing.plannedMargin > 0 ? "+" : ""}{formatCurrency(costing.plannedMargin, currency)}
+                  {costing.plannedMarginPercent !== null && (
+                    <span className="text-xs text-navy-500 font-sans block">
+                      ({costing.plannedMarginPercent.toFixed(1)}%)
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
+                    costing.plannedMarginStatus === "favorable"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : costing.plannedMarginStatus === "unfavorable"
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : "bg-navy-50 text-navy-700 border-navy-200"
+                  }`}>
+                    {costing.plannedMarginStatus === "favorable" ? "Favorable" : costing.plannedMarginStatus === "unfavorable" ? "Unfavorable" : "Balanced"}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-600">
+                  {costing.plannedMarginStatus === "favorable"
+                    ? "Positive margin: Projected profitable outcome from delivery plan."
+                    : costing.plannedMarginStatus === "unfavorable"
+                      ? "Negative margin: Projected loss exceeding Order Value."
+                      : "Balanced: Break-even delivery plan."}
+                </td>
+              </tr>
+
+              {/* Row 8: Actual Margin */}
+              <tr className="hover:bg-navy-50/30 transition-colors">
+                <td className="px-5 py-3.5 font-bold text-navy-900">Actual Margin</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Order Value − Actual Cost</td>
+                <td className={`px-5 py-3.5 text-right font-bold font-mono ${costing.actualMargin > 0 ? "text-emerald-600" : costing.actualMargin < 0 ? "text-red-600" : "text-navy-700"}`}>
+                  {costing.actualMargin > 0 ? "+" : ""}{formatCurrency(costing.actualMargin, currency)}
+                  {costing.actualMarginPercent !== null && (
+                    <span className="text-xs text-navy-500 font-sans block">
+                      ({costing.actualMarginPercent.toFixed(1)}%)
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-3.5 text-center">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
+                    costing.actualMarginStatus === "favorable"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : costing.actualMarginStatus === "unfavorable"
+                        ? "bg-red-50 text-red-700 border-red-200"
+                        : "bg-navy-50 text-navy-700 border-navy-200"
+                  }`}>
+                    {costing.actualMarginStatus === "favorable" ? "Favorable" : costing.actualMarginStatus === "unfavorable" ? "Unfavorable" : "Balanced"}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5 text-xs text-navy-600">
+                  {costing.actualMarginStatus === "favorable"
+                    ? "Positive margin: Realized profit on actual expenditure."
+                    : costing.actualMarginStatus === "unfavorable"
+                      ? "Negative margin: Incurred delivery loss exceeding Order Value."
+                      : "Balanced: Incurred costs exactly match Order Value."}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── 2. Comprehensive Executive Overview Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-        {/* Approved Budget */}
+        {/* Order Value */}
         <div className="bg-white rounded-xl p-4 border border-navy-500/10 shadow-sm">
           <span className="text-[11px] font-bold text-navy-400 uppercase tracking-wider block mb-1">
-            Approved Budget
+            Order Value
           </span>
           <p className="text-xl font-bold text-navy-900">{formatCurrency(budgetInr)}</p>
           <p className="text-[11px] text-navy-500 mt-1 truncate">
-            {data.budget.poValueInr > 0 ? `PO: ${formatCurrency(data.budget.poValueInr)}` : "Fixed / T&M Baseline"}
+            {data.budget.poValueInr > 0 ? `PO: ${formatCurrency(data.budget.poValueInr)}` : "Billable Baseline"}
           </p>
         </div>
 
@@ -574,7 +915,7 @@ export function FinancialsTab({
                 </td>
                 <td className="px-5 py-3.5 text-center">
                   <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold bg-navy-900 text-white">
-                    {budgetConsumedPercent.toFixed(1)}% of Budget
+                    {budgetConsumedPercent.toFixed(1)}% of Order Value
                   </span>
                 </td>
               </tr>
