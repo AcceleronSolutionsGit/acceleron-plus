@@ -289,7 +289,7 @@ function MarginSide({
               title={`Against a ${target}% target`}
             >
               {variance > 0 ? "+" : ""}
-              {variance} pts
+              {variance}%
             </span>
           )}
         </div>
