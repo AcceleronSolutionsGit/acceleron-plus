@@ -178,8 +178,9 @@ export async function PATCH(req: Request, context: Params) {
       (updates.allocation_percent as number) ?? Number(existing.allocation_percent ?? 100);
     const stillActive = updates.is_active === undefined ? existing.is_active !== false : updates.is_active;
 
-    if (existing.employee_id && stillActive) {
-      const picture = await allocationPictureFor(String(existing.employee_id), {
+    const idForAllocation = existing.employee_id ? String(existing.employee_id) : (existing.user_id ? String(existing.user_id) : null);
+    if (idForAllocation && stillActive) {
+      const picture = await allocationPictureFor(idForAllocation, {
         allocationPercent: nextAllocation,
         startDate: start,
         endDate: end,

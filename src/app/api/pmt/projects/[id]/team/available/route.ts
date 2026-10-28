@@ -70,28 +70,62 @@ export async function GET(req: Request, context: Params) {
       query = query.whereIn("employee_id", holders);
     }
 
-    const rows = (await query
-      .select(
-        "employee_id",
-        "full_name",
-        "company_email_id",
-        "designation",
-        "department",
-        "job_level",
-        "office_location",
-        "avatar_url"
-      )
-      .orderBy("full_name")
-      .limit(limit)) as Record<string, unknown>[];
+    let extQuery = identityDb("users as u")
+      .leftJoin("roles as r", "r.id", "u.role_id")
+      .whereNull("u.darwinbox_ref")
+      .where("u.is_active", true);
+
+    if (q) {
+      const like = `%${q}%`;
+      extQuery = extQuery.andWhere(function () {
+        this.where("u.full_name", "ilike", like)
+          .orWhere("u.email", "ilike", like)
+          .orWhere("u.mobile_phone", "ilike", like)
+          .orWhere("r.name", "ilike", like);
+      });
+    }
+
+    const [rows, extRows] = await Promise.all([
+      (query
+        .select(
+          "employee_id",
+          "full_name",
+          "company_email_id",
+          "designation",
+          "department",
+          "job_level",
+          "office_location",
+          "avatar_url"
+        )
+        .orderBy("full_name")
+        .limit(limit)) as Promise<Record<string, unknown>[]>,
+      // Non-Darwinbox external users (only when skill filter is empty, or filtered by query)
+      skillIds.length === 0
+        ? ((extQuery
+            .select(
+              "u.id",
+              "u.full_name",
+              "u.email",
+              "u.mobile_phone",
+              identityDb.ref("r.name").as("role_name"),
+              identityDb.ref("r.code").as("role_code")
+            )
+            .orderBy("u.full_name")
+            .limit(limit)) as Promise<Record<string, unknown>[]>)
+        : Promise.resolve([] as Record<string, unknown>[]),
+    ]);
 
     const employeeIds = rows.map((r) => String(r.employee_id));
+    const externalIds = extRows.map((r) => String(r.id));
+    const allIdsForCommitments = [...employeeIds, ...externalIds];
+
     const [skills, staffed, elsewhere, bands] = await Promise.all([
       skillsForEmployees(employeeIds),
       projectDb("project_team_members")
         .where("project_id", guard.project.id)
-        .select("employee_id", "is_active")
+        .select("employee_id", "user_id", "is_active")
         .catch(() => [] as Record<string, unknown>[]),
-      commitmentsFor(employeeIds, {
+      commitmentsFor(allIdsForCommitments, {
         startDate: windowStart,
         endDate: windowEnd,
         excludeProjectId: guard.project.id,
@@ -100,13 +134,19 @@ export async function GET(req: Request, context: Params) {
       listRateBands(),
     ]);
 
-    const alreadyOn = new Map(
-      (staffed as Record<string, unknown>[])
+    const staffedList = staffed as Record<string, unknown>[];
+    const alreadyOnEmp = new Map(
+      staffedList
         .filter((r) => r.employee_id)
         .map((r) => [String(r.employee_id), r.is_active !== false])
     );
+    const alreadyOnUser = new Map(
+      staffedList
+        .filter((r) => r.user_id)
+        .map((r) => [String(r.user_id), r.is_active !== false])
+    );
 
-    const people = rows.map((row) => {
+    const darwinboxPeople = rows.map((row) => {
       const employeeId = String(row.employee_id);
       const commitments = elsewhere.get(employeeId) ?? [];
       const committedElsewhere = commitments.reduce((sum, c) => sum + c.allocationPercent, 0);
@@ -114,6 +154,8 @@ export async function GET(req: Request, context: Params) {
       const suggestedBand = suggestBandFor(row as { job_level?: string | null }, bands);
       return {
         employeeId,
+        userId: null,
+        isExternal: false,
         fullName: row.full_name ? String(row.full_name) : employeeId,
         email: row.company_email_id ? String(row.company_email_id) : null,
         designation: row.designation ? String(row.designation) : null,
@@ -122,8 +164,8 @@ export async function GET(req: Request, context: Params) {
         location: row.office_location ? String(row.office_location) : null,
         avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
         skills: skills.get(employeeId) ?? [],
-        onThisProject: alreadyOn.has(employeeId),
-        standDown: alreadyOn.get(employeeId) === false,
+        onThisProject: alreadyOnEmp.has(employeeId),
+        standDown: alreadyOnEmp.get(employeeId) === false,
         // What they are already committed to over the window, so a PM
         // can see who is free before picking rather than after.
         otherProjects: commitments,
@@ -133,6 +175,37 @@ export async function GET(req: Request, context: Params) {
         bandNote: describeBandSource(suggestedBand),
       };
     });
+
+    const externalPeople = extRows.map((row) => {
+      const userId = String(row.id);
+      const commitments = elsewhere.get(userId) ?? [];
+      const committedElsewhere = commitments.reduce((sum, c) => sum + c.allocationPercent, 0);
+      const isOnProject = alreadyOnUser.has(userId);
+      const isStandDown = alreadyOnUser.get(userId) === false;
+
+      return {
+        employeeId: userId,
+        userId: userId,
+        isExternal: true,
+        fullName: row.full_name ? String(row.full_name) : "External Resource",
+        email: row.email ? String(row.email) : null,
+        designation: row.role_name ? String(row.role_name) : "Consultant / External",
+        department: "Non-Darwinbox / External",
+        jobLevel: "External",
+        location: null,
+        avatarUrl: null,
+        skills: [],
+        onThisProject: isOnProject,
+        standDown: isStandDown,
+        otherProjects: commitments,
+        committedElsewhere,
+        availablePercent: Math.max(0, 100 - committedElsewhere),
+        suggestedBand: null,
+        bandNote: "Non-Darwinbox external resource (set custom daily CTC budget)",
+      };
+    });
+
+    const people = [...darwinboxPeople, ...externalPeople];
 
     return NextResponse.json({ success: true, people, count: people.length, limit });
   } catch (err) {

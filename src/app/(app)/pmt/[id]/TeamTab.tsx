@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { todayISO } from "@/lib/dates";
 import { formatCurrency } from "@/lib/utils";
+import { workingDaysBetween, round2 } from "@/lib/staffing-calc";
 
 // ═══════════════════════════════════════════════════════════════
 // Who is on this project, what they cost, and whether they are
@@ -101,17 +102,21 @@ interface SuggestedBand {
 
 interface Candidate {
   employeeId: string;
+  userId?: string | null;
+  isExternal?: boolean;
   fullName: string;
   email: string | null;
   designation: string | null;
   department: string | null;
+  jobLevel: string | null;
   location: string | null;
   skills: Skill[];
   onThisProject: boolean;
+  standDown?: boolean;
   otherProjects: Commitment[];
   committedElsewhere: number;
   availablePercent: number;
-  suggestedBand: SuggestedBand;
+  suggestedBand: SuggestedBand | null;
   bandNote: string;
 }
 
@@ -589,6 +594,11 @@ function MemberRow({
         <div>
           <p className="text-sm font-semibold text-navy-900 flex items-center gap-2 flex-wrap">
             {member.userName ?? member.employeeId}
+            {!member.employeeId && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                Non-Darwinbox
+              </span>
+            )}
             {member.memberType === "intern" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-teal-50 text-teal-700 border border-teal-200">
                 Intern
@@ -760,30 +770,33 @@ function MemberRow({
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
             {canViewCost && (
-              <Field label={memberType === "consultant" ? `Daily Cost (${currency})` : "Rate band"}>
-                {memberType === "consultant" ? (
+              <>
+                <Field label={`Daily Cost Budget (${currency}/d)`}>
                   <Input
                     type="number"
-                    placeholder="e.g. 4000"
+                    placeholder={bandId ? "Override rate e.g. 4000" : "e.g. 4000"}
                     value={customCost}
                     onChange={(e) => setCustomCost(e.target.value)}
                   />
-                ) : (
-                  <select
-                    value={bandId}
-                    onChange={(e) => setBandId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 bg-white text-navy-900"
-                  >
-                    <option value="">No band</option>
-                    {rateBands.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bandName} ({b.levelCode})
-                        {b.dailyCostInr !== null ? ` — ${formatCurrency(b.dailyCostInr, currency)}/day` : ""}
-                      </option>
-                    ))}
-                  </select>
+                </Field>
+                {member.employeeId && (
+                  <Field label="Rate band">
+                    <select
+                      value={bandId}
+                      onChange={(e) => setBandId(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 bg-white text-navy-900"
+                    >
+                      <option value="">{customCost ? "Custom Rate (No band)" : "No band"}</option>
+                      {rateBands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.bandName} ({b.levelCode})
+                          {b.dailyCostInr !== null ? ` — ${formatCurrency(b.dailyCostInr, currency)}/day` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 )}
-              </Field>
+              </>
             )}
           </div>
 
@@ -922,6 +935,11 @@ function AddPersonPanel({
   onClose: () => void;
   onAdded: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"search" | "new-external">("search");
+  const [extFullName, setExtFullName] = useState("");
+  const [extEmail, setExtEmail] = useState("");
+  const [extMobile, setExtMobile] = useState("");
+
   const [query, setQuery] = useState("");
   const [catalogue, setCatalogue] = useState<CatalogueSkill[]>([]);
   const [chosenSkills, setChosenSkills] = useState<string[]>([]);
@@ -973,39 +991,70 @@ function AddPersonPanel({
 
   const band = useMemo(() => rateBands.find((b) => b.id === bandId), [rateBands, bandId]);
 
-  // The band follows whoever is picked. A PM can still override it, but
-  // the default is the one their grade says, not an empty dropdown.
   const [bandTouched, setBandTouched] = useState(false);
   const effectiveDailyCost = useMemo(() => {
-    if (memberType === "consultant" && customDailyCostInr) return Number(customDailyCostInr);
+    if (customDailyCostInr) return Number(customDailyCostInr);
     if (band) return band.dailyCostInr;
-    if (picked) return picked.suggestedBand.dailyCostInr;
+    if (picked?.suggestedBand) return picked.suggestedBand.dailyCostInr;
     return null;
-  }, [band, picked, memberType, customDailyCostInr]);
+  }, [band, picked, customDailyCostInr]);
+
   useEffect(() => {
     if (!picked || bandTouched) return;
-    setBandId(picked.suggestedBand.rateBandId ?? "");
+    if (picked.isExternal) {
+      setMemberType("consultant");
+      setBandId("");
+    } else if (picked.suggestedBand) {
+      setBandId(picked.suggestedBand.rateBandId ?? "");
+    }
   }, [picked, bandTouched]);
 
+  const workingDays = useMemo(() => {
+    return workingDaysBetween(startDate, endDate);
+  }, [startDate, endDate]);
+
+  const plannedCostEstimate = useMemo(() => {
+    if (effectiveDailyCost === null || !workingDays) return null;
+    const days = (workingDays * (Number(allocation) || 100)) / 100;
+    return round2(days * effectiveDailyCost);
+  }, [workingDays, effectiveDailyCost, allocation]);
+
   const submit = async (allowOverallocation = false) => {
-    if (!picked) return;
+    if (activeTab === "search" && !picked) return;
+    if (activeTab === "new-external" && (!extFullName.trim() || !extEmail.trim())) {
+      setError("Full name and email are required for external resource.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
+      const payload: Record<string, unknown> = {
+        roleInProject: role,
+        allocationPercent: Number(allocation),
+        startDate: startDate || null,
+        endDate: endDate || null,
+        memberType,
+        customDailyCostInr: customDailyCostInr ? Number(customDailyCostInr) : null,
+        rateBandId: memberType === "consultant" || picked?.isExternal || activeTab === "new-external" ? null : (bandId || null),
+        ...(allowOverallocation ? { allowOverallocation: true } : {}),
+      };
+
+      if (activeTab === "new-external") {
+        payload.isNewExternal = true;
+        payload.isExternal = true;
+        payload.fullName = extFullName.trim();
+        payload.email = extEmail.trim().toLowerCase();
+        payload.mobilePhone = extMobile.trim() || null;
+      } else if (picked) {
+        payload.employeeId = picked.employeeId;
+        payload.userId = picked.userId || null;
+        payload.isExternal = Boolean(picked.isExternal);
+      }
+
       const res = await fetch(`/api/pmt/projects/${projectId}/team`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId: picked.employeeId,
-          rateBandId: memberType === "consultant" ? null : (bandId || null),
-          roleInProject: role,
-          allocationPercent: Number(allocation),
-          startDate: startDate || null,
-          endDate: endDate || null,
-          memberType,
-          customDailyCostInr: customDailyCostInr ? Number(customDailyCostInr) : null,
-          ...(allowOverallocation ? { allowOverallocation: true } : {}),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1044,7 +1093,7 @@ function AddPersonPanel({
             <span>Add a person to this project</span>
           </h3>
           <p className="text-xs text-navy-500">
-            Staff employees, interns, or consultants and track their timesheets and costs.
+            Staff Darwinbox employees or allocate non-Darwinbox external consultants and resources.
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={onClose}>
@@ -1052,279 +1101,384 @@ function AddPersonPanel({
         </Button>
       </div>
 
-        <div className="p-6 space-y-4">
-          {/* Member type / classification */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-neutral-50/80 rounded-xl border border-neutral-200">
-            <Field label="Resource Type">
-              <select
-                value={memberType}
-                onChange={(e) => setMemberType(e.target.value as any)}
-                className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="employee">Employee (Standard band rate)</option>
-                <option value="intern">Intern</option>
-                <option value="consultant">Consultant (Actual CTC cost)</option>
-              </select>
-            </Field>
+      {/* Mode Tabs */}
+      <div className="flex border-b border-neutral-200 bg-neutral-50/50">
+        <button
+          type="button"
+          onClick={() => setActiveTab("search")}
+          className={`px-6 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
+            activeTab === "search"
+              ? "border-navy-900 text-navy-900 bg-white"
+              : "border-transparent text-navy-500 hover:text-navy-800"
+          }`}
+        >
+          🔍 Search Directory (Darwinbox & Non-Darwinbox)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("new-external");
+            setPicked(null);
+            setMemberType("consultant");
+          }}
+          className={`px-6 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
+            activeTab === "new-external"
+              ? "border-navy-900 text-navy-900 bg-white"
+              : "border-transparent text-navy-500 hover:text-navy-800"
+          }`}
+        >
+          ✨ + Quick Add Non-Darwinbox / External Resource
+        </button>
+      </div>
 
-            {memberType === "consultant" && (
-              <Field label="Actual Cost as per CTC (₹ / Day)">
+      <div className="p-6 space-y-4">
+        {activeTab === "new-external" ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80">
+              <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                Non-Darwinbox Resource Registration & Allocation
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Allocate external consultants, contractors, or interns who are managed outside Darwinbox and adjust their budget.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Full Name *">
                 <Input
-                  type="number"
-                  placeholder="e.g. 4500"
-                  value={customDailyCostInr}
-                  onChange={(e) => setCustomDailyCostInr(e.target.value)}
+                  type="text"
+                  placeholder="e.g. Alex Henderson"
+                  value={extFullName}
+                  onChange={(e) => setExtFullName(e.target.value)}
                 />
               </Field>
-            )}
-
-            <div className={memberType === "consultant" ? "sm:col-span-1 flex items-end" : "sm:col-span-2 flex items-end"}>
-              <p className="text-[11px] text-navy-600 pb-1">
-                {memberType === "consultant"
-                  ? "For consultants, provide their actual daily cost based on CTC. Interns and consultants are also enabled to log weekly timesheets."
-                  : memberType === "intern"
-                  ? "Interns are added to the resource list with project allocation and can log timesheets against WBS items."
-                  : "Employees are priced according to their Darwinbox job band level."}
-              </p>
+              <Field label="Email Address *">
+                <Input
+                  type="email"
+                  placeholder="e.g. alex.external@partner.com"
+                  value={extEmail}
+                  onChange={(e) => setExtEmail(e.target.value)}
+                />
+              </Field>
+              <Field label="Phone Number (Optional)">
+                <Input
+                  type="text"
+                  placeholder="e.g. +91 98765 43210"
+                  value={extMobile}
+                  onChange={(e) => setExtMobile(e.target.value)}
+                />
+              </Field>
             </div>
           </div>
+        ) : null}
 
-          {/* Dates first: they decide who counts as free */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Field label="From">
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </Field>
-            <Field label="To">
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </Field>
-            <Field label="Allocation %">
+        {/* Member type / classification and Budget */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-neutral-50/80 rounded-xl border border-neutral-200">
+          <Field label="Resource Type">
+            <select
+              value={memberType}
+              onChange={(e) => setMemberType(e.target.value as any)}
+              className="w-full text-sm rounded-lg border border-neutral-200 px-3 py-2 text-navy-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="employee">Employee</option>
+              <option value="intern">Intern</option>
+              <option value="consultant">Consultant / External</option>
+            </select>
+          </Field>
+
+          {canViewCost && (
+            <Field label={`Daily Cost Budget (${currency} / Day)`}>
               <Input
                 type="number"
-                min={1}
-                max={100}
-                value={allocation}
-                onChange={(e) => setAllocation(e.target.value)}
+                placeholder={bandId ? "Override rate e.g. 4500" : "e.g. 4500"}
+                value={customDailyCostInr}
+                onChange={(e) => setCustomDailyCostInr(e.target.value)}
               />
             </Field>
-            <Field label="Role on this project">
-              <RoleSelect value={role} onChange={setRole} roles={roles} canAssignPm={canAssignPm} />
-            </Field>
-          </div>
+          )}
 
-          {/* Skill filter */}
-          <div>
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-                Needs these skills
-              </p>
-              <label className="text-[11px] text-navy-500 flex items-center gap-1.5">
-                at least
-                <select
-                  value={minProficiency}
-                  onChange={(e) => setMinProficiency(Number(e.target.value))}
-                  className="text-[11px] border border-neutral-200 rounded px-1.5 py-0.5 bg-white"
-                >
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <option key={level} value={level}>
-                      {level} · {PROFICIENCY[level]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          <div className="flex items-end">
+            <p className="text-[11px] text-navy-600 pb-1">
+              {customDailyCostInr
+                ? `Custom daily CTC budget set to ${formatCurrency(Number(customDailyCostInr), currency)}/day.`
+                : memberType === "consultant" || activeTab === "new-external"
+                ? "Enter their CTC daily cost budget to calculate planned financials."
+                : "Standard rate band applies unless a custom daily cost budget is typed."}
+            </p>
+          </div>
+        </div>
+
+        {/* Dates & Role */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Field label="From">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </Field>
+          <Field label="To">
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </Field>
+          <Field label="Allocation %">
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={allocation}
+              onChange={(e) => setAllocation(e.target.value)}
+            />
+          </Field>
+          <Field label="Role on this project">
+            <RoleSelect value={role} onChange={setRole} roles={roles} canAssignPm={canAssignPm} />
+          </Field>
+        </div>
+
+        {/* Live Budget calculation preview */}
+        {canViewCost && effectiveDailyCost !== null && workingDays > 0 && (
+          <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs flex-wrap gap-2">
+            <div>
+              <span className="font-semibold text-blue-950">Planned Cost Budget:</span>{" "}
+              <strong className="text-blue-900 font-bold text-sm">
+                {formatCurrency(plannedCostEstimate ?? 0, currency)}
+              </strong>
+              <span className="text-blue-700 text-[11px] ml-1.5">
+                ({round2((workingDays * (Number(allocation) || 100)) / 100)} working days @ {formatCurrency(effectiveDailyCost, currency)}/day)
+              </span>
             </div>
-            <div className="mt-2 max-h-28 overflow-y-auto border border-neutral-100 rounded-lg p-2 space-y-1.5">
-              {grouped.map(([category, skills]) => (
-                <div key={category} className="flex items-start gap-2">
-                  <span className="text-[10px] uppercase tracking-wider text-navy-500/70 font-semibold w-20 flex-shrink-0 pt-1">
-                    {category}
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    {skills.map((skill) => {
-                      const on = chosenSkills.includes(skill.id);
-                      return (
-                        <button
-                          key={skill.id}
-                          onClick={() =>
-                            setChosenSkills((prev) =>
-                              on ? prev.filter((s) => s !== skill.id) : [...prev, skill.id]
-                            )
-                          }
-                          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
-                            on
-                              ? "bg-navy-900 text-white border-navy-900"
-                              : "bg-white text-navy-700 border-neutral-200 hover:border-navy-500/40"
-                          }`}
-                        >
-                          {skill.name}
-                          <span className={on ? "text-white/60" : "text-navy-500/60"}>
-                            {" "}
-                            {skill.peopleCount}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <span className="text-[11px] text-blue-600">
+              Budget will be tracked in project financials & timesheets
+            </span>
           </div>
+        )}
 
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Name, email, designation or department…"
-          />
-
-          {/* Candidates */}
-          <div className="border border-neutral-100 rounded-lg divide-y divide-neutral-100 max-h-72 overflow-y-auto">
-            {searching && candidates.length === 0 && (
-              <p className="p-6 text-center text-xs text-navy-500">Searching…</p>
-            )}
-            {!searching && candidates.length === 0 && (
-              <p className="p-6 text-center text-xs text-navy-500">
-                Nobody matches. Try fewer skills, or a lower proficiency.
-              </p>
-            )}
-            {candidates.map((person) => {
-              const chosen = picked?.employeeId === person.employeeId;
-              const wouldExceed = person.committedElsewhere + Number(allocation || 0) > 100;
-              return (
-                <button
-                  key={person.employeeId}
-                  onClick={() => {
-                    setPicked(person);
-                    setBandTouched(false);
-                  }}
-                  disabled={person.onThisProject}
-                  className={`w-full text-left px-4 py-3 transition-colors ${
-                    person.onThisProject
-                      ? "opacity-50 cursor-not-allowed"
-                      : chosen
-                        ? "bg-navy-900/[0.06] cursor-pointer"
-                        : "hover:bg-neutral-50 cursor-pointer"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-[200px]">
-                      <p className="text-sm font-medium text-navy-900">
-                        {person.fullName}
-                        {person.onThisProject && (
-                          <span className="ml-2 text-[10px] text-navy-500">already on this project</span>
-                        )}
-                      </p>
-                      <p className="text-[11px] text-navy-500">
-                        {[person.designation, person.department, person.location]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      <div className="mt-1">
-                        <SkillChips skills={person.skills} limit={5} />
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p
-                        className={`text-xs font-medium ${
-                          person.availablePercent === 0
-                            ? "text-red-600"
-                            : person.availablePercent < 50
-                              ? "text-amber-700"
-                              : "text-emerald-700"
-                        }`}
-                      >
-                        {person.availablePercent}% free
-                      </p>
-                      {person.otherProjects.length > 0 && (
-                        <p className="text-[10px] text-navy-500">
-                          on {person.otherProjects.map((c) => `${c.projectCode} (${c.allocationPercent}%)`).join(", ")}
-                        </p>
-                      )}
-                      {wouldExceed && !person.onThisProject && (
-                        <p className="text-[10px] text-red-600 font-medium">
-                          {allocation}% here would put them over
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Rate band and the cost that follows */}
-          {canViewCost && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Rate band">
-                <select
-                  value={bandId}
-                  onChange={(e) => {
-                    setBandTouched(true);
-                    setBandId(e.target.value);
-                  }}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-navy-500/30 bg-white"
-                >
-                  <option value="">
-                    {picked
-                      ? `${picked.suggestedBand.bandName} — from grade ${picked.suggestedBand.grade}`
-                      : "Set from the person's grade"}
-                  </option>
-                  {rateBands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.bandName} ({b.levelCode})
-                      {b.dailyCostInr !== null ? ` — ${rupees(b.dailyCostInr)}/day` : ""}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="flex items-end">
-                <p className="text-xs text-navy-500">
-                  {picked && !bandTouched && (
-                    <span
-                      className={
-                        picked.suggestedBand.source === "grade_default"
-                          ? "block text-amber-700 mb-1"
-                          : "block text-emerald-700 mb-1"
-                      }
-                    >
-                      {picked.bandNote}
-                    </span>
-                  )}
-                  {effectiveDailyCost !== null && startDate && endDate ? (
-                    <>
-                      Planned cost is worked out from the working days in that window, the
-                      allocation and{" "}
-                      <span className="font-medium text-navy-900">
-                        {rupees(effectiveDailyCost)}/day
-                      </span>
-                      .
-                    </>
-                  ) : (
-                    "Choose somebody and a date range to see the planned cost."
-                  )}
+        {activeTab === "search" && (
+          <>
+            {/* Skill filter */}
+            <div>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
+                  Needs these skills
                 </p>
+                <label className="text-[11px] text-navy-500 flex items-center gap-1.5">
+                  at least
+                  <select
+                    value={minProficiency}
+                    onChange={(e) => setMinProficiency(Number(e.target.value))}
+                    className="text-[11px] border border-neutral-200 rounded px-1.5 py-0.5 bg-white"
+                  >
+                    {[1, 2, 3, 4, 5].map((level) => (
+                      <option key={level} value={level}>
+                        {level} · {PROFICIENCY[level]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="mt-2 max-h-28 overflow-y-auto border border-neutral-100 rounded-lg p-2 space-y-1.5">
+                {grouped.map(([category, skills]) => (
+                  <div key={category} className="flex items-start gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-navy-500/70 font-semibold w-20 flex-shrink-0 pt-1">
+                      {category}
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {skills.map((skill) => {
+                        const on = chosenSkills.includes(skill.id);
+                        return (
+                          <button
+                            key={skill.id}
+                            onClick={() =>
+                              setChosenSkills((prev) =>
+                                on ? prev.filter((s) => s !== skill.id) : [...prev, skill.id]
+                              )
+                            }
+                            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                              on
+                                ? "bg-navy-900 text-white border-navy-900"
+                                : "bg-white text-navy-700 border-neutral-200 hover:border-navy-500/40"
+                            }`}
+                          >
+                            {skill.name}
+                            <span className={on ? "text-white/60" : "text-navy-500/60"}>
+                              {" "}
+                              {skill.peopleCount}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
 
-          {error && (
-            <div role="alert" className="bg-red-600/5 border border-red-600/20 text-red-600 text-sm rounded-lg px-4 py-3">
-              {error}
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search Darwinbox employees or Non-Darwinbox external users by name, email, department…"
+            />
+
+            {/* Candidates */}
+            <div className="border border-neutral-100 rounded-lg divide-y divide-neutral-100 max-h-72 overflow-y-auto">
+              {searching && candidates.length === 0 && (
+                <p className="p-6 text-center text-xs text-navy-500">Searching…</p>
+              )}
+              {!searching && candidates.length === 0 && (
+                <p className="p-6 text-center text-xs text-navy-500">
+                  Nobody matches. Try fewer skills, or click "+ Quick Add Non-Darwinbox Resource" above.
+                </p>
+              )}
+              {candidates.map((person) => {
+                const chosen = picked?.employeeId === person.employeeId;
+                const wouldExceed = person.committedElsewhere + Number(allocation || 0) > 100;
+                return (
+                  <button
+                    key={person.employeeId}
+                    onClick={() => {
+                      setPicked(person);
+                      setBandTouched(false);
+                      if (person.isExternal) {
+                        setMemberType("consultant");
+                        setBandId("");
+                      }
+                    }}
+                    disabled={person.onThisProject}
+                    className={`w-full text-left px-4 py-3 transition-colors ${
+                      person.onThisProject
+                        ? "opacity-50 cursor-not-allowed"
+                        : chosen
+                          ? "bg-navy-900/[0.06] cursor-pointer"
+                          : "hover:bg-neutral-50 cursor-pointer"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-[200px]">
+                        <p className="text-sm font-medium text-navy-900 flex items-center gap-1.5 flex-wrap">
+                          {person.fullName}
+                          {person.isExternal ? (
+                            <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                              Non-Darwinbox
+                            </span>
+                          ) : (
+                            <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              Darwinbox
+                            </span>
+                          )}
+                          {person.onThisProject && (
+                            <span className="ml-1 text-[10px] text-navy-500 font-normal">already on this project</span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-navy-500">
+                          {[person.designation, person.department, person.location]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        <div className="mt-1">
+                          <SkillChips skills={person.skills} limit={5} />
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p
+                          className={`text-xs font-medium ${
+                            person.availablePercent === 0
+                              ? "text-red-600"
+                              : person.availablePercent < 50
+                                ? "text-amber-700"
+                                : "text-emerald-700"
+                          }`}
+                        >
+                          {person.availablePercent}% free
+                        </p>
+                        {person.otherProjects.length > 0 && (
+                          <p className="text-[10px] text-navy-500">
+                            on {person.otherProjects.map((c) => `${c.projectCode} (${c.allocationPercent}%)`).join(", ")}
+                          </p>
+                        )}
+                        {wouldExceed && !person.onThisProject && (
+                          <p className="text-[10px] text-red-600 font-medium">
+                            {allocation}% here would put them over
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
 
-        <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-between gap-3 bg-neutral-50/60">
-          <p className="text-xs text-navy-500">
-            {picked ? `Adding ${picked.fullName}` : "Choose somebody from the list above."}
-          </p>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button onClick={() => submit()} disabled={!picked || busy}>
-              {busy ? "Adding…" : "Add to project"}
-            </Button>
+            {/* Rate band for internal staff */}
+            {canViewCost && (!picked || !picked.isExternal) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Rate band">
+                  <select
+                    value={bandId}
+                    onChange={(e) => {
+                      setBandTouched(true);
+                      setBandId(e.target.value);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-navy-500/30 bg-white"
+                  >
+                    <option value="">
+                      {picked?.suggestedBand
+                        ? `${picked.suggestedBand.bandName} — from grade ${picked.suggestedBand.grade}`
+                        : customDailyCostInr ? "Custom daily cost budget set" : "Set from the person's grade"}
+                    </option>
+                    {rateBands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.bandName} ({b.levelCode})
+                        {b.dailyCostInr !== null ? ` — ${formatCurrency(b.dailyCostInr, currency)}/day` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="flex items-end">
+                  <p className="text-xs text-navy-500">
+                    {picked && !bandTouched && picked.suggestedBand && (
+                      <span
+                        className={
+                          picked.suggestedBand.source === "grade_default"
+                            ? "block text-amber-700 mb-1"
+                            : "block text-emerald-700 mb-1"
+                        }
+                      >
+                        {picked.bandNote}
+                      </span>
+                    )}
+                    {effectiveDailyCost !== null && startDate && endDate ? (
+                      <>
+                        Planned cost: {formatCurrency(effectiveDailyCost, currency)}/day.
+                      </>
+                    ) : (
+                      "Choose somebody and a date range to see the planned cost."
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {error && (
+          <div role="alert" className="bg-red-600/5 border border-red-600/20 text-red-600 text-sm rounded-lg px-4 py-3">
+            {error}
           </div>
+        )}
+      </div>
+
+      <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-between gap-3 bg-neutral-50/60">
+        <p className="text-xs text-navy-500">
+          {activeTab === "new-external"
+            ? (extFullName ? `Adding external resource ${extFullName}` : "Enter external resource details above.")
+            : (picked ? `Adding ${picked.fullName} (${picked.isExternal ? "Non-Darwinbox" : "Darwinbox"})` : "Choose somebody from the list above.")}
+        </p>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => submit()}
+            disabled={busy || (activeTab === "search" && !picked) || (activeTab === "new-external" && (!extFullName.trim() || !extEmail.trim()))}
+          >
+            {busy ? "Adding…" : "Add to project"}
+          </Button>
         </div>
+      </div>
     </div>
   );
 }

@@ -275,3 +275,23 @@ test("12. parseAllocationPeriods correctly parses JSON strings and handles snake
   assert.equal(parsed[1].allocationPercent, 75);
 });
 
+test("13. Non-Darwinbox external user allocation calculates budget and cost based on custom CTC rate", () => {
+  // External consultant staffed Jan 1, 2026 to Jan 31, 2026 (24 working days) @ 100% allocation
+  // Custom Daily Cost (CTC) = 6,500 INR/day
+  // Daily Billable Rate = 10,000 INR/day
+  const customDailyCost = 6500;
+  const dailyBillableRate = 10000;
+
+  const result = plannedCostFor({
+    startDate: "2026-01-01",
+    endDate: "2026-01-31",
+    allocationPercent: 100,
+    dailyCostInr: customDailyCost,
+    dailyBillableRateInr: dailyBillableRate,
+  });
+
+  assert.equal(result.plannedDays, 24);
+  assert.equal(result.plannedCostInr, 24 * customDailyCost, "Planned cost must be 24 * 6500 = 156,000 INR");
+  assert.equal(result.plannedBillableInr, 24 * dailyBillableRate, "Planned billable must be 24 * 10000 = 240,000 INR");
+});
+

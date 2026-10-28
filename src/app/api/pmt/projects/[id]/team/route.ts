@@ -152,31 +152,97 @@ export async function POST(req: Request, context: Params) {
     if (!parsed.ok) return parsed.response;
     const body = parsed.body as Record<string, unknown>;
 
-    const employeeId = String(body.employeeId ?? "").trim();
-    if (!employeeId) {
-      return validationError(["Choose somebody from the employee master."]);
+    let isExternalUser = Boolean(body.isExternal || body.isNewExternal);
+    let resolvedUserId: string | null = null;
+    let personName: string = "";
+    let employeeRecord: Record<string, unknown> | null = null;
+
+    if (body.isNewExternal || (isExternalUser && body.fullName && body.email)) {
+      // Create or find external user on the fly
+      const fullName = String(body.fullName ?? "").trim();
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const mobilePhone = body.mobilePhone ? String(body.mobilePhone).trim() : null;
+
+      if (!fullName || !email) {
+        return validationError(["Full name and email are required for an external resource."]);
+      }
+
+      let existingUser = await identityDb("users")
+        .whereRaw("lower(email) = ?", [email])
+        .first<{ id: string; full_name: string; email: string } | undefined>();
+
+      if (!existingUser) {
+        const defaultRole = await identityDb("roles")
+          .where("code", "consultant")
+          .orWhere("code", "member")
+          .first();
+
+        const [createdUser] = await identityDb("users")
+          .insert({
+            tenant_id: process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001",
+            email,
+            full_name: fullName,
+            mobile_phone: mobilePhone,
+            role_id: defaultRole?.id ?? null,
+            darwinbox_ref: null, // explicit non-Darwinbox user
+            is_active: true,
+          })
+          .returning("*");
+
+        existingUser = createdUser;
+      }
+
+      if (!existingUser) {
+        return validationError(["Could not register external user."]);
+      }
+
+      resolvedUserId = String(existingUser.id);
+      personName = String(existingUser.full_name || fullName);
+      isExternalUser = true;
+    } else {
+      const idOrEmployeeId = String(body.employeeId || body.userId || "").trim();
+      if (!idOrEmployeeId) {
+        return validationError(["Choose a person from the directory or add an external resource."]);
+      }
+
+      // Check employee_master first (Darwinbox)
+      const employee = await identityDb("employee_master")
+        .where("employee_id", idOrEmployeeId)
+        .first<Record<string, unknown> | undefined>();
+
+      if (employee) {
+        employeeRecord = employee;
+        personName = String(employee.full_name ?? idOrEmployeeId);
+        resolvedUserId = await resolveUserId(employee);
+      } else {
+        // Check identity_db.users (non-Darwinbox external user)
+        const extUser = await identityDb("users")
+          .where("id", idOrEmployeeId)
+          .first<{ id: string; full_name: string; email: string } | undefined>();
+
+        if (extUser) {
+          resolvedUserId = String(extUser.id);
+          personName = extUser.full_name;
+          isExternalUser = true;
+        } else {
+          return validationError(["That person was not found in the employee master or external users list."]);
+        }
+      }
     }
 
-    const employee = await identityDb("employee_master")
-      .where("employee_id", employeeId)
-      .first<Record<string, unknown> | undefined>();
-    if (!employee) {
-      return validationError(["That employee is not in the master. Run the Darwinbox sync first."]);
-    }
-
-    // One row per person per project — the table enforces it, but a
-    // clear message beats a constraint violation.
+    // One row per person per project
     const existing = await projectDb("project_team_members")
       .where({ project_id: project.id })
       .andWhere(function () {
-        this.where("employee_id", employeeId).orWhere("user_id", employeeId);
+        if (resolvedUserId) this.where("user_id", resolvedUserId);
+        if (employeeRecord?.employee_id) this.orWhere("employee_id", String(employeeRecord.employee_id));
       })
       .first();
     if (existing) {
       return NextResponse.json(
         {
           success: false,
-          error: `${employee.full_name ?? "That person"} is already on this project.`,
+          error: `${personName || "That person"} is already on this project.`,
         },
         { status: 409 }
       );
@@ -185,7 +251,7 @@ export async function POST(req: Request, context: Params) {
     const validation = validateAssignment(body);
     // Developer, Team Lead or PM or any custom project role. Blank is Developer.
     const roleRaw = String(body.roleInProject ?? "").trim();
-    let role: string | null = roleRaw ? toTeamRole(roleRaw) : DEVELOPER;
+    let role: string | null = roleRaw ? toTeamRole(roleRaw) : (isExternalUser ? "Consultant" : DEVELOPER);
     if (!role && roleRaw) {
       // Check if it's an active custom role
       const customRole = await projectDb("project_custom_roles")
@@ -212,12 +278,10 @@ export async function POST(req: Request, context: Params) {
       return validationError(["That rate band does not exist or is no longer active."]);
     }
 
-    // No band chosen? Their grade decides it. Asking a PM to pick one by
-    // hand is a chance to get it wrong, and a chance to price the same
-    // grade two ways on two projects.
+    // No band chosen? Their grade decides it if Darwinbox employee.
     let bandNote: string | null = null;
-    if (!band) {
-      const suggestion = suggestBandFor(employee as { job_level?: string | null }, await listRateBands());
+    if (!band && employeeRecord) {
+      const suggestion = suggestBandFor(employeeRecord as { job_level?: string | null }, await listRateBands());
       bandNote = describeBandSource(suggestion);
       band = {
         id: suggestion.rateBandId ?? "",
@@ -225,6 +289,8 @@ export async function POST(req: Request, context: Params) {
         dailyCostInr: suggestion.dailyCostInr,
         dailyBillableRateInr: suggestion.dailyBillableRateInr,
       };
+    } else if (isExternalUser && !band) {
+      bandNote = "Non-Darwinbox external resource (custom CTC / daily cost)";
     }
 
     // Default dates from project if not explicitly supplied
@@ -248,11 +314,11 @@ export async function POST(req: Request, context: Params) {
       if (sumAlloc > 0) allocationPercent = sumAlloc;
     }
 
-    // Allocation is a claim on somebody's whole week, not just this
-    // project's. Putting them at 50% here when they are already at 80%
-    // elsewhere is usually a mistake — so it is refused once, with the
-    // clashes named, and allowed only if the PM says so deliberately.
-    const picture = await allocationPictureFor(employeeId, {
+    // Allocation is a claim on somebody's whole week, not just this project's
+    const identifierForAllocation = employeeRecord?.employee_id
+      ? String(employeeRecord.employee_id)
+      : (resolvedUserId || "");
+    const picture = await allocationPictureFor(identifierForAllocation, {
       allocationPercent,
       startDate,
       endDate,
@@ -263,13 +329,8 @@ export async function POST(req: Request, context: Params) {
       return NextResponse.json(
         {
           success: false,
-          error: describeOverallocation(
-            String(employee.full_name ?? "That person"),
-            picture
-          ),
+          error: describeOverallocation(personName || "That person", picture),
           overAllocation: picture,
-          // The client re-sends with this set once somebody has read the
-          // clash and still wants it.
           resolution: "allowOverallocation",
         },
         { status: 409 }
@@ -278,7 +339,10 @@ export async function POST(req: Request, context: Params) {
 
     const memberType = ["intern", "consultant"].includes(String(body.memberType))
       ? (String(body.memberType) as "intern" | "consultant")
+      : isExternalUser
+      ? "consultant"
       : "employee";
+
     const customDailyCostInr =
       body.customDailyCostInr !== undefined && body.customDailyCostInr !== null && body.customDailyCostInr !== ""
         ? Number(body.customDailyCostInr)
@@ -286,7 +350,11 @@ export async function POST(req: Request, context: Params) {
 
     const effectiveDailyCost = customDailyCostInr !== null ? customDailyCostInr : (band?.dailyCostInr ?? null);
 
-    let effectiveBillableRate = band?.dailyBillableRateInr ?? null;
+    let effectiveBillableRate =
+      body.dailyBillableRateInr !== undefined && body.dailyBillableRateInr !== null && body.dailyBillableRateInr !== ""
+        ? Number(body.dailyBillableRateInr)
+        : (band?.dailyBillableRateInr ?? null);
+
     if (
       effectiveBillableRate === null &&
       effectiveDailyCost !== null &&
@@ -309,16 +377,12 @@ export async function POST(req: Request, context: Params) {
       plannedDays: hasPeriods ? null : (body.plannedDays === undefined ? null : Number(body.plannedDays)),
     });
 
-    // The identity row is how permissions and timesheets find them; it
-    // may not exist for somebody who has never signed in.
-    const userId = await resolveUserId(employee);
-
     const [member] = await projectDb("project_team_members")
       .insert({
         project_id: project.id,
-        user_id: userId,
-        employee_id: employeeId,
-        user_name: employee.full_name ?? null,
+        user_id: resolvedUserId,
+        employee_id: employeeRecord?.employee_id ? String(employeeRecord.employee_id) : null,
+        user_name: personName || null,
         rate_band_id: band?.id || null,
         rate_band_name: band?.bandName ?? null,
         role_in_project: role,
