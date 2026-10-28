@@ -310,8 +310,6 @@ export async function POST(req: Request, context: Params) {
       const pEnds = allocationPeriods.map((p) => p.endDate).filter(Boolean).sort();
       if (pStarts.length > 0) startDate = pStarts[0];
       if (pEnds.length > 0) endDate = pEnds[pEnds.length - 1];
-      const sumAlloc = allocationPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0);
-      if (sumAlloc > 0) allocationPercent = sumAlloc;
     }
 
     // Allocation is a claim on somebody's whole week, not just this project's

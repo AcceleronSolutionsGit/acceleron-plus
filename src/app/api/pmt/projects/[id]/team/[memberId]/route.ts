@@ -92,8 +92,6 @@ export async function PATCH(req: Request, context: Params) {
         const pEnds = parsedPeriods.map((p) => p.endDate).filter(Boolean).sort();
         if (pStarts.length > 0) updates.start_date = pStarts[0];
         if (pEnds.length > 0) updates.end_date = pEnds[pEnds.length - 1];
-        const sumAlloc = parsedPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0);
-        if (sumAlloc > 0) updates.allocation_percent = sumAlloc;
       }
     }
 

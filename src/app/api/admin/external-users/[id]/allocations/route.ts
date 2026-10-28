@@ -84,8 +84,6 @@ export async function POST(
       const pEnds = allocationPeriods.map((p) => p.endDate).filter(Boolean).sort();
       if (pStarts.length > 0) startDate = pStarts[0];
       if (pEnds.length > 0) endDate = pEnds[pEnds.length - 1];
-      const sumAlloc = allocationPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0);
-      if (sumAlloc > 0) allocationPercent = sumAlloc;
     }
 
     // Check if already actively allocated to this project

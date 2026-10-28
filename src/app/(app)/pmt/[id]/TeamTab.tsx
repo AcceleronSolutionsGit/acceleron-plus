@@ -494,11 +494,10 @@ function MemberRow({
     setRowError("");
     try {
       const effectivePeriods = showPeriodsEditor && periods.length > 0 ? periods : null;
-      let effectiveAllocation = Number(allocation);
+      const effectiveAllocation = Number(allocation);
       let effectiveStart = startDate || null;
       let effectiveEnd = endDate || null;
       if (effectivePeriods && effectivePeriods.length > 0) {
-        effectiveAllocation = effectivePeriods.reduce((sum, p) => sum + (Number(p.allocationPercent) || 0), 0);
         const starts = effectivePeriods.map((p) => p.startDate).filter(Boolean).sort();
         const ends = effectivePeriods.map((p) => p.endDate).filter(Boolean).sort();
         if (starts.length > 0) effectiveStart = starts[0];
@@ -562,29 +561,18 @@ function MemberRow({
   const addPeriod = () => {
     const last = periods[periods.length - 1];
     const newStart = last?.endDate || startDate || todayISO();
-    const newPeriods = [
+    setPeriods([
       ...periods,
-      { startDate: newStart, endDate: endDate || newStart, allocationPercent: 100 },
-    ];
-    setPeriods(newPeriods);
-    const sumAlloc = newPeriods.reduce((sum, p) => sum + (Number(p.allocationPercent) || 0), 0);
-    setAllocation(String(sumAlloc));
+      { startDate: newStart, endDate: endDate || newStart, allocationPercent: Number(allocation) || 100 },
+    ]);
   };
 
   const removePeriod = (idx: number) => {
-    const newPeriods = periods.filter((_, i) => i !== idx);
-    setPeriods(newPeriods);
-    if (newPeriods.length > 0) {
-      const sumAlloc = newPeriods.reduce((sum, p) => sum + (Number(p.allocationPercent) || 0), 0);
-      setAllocation(String(sumAlloc));
-    }
+    setPeriods(periods.filter((_, i) => i !== idx));
   };
 
   const updatePeriod = (idx: number, patch: Partial<AllocationPeriodItem>) => {
-    const newPeriods = periods.map((p, i) => (i === idx ? { ...p, ...patch } : p));
-    setPeriods(newPeriods);
-    const sumAlloc = newPeriods.reduce((sum, p) => sum + (Number(p.allocationPercent) || 0), 0);
-    setAllocation(String(sumAlloc));
+    setPeriods(periods.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
   };
 
   return (
@@ -831,10 +819,7 @@ function MemberRow({
               <div className="space-y-2 bg-white p-3 rounded-lg border border-neutral-200">
                 <div className="text-xs font-medium text-navy-700 pb-1 mb-1 border-b border-neutral-100 flex items-center justify-between flex-wrap gap-2">
                   <span>
-                    Total Allocation across periods:{" "}
-                    <strong className="text-navy-900 font-semibold">
-                      {periods.reduce((sum, p) => sum + (Number(p.allocationPercent) || 0), 0)}%
-                    </strong>
+                    Multi-period breakdown ({periods.length} {periods.length === 1 ? "period" : "periods"}):
                   </span>
                   <span className="text-[11px] text-navy-500 font-normal">
                     Planned days and costs are calculated and summed across each period

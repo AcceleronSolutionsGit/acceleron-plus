@@ -219,12 +219,7 @@ export async function getProjectTeam(
       if (pEnds.length > 0 && (!rowEnd || pEnds[pEnds.length - 1] > rowEnd)) rowEnd = pEnds[pEnds.length - 1];
     }
 
-    const periodTotalAlloc = hasPeriods && parsedPeriods
-      ? parsedPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0)
-      : null;
-    const allocation = periodTotalAlloc !== null && periodTotalAlloc > 0
-      ? periodTotalAlloc
-      : Number(row.allocation_percent ?? 100);
+    const allocation = Number(row.allocation_percent ?? 100);
 
     const member: TeamMember = {
       id: String(row.id),
