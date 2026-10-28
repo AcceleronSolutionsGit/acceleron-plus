@@ -487,7 +487,42 @@ function MemberRow({
   const [memberType, setMemberType] = useState<"employee" | "intern" | "consultant">(member.memberType ?? "employee");
   const [customCost, setCustomCost] = useState(member.customDailyCostInr ? String(member.customDailyCostInr) : "");
   const [periods, setPeriods] = useState<AllocationPeriodItem[]>(member.allocationPeriods ?? []);
-  const [showPeriodsEditor, setShowPeriodsEditor] = useState(Boolean(member.allocationPeriods && member.allocationPeriods.length > 1));
+  const [showPeriodsEditor, setShowPeriodsEditor] = useState(Boolean(member.allocationPeriods && member.allocationPeriods.length > 0));
+
+  useEffect(() => {
+    setAllocation(String(member.allocationPercent));
+    setRole(member.roleInProject ?? "");
+    setStartDate(member.startDate ?? "");
+    setEndDate(member.endDate ?? "");
+    setBandId(member.rateBandId ?? "");
+    setMemberType(member.memberType ?? "employee");
+    setCustomCost(member.customDailyCostInr ? String(member.customDailyCostInr) : "");
+    setPeriods(member.allocationPeriods ?? []);
+    setShowPeriodsEditor(Boolean(member.allocationPeriods && member.allocationPeriods.length > 0));
+  }, [member]);
+
+  const effectiveDailyCost = useMemo(() => {
+    if (customCost && Number(customCost) > 0) return Number(customCost);
+    if (member.customDailyCostInr && Number(member.customDailyCostInr) > 0) return Number(member.customDailyCostInr);
+    const chosenBand = rateBands.find((b) => b.id === bandId);
+    if (chosenBand?.dailyCostInr !== null && chosenBand?.dailyCostInr !== undefined) {
+      return Number(chosenBand.dailyCostInr);
+    }
+    return member.cost?.dailyCostInr ?? null;
+  }, [customCost, member.customDailyCostInr, bandId, rateBands, member.cost]);
+
+  const totalPeriodDaysCost = useMemo(() => {
+    if (!periods || periods.length === 0) return null;
+    let days = 0;
+    for (const p of periods) {
+      const pWorkDays = workingDaysBetween(p.startDate, p.endDate);
+      const pAlloc = Math.max(0, Number(p.allocationPercent) || 100);
+      days += (pWorkDays * pAlloc) / 100;
+    }
+    days = round2(days);
+    const cost = effectiveDailyCost !== null ? round2(days * effectiveDailyCost) : null;
+    return { days, cost };
+  }, [periods, effectiveDailyCost]);
 
   const save = async (allowOverallocation = false) => {
     setBusy(true);
@@ -568,7 +603,16 @@ function MemberRow({
   };
 
   const removePeriod = (idx: number) => {
-    setPeriods(periods.filter((_, i) => i !== idx));
+    const next = periods.filter((_, i) => i !== idx);
+    setPeriods(next);
+    if (next.length === 0) {
+      setShowPeriodsEditor(false);
+    }
+  };
+
+  const removeAllPeriods = () => {
+    setPeriods([]);
+    setShowPeriodsEditor(false);
   };
 
   const updatePeriod = (idx: number, patch: Partial<AllocationPeriodItem>) => {
@@ -790,7 +834,7 @@ function MemberRow({
 
           {/* Multi-period allocation breakdown editor */}
           <div className="pt-2 border-t border-neutral-200">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -809,63 +853,96 @@ function MemberRow({
                 </label>
               </div>
               {showPeriodsEditor && (
-                <Button size="sm" variant="secondary" onClick={addPeriod}>
-                  + Add Period
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={addPeriod}>
+                    + Add Period
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={removeAllPeriods}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs"
+                  >
+                    Delete Multi-period
+                  </Button>
+                </div>
               )}
             </div>
 
             {showPeriodsEditor && (
               <div className="space-y-2 bg-white p-3 rounded-lg border border-neutral-200">
-                <div className="text-xs font-medium text-navy-700 pb-1 mb-1 border-b border-neutral-100 flex items-center justify-between flex-wrap gap-2">
-                  <span>
-                    Multi-period breakdown ({periods.length} {periods.length === 1 ? "period" : "periods"}):
-                  </span>
+                <div className="text-xs font-medium text-navy-700 pb-2 mb-1 border-b border-neutral-100 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-navy-900">
+                      Multi-period breakdown ({periods.length} {periods.length === 1 ? "period" : "periods"}):
+                    </span>
+                    {totalPeriodDaysCost && (
+                      <span className="text-[11px] font-semibold text-navy-900 bg-navy-50 border border-navy-200/60 rounded px-2 py-0.5">
+                        Sum: {totalPeriodDaysCost.days} planned days
+                        {totalPeriodDaysCost.cost !== null ? ` · Total Cost: ${formatCurrency(totalPeriodDaysCost.cost, currency)}` : ""}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[11px] text-navy-500 font-normal">
-                    Planned days and costs are calculated and summed across each period
+                    Working days &amp; costs are calculated and added across each period
                   </span>
                 </div>
-                {periods.map((p, idx) => (
-                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
-                    <div>
-                      <span className="text-[10px] text-navy-500 block uppercase font-medium">Period {idx + 1} From</span>
-                      <Input
-                        type="date"
-                        value={p.startDate}
-                        onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
-                      />
+                {periods.map((p, idx) => {
+                  const pWorkDays = workingDaysBetween(p.startDate, p.endDate);
+                  const pAlloc = Math.max(0, Number(p.allocationPercent) || 100);
+                  const pPlannedDays = round2((pWorkDays * pAlloc) / 100);
+                  const pCost = effectiveDailyCost !== null ? round2(pPlannedDays * effectiveDailyCost) : null;
+
+                  return (
+                    <div key={idx} className="p-2.5 rounded-lg border border-neutral-100 bg-neutral-50/60 space-y-1.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
+                        <div>
+                          <span className="text-[10px] text-navy-500 block uppercase font-medium">Period {idx + 1} From</span>
+                          <Input
+                            type="date"
+                            value={p.startDate}
+                            onChange={(e) => updatePeriod(idx, { startDate: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-navy-500 block uppercase font-medium">To</span>
+                          <Input
+                            type="date"
+                            value={p.endDate}
+                            onChange={(e) => updatePeriod(idx, { endDate: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-navy-500 block uppercase font-medium">Allocation %</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={String(p.allocationPercent)}
+                            onChange={(e) => updatePeriod(idx, { allocationPercent: Number(e.target.value) || 100 })}
+                          />
+                        </div>
+                        <div className="flex items-end justify-between sm:justify-end gap-2 pt-2 sm:pt-0">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => removePeriod(idx)}
+                            className="text-red-600 hover:text-red-700"
+                            title={periods.length === 1 ? "Delete this period and return to single period" : "Delete this period"}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-navy-600 flex items-center justify-between flex-wrap gap-2 pt-0.5">
+                        <span>
+                          {pPlannedDays} planned days ({pWorkDays} working days @ {pAlloc}%)
+                          {pCost !== null ? ` · Planned cost: ${formatCurrency(pCost, currency)}` : ""}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-navy-500 block uppercase font-medium">To</span>
-                      <Input
-                        type="date"
-                        value={p.endDate}
-                        onChange={(e) => updatePeriod(idx, { endDate: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-navy-500 block uppercase font-medium">Allocation %</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={String(p.allocationPercent)}
-                        onChange={(e) => updatePeriod(idx, { allocationPercent: Number(e.target.value) || 100 })}
-                      />
-                    </div>
-                    <div className="flex items-end pt-3 sm:pt-0">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => removePeriod(idx)}
-                        disabled={periods.length <= 1}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

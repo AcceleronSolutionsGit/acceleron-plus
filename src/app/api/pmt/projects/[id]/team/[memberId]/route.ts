@@ -202,14 +202,21 @@ export async function PATCH(req: Request, context: Params) {
       }
     }
 
-    const effectiveDailyCost =
-      updates.custom_daily_cost_inr !== undefined
-        ? (updates.custom_daily_cost_inr as number | null)
-        : existing.custom_daily_cost_inr !== null && existing.custom_daily_cost_inr !== undefined
+    const customCostCandidate =
+      updates.custom_daily_cost_inr !== undefined && updates.custom_daily_cost_inr !== null && Number(updates.custom_daily_cost_inr) > 0
+        ? Number(updates.custom_daily_cost_inr)
+        : existing.custom_daily_cost_inr !== null && existing.custom_daily_cost_inr !== undefined && Number(existing.custom_daily_cost_inr) > 0
         ? Number(existing.custom_daily_cost_inr)
-        : updates.daily_cost_inr !== undefined
-        ? (updates.daily_cost_inr as number | null)
-        : (existing.daily_cost_inr as number | null);
+        : null;
+
+    const bandCostCandidate =
+      updates.daily_cost_inr !== undefined && updates.daily_cost_inr !== null && Number(updates.daily_cost_inr) > 0
+        ? Number(updates.daily_cost_inr)
+        : existing.daily_cost_inr !== null && existing.daily_cost_inr !== undefined && Number(existing.daily_cost_inr) > 0
+        ? Number(existing.daily_cost_inr)
+        : null;
+
+    const effectiveDailyCost = customCostCandidate ?? bandCostCandidate;
 
     if (effectiveDailyCost !== null) {
       updates.daily_cost_inr = effectiveDailyCost;

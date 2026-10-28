@@ -295,3 +295,73 @@ test("13. Non-Darwinbox external user allocation calculates budget and cost base
   assert.equal(result.plannedBillableInr, 24 * dailyBillableRate, "Planned billable must be 24 * 10000 = 240,000 INR");
 });
 
+test("14. Total cost for resource with multi-periods strictly equals Cost(Period 1) + Cost(Period 2)", () => {
+  // Period 1: Dec 10, 2026 to Jan 6, 2027 @ 34%
+  // Working days: (22/31)*24 + (6/31)*24 = 21.68 working days @ 34% = 7.37 planned days
+  // Period 2: Jan 7, 2027 to Jan 31, 2027 @ 50%
+  // Working days: (25/31)*24 = 19.35 working days @ 50% = 9.68 planned days
+  const dailyRate = 4390; // e.g. Senior Junior Consultant
+  const period1 = { startDate: "2026-12-10", endDate: "2027-01-06", allocationPercent: 34 };
+  const period2 = { startDate: "2027-01-07", endDate: "2027-01-31", allocationPercent: 50 };
+
+  const cost1 = plannedCostFor({
+    startDate: period1.startDate,
+    endDate: period1.endDate,
+    allocationPercent: period1.allocationPercent,
+    dailyCostInr: dailyRate,
+  });
+
+  const cost2 = plannedCostFor({
+    startDate: period2.startDate,
+    endDate: period2.endDate,
+    allocationPercent: period2.allocationPercent,
+    dailyCostInr: dailyRate,
+  });
+
+  const combined = plannedCostFor({
+    startDate: "2026-12-10",
+    endDate: "2027-01-31",
+    allocationPercent: 30, // Default allocation ignored when periods exist
+    dailyCostInr: dailyRate,
+    allocationPeriods: [period1, period2],
+  });
+
+  // Total planned days must equal sum of planned days from period 1 and period 2
+  assert.equal(
+    combined.plannedDays,
+    round2(cost1.plannedDays + cost2.plannedDays),
+    "Combined planned days must equal days(period 1) + days(period 2)"
+  );
+
+  // Total cost must equal sum of cost from period 1 + cost from period 2
+  const expectedCost = round2(combined.plannedDays * dailyRate);
+  assert.equal(
+    combined.plannedCostInr,
+    expectedCost,
+    "Combined planned cost must equal Cost(period 1) + Cost(period 2)"
+  );
+
+  // When Period 2 is deleted, calculation seamlessly falls back to only Period 1
+  const afterDeletePeriod2 = plannedCostFor({
+    startDate: "2026-12-10",
+    endDate: "2027-01-06",
+    dailyCostInr: dailyRate,
+    allocationPeriods: [period1],
+  });
+  assert.equal(afterDeletePeriod2.plannedDays, cost1.plannedDays);
+  assert.equal(afterDeletePeriod2.plannedCostInr, cost1.plannedCostInr);
+
+  // When all periods are deleted, calculation cleanly reverts to single-period default
+  const afterDeleteAllPeriods = plannedCostFor({
+    startDate: "2026-10-03",
+    endDate: "2027-01-02",
+    allocationPercent: 30,
+    dailyCostInr: dailyRate,
+    allocationPeriods: null,
+  });
+  const singlePeriodDays = round2((workingDaysBetween("2026-10-03", "2027-01-02") * 30) / 100);
+  assert.equal(afterDeleteAllPeriods.plannedDays, singlePeriodDays);
+  assert.equal(afterDeleteAllPeriods.plannedCostInr, round2(singlePeriodDays * dailyRate));
+});
+
+
