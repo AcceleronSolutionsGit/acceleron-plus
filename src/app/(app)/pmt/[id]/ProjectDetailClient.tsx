@@ -430,20 +430,20 @@ export function ProjectDetailClient({
           {permissions.canViewFinancials && (
             <>
               <MetaItem
-                label={`Order Value (${project.currency || "INR"})`}
-                value={project.budgetInr ? formatCurrency(Number(project.budgetInr), project.currency || "INR") : "—"}
+                label="Order Value (INR)"
+                value={project.budgetInr ? formatCurrency(Number(project.budgetInr), "INR") : "—"}
               />
               <MetaItem
-                label={`Target Cost (${project.currency || "INR"})`}
+                label="Target Cost (INR)"
                 value={
                   project.targetCostInr !== undefined && project.targetCostInr !== null
-                    ? formatCurrency(Number(project.targetCostInr), project.currency || "INR")
+                    ? formatCurrency(Number(project.targetCostInr), "INR")
                     : project.budgetInr
                     ? formatCurrency(
                         project.targetMarginPercent !== undefined && project.targetMarginPercent !== null
                           ? Math.round(Number(project.budgetInr) * (1 - Number(project.targetMarginPercent) / 100))
                           : Number(project.budgetInr),
-                        project.currency || "INR"
+                        "INR"
                       )
                     : "—"
                 }
@@ -731,7 +731,7 @@ export function ProjectDetailClient({
                 <FinancialsTab
                   projectId={project.id}
                   canManageBilling={permissions.canManageInvoices}
-                  currency={project.currency || "INR"}
+                  currency="INR"
                 />
               ) : null;
             case "risks":

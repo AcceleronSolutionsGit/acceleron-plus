@@ -42,9 +42,11 @@ interface Margin {
 
 export function MarginPanel({
   projectId,
+  refreshKey,
   onUpdate,
 }: {
   projectId: string;
+  refreshKey?: number;
   onUpdate?: () => void;
 }) {
   const [margin, setMargin] = useState<Margin | null>(null);
@@ -75,7 +77,7 @@ export function MarginPanel({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const save = async () => {
     setBusy(true);
@@ -225,7 +227,7 @@ export function MarginPanel({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MarginSide
           title="Planned"
-          subtitle={`What the staffing plan implies · ${margin.headcount} ${margin.headcount === 1 ? "person" : "people"}`}
+          subtitle={`Staffing plan, overhead & additional costs · ${margin.headcount} ${margin.headcount === 1 ? "person" : "people"}`}
           side={margin.planned}
           target={margin.targetPercent}
         />

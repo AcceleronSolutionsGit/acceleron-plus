@@ -314,7 +314,7 @@ export function AllocationsClient() {
                     Location
                   </Th>
                   {Array.from({ length: slots }).map((_, i) => (
-                    <Th key={i} className="min-w-[196px]">
+                    <Th key={i} className="min-w-[280px]">
                       Project {i + 1}
                     </Th>
                   ))}
@@ -455,10 +455,11 @@ function Row({ row, slots }: { row: AllocationRow; slots: number }) {
             </td>
           );
         }
+        const hasPeriods = Array.isArray(p.allocationPeriods) && p.allocationPeriods.length > 0;
         return (
           <td key={i} className="px-4 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-medium text-navy-800" title={`[${p.projectCode}] ${p.projectName}`}>
                   <Link
                     href={`/pmt/${p.projectCode}?tab=team`}
@@ -468,11 +469,37 @@ function Row({ row, slots }: { row: AllocationRow; slots: number }) {
                     {p.projectName}
                   </Link>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-navy-400">
-                  {p.roleInProject && <span className="truncate">{p.roleInProject}</span>}
-                </div>
+                {p.clientCompanyName && (
+                  <div className="text-[11px] font-medium text-navy-500 truncate mt-0.5">
+                    Client: <span className="text-navy-700">{p.clientCompanyName}</span>
+                  </div>
+                )}
+                {p.roleInProject && (
+                  <div className="text-[11px] text-navy-400 truncate">
+                    {p.roleInProject}
+                  </div>
+                )}
+                {hasPeriods ? (
+                  <div className="mt-1.5 space-y-1">
+                    {p.allocationPeriods!.map((period, pIdx) => (
+                      <div
+                        key={pIdx}
+                        className="flex items-center justify-between text-[10.5px] font-mono text-navy-600 bg-navy-50/70 px-2 py-0.5 rounded border border-navy-100"
+                      >
+                        <span>{period.startDate} → {period.endDate}</span>
+                        <span className="font-semibold text-navy-900 ml-2">{period.allocationPercent}%</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  (p.startDate || p.endDate) && (
+                    <div className="mt-1 text-[11px] font-mono text-navy-500">
+                      {p.startDate ?? "—"} → {p.endDate ?? "—"}
+                    </div>
+                  )
+                )}
               </div>
-              <span className="shrink-0 text-[13px] font-bold tabular-nums text-navy-900">
+              <span className="shrink-0 text-[13px] font-bold tabular-nums text-navy-900 bg-navy-50 px-2 py-0.5 rounded border border-navy-200">
                 {p.allocationPercent}%
               </span>
             </div>

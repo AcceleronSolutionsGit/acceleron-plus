@@ -89,7 +89,7 @@ export interface MarginPicture {
  * that is answerable long before anybody invoices.
  */
 export async function marginFor(projectId: string): Promise<MarginPicture> {
-  const [project, team] = await Promise.all([
+  const [project, team, additionalCosts] = await Promise.all([
     projectDb("projects")
       .where("id", projectId)
       .select(
@@ -97,13 +97,40 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
         "target_margin_percent",
         "margin_set_by_user_id",
         "margin_set_at",
-        "margin_notes"
+        "margin_notes",
+        "overhead_percent"
       )
       .first<Record<string, unknown> | undefined>(),
     getProjectTeam(projectId, { includeCost: true }),
+    projectDb("project_additional_costs")
+      .where("project_id", projectId)
+      .select("planned_amount_inr", "actual_amount_inr", "po_value_inr", "invoice_value_inr")
+      .catch(() => [] as Record<string, unknown>[]),
   ]);
 
+  let totalPlannedAdditional = 0;
+  let totalActualAdditional = 0;
+  for (const c of additionalCosts as Record<string, unknown>[]) {
+    const planned =
+      c.po_value_inr !== null && c.po_value_inr !== undefined && c.po_value_inr !== ""
+        ? Number(c.po_value_inr)
+        : Number(c.planned_amount_inr || 0);
+    const actual =
+      c.invoice_value_inr !== null && c.invoice_value_inr !== undefined && c.invoice_value_inr !== ""
+        ? Number(c.invoice_value_inr)
+        : Number(c.actual_amount_inr || 0);
+    totalPlannedAdditional += isNaN(planned) ? 0 : planned;
+    totalActualAdditional += isNaN(actual) ? 0 : actual;
+  }
+
   const totals = teamTotals(team);
+  const overheadPercent = Number(project?.overhead_percent || 0);
+  const plannedOverhead = round2((totals.plannedCostInr * overheadPercent) / 100);
+  const actualOverhead = round2((totals.actualCostInr * overheadPercent) / 100);
+
+  const totalPlannedCost = round2(totals.plannedCostInr + plannedOverhead + totalPlannedAdditional);
+  const totalActualCost = round2(totals.actualCostInr + actualOverhead + totalActualAdditional);
+
   const target =
     project?.target_margin_percent === null || project?.target_margin_percent === undefined
       ? null
@@ -119,8 +146,8 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
   // Actual Margin = Order Value - Actual Cost
   const billableValue = orderValue !== null && orderValue > 0 ? orderValue : totals.plannedBillableInr;
 
-  const plannedMargin = marginPercent(billableValue, totals.plannedCostInr);
-  const actualMargin = marginPercent(billableValue, totals.actualCostInr);
+  const plannedMargin = marginPercent(billableValue, totalPlannedCost);
+  const actualMargin = marginPercent(billableValue, totalActualCost);
 
   return {
     targetPercent: target,
@@ -129,18 +156,18 @@ export async function marginFor(projectId: string): Promise<MarginPicture> {
     notes: project?.margin_notes ? String(project.margin_notes) : null,
 
     planned: {
-      costInr: totals.plannedCostInr,
+      costInr: totalPlannedCost,
       billableInr: billableValue,
-      marginInr: round2(billableValue - totals.plannedCostInr),
+      marginInr: round2(billableValue - totalPlannedCost),
       marginPercent: plannedMargin,
       variancePoints:
         target !== null && plannedMargin !== null ? round2(plannedMargin - target) : null,
     },
 
     actual: {
-      costInr: totals.actualCostInr,
+      costInr: totalActualCost,
       billableInr: billableValue,
-      marginInr: round2(billableValue - totals.actualCostInr),
+      marginInr: round2(billableValue - totalActualCost),
       marginPercent: actualMargin,
       variancePoints:
         target !== null && actualMargin !== null ? round2(actualMargin - target) : null,

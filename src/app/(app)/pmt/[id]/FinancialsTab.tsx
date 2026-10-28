@@ -151,6 +151,7 @@ export function FinancialsTab({
   const [isOverheadModalOpen, setIsOverheadModalOpen] = useState(false);
   const [overheadPercentInput, setOverheadPercentInput] = useState("0");
   const [savingOverhead, setSavingOverhead] = useState(false);
+  const [marginRefreshKey, setMarginRefreshKey] = useState(0);
 
   const fetchCost = useCallback(async () => {
     try {
@@ -166,6 +167,7 @@ export function FinancialsTab({
       console.error("fetchCost error:", err);
     } finally {
       setLoading(false);
+      setMarginRefreshKey((k) => k + 1);
     }
   }, [projectId]);
 
@@ -356,7 +358,7 @@ export function FinancialsTab({
 
   return (
     <div className="space-y-6">
-      <MarginPanel projectId={projectId} onUpdate={fetchCost} />
+      <MarginPanel projectId={projectId} refreshKey={marginRefreshKey} onUpdate={fetchCost} />
 
       {/* ── 1. Order Costing & Target Margin Summary (Executive Metrics) ── */}
       <div className="bg-white rounded-xl border border-navy-500/10 shadow-sm overflow-hidden">

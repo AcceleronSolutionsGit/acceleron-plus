@@ -245,7 +245,7 @@ export function TeamTab({
       setCanViewCost(Boolean(data.canViewCost));
       if (Array.isArray(data.roles) && data.roles.length > 0) setRoles(data.roles);
       setCanAssignPm(Boolean(data.canAssignPm));
-      if (data.currency) setActiveCurrency(data.currency);
+      setActiveCurrency("INR");
       if (data.projectStartDate) setProjStart(data.projectStartDate);
       if (data.projectEndDate) setProjEnd(data.projectEndDate);
       setError("");

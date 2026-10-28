@@ -15,6 +15,7 @@
 
 import { identityDb, projectDb } from "./db";
 import { toDateInput } from "./dates";
+import { parseAllocationPeriods, type AllocationPeriod } from "./staffing-calc";
 
 /** A person's share of one project. */
 export interface AllocationEntry {
@@ -27,6 +28,7 @@ export interface AllocationEntry {
   startDate: string | null;
   endDate: string | null;
   status: string | null;
+  allocationPeriods?: AllocationPeriod[] | null;
 }
 
 export type AllocationState = "bench" | "under" | "full" | "over";
@@ -174,6 +176,7 @@ export async function buildAllocationReport(
         "ptm.allocation_percent",
         "ptm.start_date",
         "ptm.end_date",
+        "ptm.allocation_periods",
         "p.code",
         "p.name",
         "p.status",
@@ -198,6 +201,7 @@ export async function buildAllocationReport(
         startDate: start,
         endDate: end,
         status: row.status ? String(row.status) : null,
+        allocationPeriods: parseAllocationPeriods(row.allocation_periods),
       });
       allocationsByEmployee.set(employeeId, list);
     }
@@ -293,9 +297,18 @@ export function toMatrix(report: AllocationReport): {
     ];
     for (let i = 0; i < slots; i += 1) {
       const p = r.projects[i];
-      // An empty string, not a zero: this person has no fifth project,
-      // which is a different statement from being on one at 0%.
-      cells.push(p ? `${p.projectCode} — ${p.projectName}` : "", p ? p.allocationPercent : "");
+      let projectDesc = "";
+      if (p) {
+        const client = p.clientCompanyName ? ` (${p.clientCompanyName})` : "";
+        let dates = "";
+        if (p.allocationPeriods && p.allocationPeriods.length > 0) {
+          dates = " [" + p.allocationPeriods.map((pr) => `${pr.startDate} to ${pr.endDate}: ${pr.allocationPercent}%`).join("; ") + "]";
+        } else if (p.startDate || p.endDate) {
+          dates = ` [${p.startDate ?? ""} to ${p.endDate ?? ""}]`;
+        }
+        projectDesc = `${p.projectCode} — ${p.projectName}${client}${dates}`;
+      }
+      cells.push(projectDesc, p ? p.allocationPercent : "");
     }
     cells.push(r.totalPercent, STATE_LABEL[r.state]);
     return cells;
