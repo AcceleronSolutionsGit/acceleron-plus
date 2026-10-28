@@ -595,10 +595,19 @@ function MemberRow({
 
   const addPeriod = () => {
     const last = periods[periods.length - 1];
-    const newStart = last?.endDate || startDate || todayISO();
+    let newStart = todayISO();
+    if (last?.endDate) {
+      const d = new Date(last.endDate);
+      if (!Number.isNaN(d.getTime())) {
+        d.setDate(d.getDate() + 1);
+        newStart = d.toISOString().slice(0, 10);
+      }
+    } else if (startDate) {
+      newStart = startDate;
+    }
     setPeriods([
       ...periods,
-      { startDate: newStart, endDate: endDate || newStart, allocationPercent: Number(allocation) || 100 },
+      { startDate: newStart, endDate: newStart, allocationPercent: 100 },
     ]);
   };
 
@@ -611,6 +620,11 @@ function MemberRow({
   };
 
   const removeAllPeriods = () => {
+    if (periods.length > 0) {
+      if (periods[0]?.startDate) setStartDate(periods[0].startDate);
+      if (periods[0]?.endDate) setEndDate(periods[0].endDate);
+      if (periods[0]?.allocationPercent) setAllocation(String(periods[0].allocationPercent));
+    }
     setPeriods([]);
     setShowPeriodsEditor(false);
   };
@@ -786,21 +800,39 @@ function MemberRow({
                 currentlyPm={isPm}
               />
             </Field>
-            <Field label="Default Allocation %">
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={allocation}
-                onChange={(e) => setAllocation(e.target.value)}
-              />
-            </Field>
-            <Field label="From">
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </Field>
-            <Field label="To">
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </Field>
+            {!showPeriodsEditor ? (
+              <>
+                <Field label="Allocation %">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={allocation}
+                    onChange={(e) => setAllocation(e.target.value)}
+                  />
+                </Field>
+                <Field label="From">
+                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                </Field>
+                <Field label="To">
+                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                </Field>
+              </>
+            ) : (
+              <div className="sm:col-span-3 bg-blue-50/70 border border-blue-200/80 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold text-blue-950 uppercase tracking-wider text-[10px] block">
+                    Multi-Period Mode Active
+                  </span>
+                  <span className="text-blue-900 font-medium text-[11px]">
+                    Configure each period's dates and allocation % in the breakdown below
+                  </span>
+                </div>
+                <span className="text-[11px] font-semibold text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200">
+                  {periods.length} {periods.length === 1 ? "period" : "periods"}
+                </span>
+              </div>
+            )}
             {canViewCost && (
               <>
                 <Field label={`Daily Cost Budget (${currency}/d)`}>
@@ -841,9 +873,22 @@ function MemberRow({
                   id={`multi-period-${member.id}`}
                   checked={showPeriodsEditor}
                   onChange={(e) => {
-                    setShowPeriodsEditor(e.target.checked);
-                    if (e.target.checked && periods.length === 0) {
-                      setPeriods([{ startDate: startDate || todayISO(), endDate: endDate || todayISO(), allocationPercent: Number(allocation) || 100 }]);
+                    const checked = e.target.checked;
+                    setShowPeriodsEditor(checked);
+                    if (checked && periods.length === 0) {
+                      const p1Start = startDate || todayISO();
+                      const p1End = endDate || todayISO();
+                      const p1Alloc = Number(allocation) || 100;
+                      let p2Start = p1End;
+                      const d = new Date(p1End);
+                      if (!Number.isNaN(d.getTime())) {
+                        d.setDate(d.getDate() + 1);
+                        p2Start = d.toISOString().slice(0, 10);
+                      }
+                      setPeriods([
+                        { startDate: p1Start, endDate: p1End, allocationPercent: p1Alloc },
+                        { startDate: p2Start, endDate: p2Start, allocationPercent: 100 },
+                      ]);
                     }
                   }}
                   className="rounded border-neutral-300 text-navy-900 focus:ring-navy-900"
