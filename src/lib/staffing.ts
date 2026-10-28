@@ -17,47 +17,23 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { identityDb, projectDb } from "./db";
-import { toDateInput, parseISODate } from "./dates";
-
-/** Hours in a working day — the divisor turning logged hours into days. */
-export const HOURS_PER_DAY = 8;
-
-export interface AllocationPeriod {
-  id?: string;
-  startDate: string;
-  endDate: string;
-  allocationPercent: number;
-}
-
-export function parseAllocationPeriods(val: unknown): AllocationPeriod[] | null {
-  if (!val) return null;
-  let parsed = val;
-  if (typeof val === "string") {
-    try {
-      parsed = JSON.parse(val);
-    } catch {
-      return null;
-    }
-  }
-  if (!Array.isArray(parsed)) return null;
-  const list: AllocationPeriod[] = [];
-  for (const item of parsed) {
-    if (item && typeof item === "object") {
-      const s = toDateInput(item.startDate) || (typeof item.startDate === "string" ? item.startDate : null);
-      const e = toDateInput(item.endDate) || (typeof item.endDate === "string" ? item.endDate : null);
-      const pct = Math.min(100, Math.max(1, Number(item.allocationPercent) || 100));
-      if (s && e) {
-        list.push({
-          id: item.id ? String(item.id) : undefined,
-          startDate: s,
-          endDate: e,
-          allocationPercent: pct,
-        });
-      }
-    }
-  }
-  return list.length > 0 ? list : null;
-}
+import { toDateInput } from "./dates";
+export {
+  HOURS_PER_DAY,
+  type AllocationPeriod,
+  type PlannedCost,
+  parseAllocationPeriods,
+  workingDaysBetween,
+  plannedCostFor,
+  round2,
+} from "./staffing-calc";
+import {
+  HOURS_PER_DAY,
+  type AllocationPeriod,
+  parseAllocationPeriods,
+  plannedCostFor,
+  round2,
+} from "./staffing-calc";
 
 export interface RateBand {
   id: string;
@@ -116,103 +92,7 @@ export interface TeamMember {
   };
 }
 
-// ─── Working days ──────────────────────────────────────────────────
 
-/**
- * Working days between two dates, inclusive, calculated using a fixed standard of 24 days per month.
- *
- * Each full calendar month contributes exactly 24 working days.
- * Partial months contribute proportionally based on active calendar days:
- *   (activeDays / daysInMonth) * 24
- */
-export function workingDaysBetween(
-  start: string | Date | null | undefined,
-  end: string | Date | null | undefined
-): number {
-  const from = parseISODate(start as string);
-  const to = parseISODate(end as string);
-  if (!from || !to || to < from) return 0;
-
-  let totalDays = 0;
-  const current = new Date(from.getFullYear(), from.getMonth(), 1);
-  const endMonth = new Date(to.getFullYear(), to.getMonth(), 1);
-
-  while (current <= endMonth) {
-    const year = current.getFullYear();
-    const month = current.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const startDay =
-      year === from.getFullYear() && month === from.getMonth() ? from.getDate() : 1;
-    const endDay =
-      year === to.getFullYear() && month === to.getMonth() ? to.getDate() : daysInMonth;
-
-    const activeDays = Math.max(0, endDay - startDay + 1);
-    if (activeDays >= daysInMonth) {
-      totalDays += 24;
-    } else {
-      totalDays += (activeDays / daysInMonth) * 24;
-    }
-
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  return round2(totalDays);
-}
-
-export interface PlannedCost {
-  plannedDays: number;
-  plannedCostInr: number;
-  plannedBillableInr: number;
-}
-
-/**
- * What an assignment is expected to cost.
- *
- * Someone at 50% for ten working days is five days of cost, which is
- * why allocation multiplies rather than merely annotating the row.
- */
-export function plannedCostFor(input: {
-  startDate: string | null | undefined;
-  endDate: string | null | undefined;
-  allocationPercent: number | null | undefined;
-  dailyCostInr: number | null | undefined;
-  dailyBillableRateInr?: number | null | undefined;
-  /** Override the calendar calculation when somebody has typed a figure. */
-  plannedDays?: number | null;
-  /** Multi-period allocation breakdown if allocation % changes over time */
-  allocationPeriods?: AllocationPeriod[] | null;
-}): PlannedCost {
-  const allocation = Math.min(100, Math.max(0, Number(input.allocationPercent ?? 100)));
-  const cost = Number(input.dailyCostInr ?? 0);
-  const billable = Number(input.dailyBillableRateInr ?? 0);
-
-  let days = 0;
-  if (input.plannedDays !== undefined && input.plannedDays !== null) {
-    days = Number(input.plannedDays);
-  } else if (input.allocationPeriods && Array.isArray(input.allocationPeriods) && input.allocationPeriods.length > 0) {
-    let periodDays = 0;
-    for (const p of input.allocationPeriods) {
-      const pAlloc = Math.min(100, Math.max(0, Number(p.allocationPercent ?? 100)));
-      const pWorkDays = workingDaysBetween(p.startDate, p.endDate);
-      periodDays += (pWorkDays * pAlloc) / 100;
-    }
-    days = round2(periodDays);
-  } else {
-    const calendarDays = workingDaysBetween(input.startDate, input.endDate);
-    days = round2((calendarDays * allocation) / 100);
-  }
-
-  return {
-    plannedDays: days,
-    plannedCostInr: round2(days * cost),
-    plannedBillableInr: round2(days * billable),
-  };
-}
-
-function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
 
 // ─── Reading ───────────────────────────────────────────────────────
 
@@ -326,8 +206,25 @@ export async function getProjectTeam(
         ? null
         : Number(row.custom_daily_cost_inr);
 
-    const rowStart = toDateInput(row.start_date as string) || projectStart || null;
-    const rowEnd = toDateInput(row.end_date as string) || projectEnd || null;
+    const parsedPeriods = parseAllocationPeriods(row.allocation_periods);
+    const hasPeriods = Boolean(parsedPeriods && parsedPeriods.length > 0);
+
+    let rowStart = toDateInput(row.start_date as string) || projectStart || null;
+    let rowEnd = toDateInput(row.end_date as string) || projectEnd || null;
+
+    if (hasPeriods && parsedPeriods) {
+      const pStarts = parsedPeriods.map((p) => p.startDate).filter(Boolean).sort();
+      const pEnds = parsedPeriods.map((p) => p.endDate).filter(Boolean).sort();
+      if (pStarts.length > 0 && (!rowStart || pStarts[0] < rowStart)) rowStart = pStarts[0];
+      if (pEnds.length > 0 && (!rowEnd || pEnds[pEnds.length - 1] > rowEnd)) rowEnd = pEnds[pEnds.length - 1];
+    }
+
+    const periodTotalAlloc = hasPeriods && parsedPeriods
+      ? parsedPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0)
+      : null;
+    const allocation = periodTotalAlloc !== null && periodTotalAlloc > 0
+      ? periodTotalAlloc
+      : Number(row.allocation_percent ?? 100);
 
     const member: TeamMember = {
       id: String(row.id),
@@ -339,10 +236,10 @@ export async function getProjectTeam(
       designation: profile?.designation ?? (row.role_in_project ? String(row.role_in_project) : "Team Member"),
       department: profile?.department ?? uProfile?.department ?? "Delivery",
       roleInProject: row.role_in_project ? String(row.role_in_project) : null,
-      allocationPercent: Number(row.allocation_percent ?? 100),
+      allocationPercent: allocation,
       startDate: rowStart,
       endDate: rowEnd,
-      allocationPeriods: parseAllocationPeriods(row.allocation_periods),
+      allocationPeriods: parsedPeriods,
       isActive: row.is_active !== false,
       notes: row.notes ? String(row.notes) : null,
       rateBandId: row.rate_band_id ? String(row.rate_band_id) : null,
@@ -384,13 +281,9 @@ export async function getProjectTeam(
         }
       }
 
-      const allocation = Number(row.allocation_percent ?? 100);
-      const parsedPeriods = parseAllocationPeriods(row.allocation_periods);
-
-      // Only treat planned_days as an override if it is positive (> 0).
-      // Stored 0.00 is a symptom of missing end dates and should be recalculated.
+      // Only treat planned_days as an override if it is positive (> 0) and not multi-period breakdown.
       const explicitPlannedDays =
-        row.planned_days !== null && row.planned_days !== undefined && Number(row.planned_days) > 0
+        !hasPeriods && row.planned_days !== null && row.planned_days !== undefined && Number(row.planned_days) > 0
           ? Number(row.planned_days)
           : null;
 
@@ -412,13 +305,17 @@ export async function getProjectTeam(
         allocationPeriods: parsedPeriods,
       });
 
-      const effectivePlannedDays = explicitPlannedDays !== null ? explicitPlannedDays : planned.plannedDays;
+      const effectivePlannedDays = hasPeriods
+        ? planned.plannedDays
+        : explicitPlannedDays !== null
+        ? explicitPlannedDays
+        : planned.plannedDays;
       const plannedCost =
-        row.planned_cost_inr !== null && Number(row.planned_cost_inr) > 0
+        !hasPeriods && row.planned_cost_inr !== null && Number(row.planned_cost_inr) > 0
           ? Number(row.planned_cost_inr)
           : planned.plannedCostInr;
       const plannedBillable =
-        row.planned_billable_inr !== null && Number(row.planned_billable_inr) > 0
+        !hasPeriods && row.planned_billable_inr !== null && Number(row.planned_billable_inr) > 0
           ? Number(row.planned_billable_inr)
           : planned.plannedBillableInr;
 

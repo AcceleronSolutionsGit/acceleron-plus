@@ -87,9 +87,17 @@ export async function PATCH(req: Request, context: Params) {
     if (body.allocationPeriods !== undefined) {
       parsedPeriods = parseAllocationPeriods(body.allocationPeriods);
       updates.allocation_periods = parsedPeriods ? JSON.stringify(parsedPeriods) : null;
+      if (parsedPeriods && parsedPeriods.length > 0) {
+        const pStarts = parsedPeriods.map((p) => p.startDate).filter(Boolean).sort();
+        const pEnds = parsedPeriods.map((p) => p.endDate).filter(Boolean).sort();
+        if (pStarts.length > 0) updates.start_date = pStarts[0];
+        if (pEnds.length > 0) updates.end_date = pEnds[pEnds.length - 1];
+        const sumAlloc = parsedPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0);
+        if (sumAlloc > 0) updates.allocation_percent = sumAlloc;
+      }
     }
 
-    if (body.allocationPercent !== undefined) {
+    if (body.allocationPercent !== undefined && updates.allocation_percent === undefined) {
       const allocation = Number(body.allocationPercent);
       if (!Number.isFinite(allocation) || allocation <= 0 || allocation > 100) {
         errors.push("Allocation must be between 1 and 100 percent.");
@@ -98,8 +106,8 @@ export async function PATCH(req: Request, context: Params) {
       }
     }
 
-    if (body.startDate !== undefined) updates.start_date = toDateInput(body.startDate as string) || null;
-    if (body.endDate !== undefined) updates.end_date = toDateInput(body.endDate as string) || null;
+    if (body.startDate !== undefined && updates.start_date === undefined) updates.start_date = toDateInput(body.startDate as string) || null;
+    if (body.endDate !== undefined && updates.end_date === undefined) updates.end_date = toDateInput(body.endDate as string) || null;
     if (body.notes !== undefined) updates.notes = String(body.notes).trim() || null;
     if (body.isActive !== undefined) updates.is_active = Boolean(body.isActive);
 
@@ -232,6 +240,7 @@ export async function PATCH(req: Request, context: Params) {
       parsedPeriods !== undefined
         ? parsedPeriods
         : parseAllocationPeriods(existing.allocation_periods);
+    const hasEffectivePeriods = Boolean(effectivePeriods && effectivePeriods.length > 0);
 
     const planned = plannedCostFor({
       startDate: start,
@@ -241,7 +250,7 @@ export async function PATCH(req: Request, context: Params) {
       allocationPeriods: effectivePeriods,
       dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr: effectiveBillableRate,
-      plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
+      plannedDays: hasEffectivePeriods ? null : (body.plannedDays === undefined ? null : Number(body.plannedDays)),
     });
     updates.planned_days = planned.plannedDays;
     updates.planned_cost_inr = planned.plannedCostInr;

@@ -233,10 +233,20 @@ export async function POST(req: Request, context: Params) {
       ? toDateInput(String(project.planned_end_date || project.actual_end_date))
       : null;
 
-    const startDate = toDateInput(body.startDate as string) || projectStart || null;
-    const endDate = toDateInput(body.endDate as string) || projectEnd || null;
-    const allocationPercent = Number(body.allocationPercent ?? 100);
+    let startDate = toDateInput(body.startDate as string) || projectStart || null;
+    let endDate = toDateInput(body.endDate as string) || projectEnd || null;
+    let allocationPercent = Number(body.allocationPercent ?? 100);
     const allocationPeriods = parseAllocationPeriods(body.allocationPeriods);
+    const hasPeriods = Boolean(allocationPeriods && allocationPeriods.length > 0);
+
+    if (hasPeriods && allocationPeriods) {
+      const pStarts = allocationPeriods.map((p) => p.startDate).filter(Boolean).sort();
+      const pEnds = allocationPeriods.map((p) => p.endDate).filter(Boolean).sort();
+      if (pStarts.length > 0) startDate = pStarts[0];
+      if (pEnds.length > 0) endDate = pEnds[pEnds.length - 1];
+      const sumAlloc = allocationPeriods.reduce((sum, p) => sum + Number(p.allocationPercent || 0), 0);
+      if (sumAlloc > 0) allocationPercent = sumAlloc;
+    }
 
     // Allocation is a claim on somebody's whole week, not just this
     // project's. Putting them at 50% here when they are already at 80%
@@ -296,7 +306,7 @@ export async function POST(req: Request, context: Params) {
       allocationPeriods,
       dailyCostInr: effectiveDailyCost,
       dailyBillableRateInr: effectiveBillableRate,
-      plannedDays: body.plannedDays === undefined ? null : Number(body.plannedDays),
+      plannedDays: hasPeriods ? null : (body.plannedDays === undefined ? null : Number(body.plannedDays)),
     });
 
     // The identity row is how permissions and timesheets find them; it

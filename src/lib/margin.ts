@@ -224,13 +224,15 @@ export async function repriceToTarget(
       continue;
     }
 
+    const periods = parseAllocationPeriods(member.allocation_periods);
+    const hasPeriods = Boolean(periods && periods.length > 0);
     let days = Number(member.planned_days ?? 0);
-    if (days <= 0 && member.start_date) {
+    if ((hasPeriods || days <= 0) && member.start_date) {
       const planned = plannedCostFor({
         startDate: member.start_date as string,
         endDate: member.end_date as string,
         allocationPercent: Number(member.allocation_percent ?? 100),
-        allocationPeriods: parseAllocationPeriods(member.allocation_periods),
+        allocationPeriods: periods,
         dailyCostInr: cost,
         dailyBillableRateInr: rate,
       });

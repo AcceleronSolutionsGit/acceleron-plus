@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateCostingMetrics, round2 } from "../src/lib/costing.ts";
+import {
+  plannedCostFor,
+  workingDaysBetween,
+  parseAllocationPeriods,
+} from "../src/lib/staffing-calc.ts";
 
 test("1. Order Value and Target Cost Calculation", () => {
   // Order Value = 10,00,000; Target Margin = 20%
@@ -195,5 +200,78 @@ test("9. Financial redaction hides budgetInr, targetMarginPercent, and targetCos
   assert.equal("budgetInr" in redacted, false, "budgetInr should be redacted");
   assert.equal("targetMarginPercent" in redacted, false, "targetMarginPercent should be redacted");
   assert.equal("targetCostInr" in redacted, false, "targetCostInr should be redacted");
+});
+
+test("10. Multi-period allocation calculation correctly sums planned days and costs across all periods", () => {
+  // Period 1: Jan 1, 2026 to Jan 31, 2026 (full calendar month = 24 working days) @ 50% = 12 planned days
+  // Period 2: Feb 1, 2026 to Feb 28, 2026 (full calendar month = 24 working days) @ 100% = 24 planned days
+  // Total planned days must be 12 + 24 = 36 days (NOT taking only the latest period 24 days)
+  const periods = [
+    { startDate: "2026-01-01", endDate: "2026-01-31", allocationPercent: 50 },
+    { startDate: "2026-02-01", endDate: "2026-02-28", allocationPercent: 100 },
+  ];
+
+  const dailyCost = 5000;
+  const dailyBillable = 12000;
+
+  const result = plannedCostFor({
+    startDate: "2026-01-01",
+    endDate: "2026-02-28",
+    allocationPercent: 100, // Stale single allocation should be ignored in favor of periods
+    dailyCostInr: dailyCost,
+    dailyBillableRateInr: dailyBillable,
+    allocationPeriods: periods,
+  });
+
+  assert.equal(result.plannedDays, 36, "Planned days should be the sum of all periods (12 + 24 = 36)");
+  assert.equal(
+    result.plannedCostInr,
+    36 * dailyCost,
+    "Planned cost must be 36 * 5000 = 180,000 INR (sum of both periods, not only the latest 24 * 5000)"
+  );
+  assert.equal(
+    result.plannedBillableInr,
+    36 * dailyBillable,
+    "Planned billable must be 36 * 12000 = 432,000 INR"
+  );
+  assert.notEqual(result.plannedDays, 24, "Must not take only the latest period (24 days)");
+});
+
+test("11. Multi-period allocation breakdown takes priority over stale single-period plannedDays override", () => {
+  // Suppose an existing DB record had planned_days = 10 from before periods were added
+  const periods = [
+    { startDate: "2026-03-01", endDate: "2026-03-31", allocationPercent: 100 }, // 24 days
+    { startDate: "2026-04-01", endDate: "2026-04-30", allocationPercent: 50 },  // 12 days
+  ];
+
+  const result = plannedCostFor({
+    startDate: "2026-03-01",
+    endDate: "2026-04-30",
+    allocationPercent: 75,
+    dailyCostInr: 4000,
+    plannedDays: 10, // Stale single-period override
+    allocationPeriods: periods,
+  });
+
+  // Stale plannedDays should NOT override the multi-period breakdown calculation
+  assert.equal(result.plannedDays, 36, "Should calculate from all periods (24 + 12 = 36) rather than stale 10 days");
+  assert.equal(result.plannedCostInr, 36 * 4000, "Planned cost must be 144,000 INR");
+});
+
+test("12. parseAllocationPeriods correctly parses JSON strings and handles snake_case properties", () => {
+  const jsonStr = JSON.stringify([
+    { start_date: "2026-01-01", end_date: "2026-01-31", allocation_percent: 50 },
+    { startDate: "2026-02-01", endDate: "2026-02-28", allocationPercent: 75 },
+  ]);
+
+  const parsed = parseAllocationPeriods(jsonStr);
+  assert.ok(parsed, "Parsed periods must not be null");
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].startDate, "2026-01-01");
+  assert.equal(parsed[0].endDate, "2026-01-31");
+  assert.equal(parsed[0].allocationPercent, 50);
+  assert.equal(parsed[1].startDate, "2026-02-01");
+  assert.equal(parsed[1].endDate, "2026-02-28");
+  assert.equal(parsed[1].allocationPercent, 75);
 });
 
