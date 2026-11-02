@@ -28,9 +28,8 @@ export default function LeadDocumentsPage({ params }: { params: Promise<{ id: st
         if (leadData?.lead) {
           setLead(leadData.lead);
         }
-        if (docsData?.documents) {
-          setDocs(docsData.documents);
-        }
+        const docsList = docsData?.documents || docsData?.data || [];
+        setDocs(docsList);
       } catch (err) {
         console.error(err);
       } finally {
@@ -39,7 +38,15 @@ export default function LeadDocumentsPage({ params }: { params: Promise<{ id: st
     })();
   }, [leadId]);
 
-  const filteredDocs = filterType === "all" ? docs : docs.filter((d) => d.documentType === filterType);
+  const filteredDocs = filterType === "all"
+    ? docs
+    : docs.filter((d) => {
+        const t = d.documentType || d.document_type;
+        if (filterType === "solution_approach" || filterType === "solution") {
+          return t === "solution_approach" || t === "solution";
+        }
+        return t === filterType;
+      });
 
   if (loading) {
     return (
@@ -115,12 +122,12 @@ export default function LeadDocumentsPage({ params }: { params: Promise<{ id: st
                   <div className="flex flex-wrap items-center gap-2.5">
                     <h5 className="font-semibold text-navy-900 text-base">{doc.title}</h5>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-navy-50 text-navy-700 border border-navy-200">
-                      {doc.documentType}
+                      {doc.documentType || doc.document_type}
                     </span>
                   </div>
                   <p className="text-xs text-navy-500">
-                    {doc.fileName} • {doc.fileSizeDisplay} • Uploaded by {doc.uploadedByName || "Team"} on{" "}
-                    {formatISODate(doc.createdAt)}
+                    {doc.fileName || doc.file_name} • {doc.fileSizeDisplay || (doc.file_size_bytes ? `${(Number(doc.file_size_bytes)/1024).toFixed(1)} KB` : "—")} • Uploaded by {doc.uploadedByName || doc.uploaded_by_name || "Team"}
+                    {(doc.createdAt || doc.created_at) && ` on ${formatISODate(doc.createdAt || doc.created_at)}`}
                   </p>
                 </div>
                 <a

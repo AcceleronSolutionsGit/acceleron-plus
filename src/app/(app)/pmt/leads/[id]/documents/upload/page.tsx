@@ -7,7 +7,8 @@ export default function UploadLeadDocumentPage({ params }: { params: Promise<{ i
   const router = useRouter();
   const searchParams = useSearchParams();
   const { id: leadId } = use(params);
-  const initialType = searchParams.get("type") || "scope";
+  const rawType = searchParams.get("type") || "scope";
+  const initialType = rawType === "solution" ? "solution_approach" : rawType;
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -112,6 +113,7 @@ export default function UploadLeadDocumentPage({ params }: { params: Promise<{ i
               >
                 <option value="scope">Scope Document (SOW, RFP)</option>
                 <option value="solution_approach">Solution / Architecture</option>
+                <option value="proposal">Proposal</option>
                 <option value="commercials">Commercials / Pricing</option>
                 <option value="other">Other</option>
               </select>

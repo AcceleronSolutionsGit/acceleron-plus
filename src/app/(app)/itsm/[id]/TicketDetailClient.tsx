@@ -125,6 +125,14 @@ export function TicketDetailClient({ ticket, activity }: Props) {
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [localActivity, setLocalActivity] = useState(activity);
+  const [localAttachments, setLocalAttachments] = useState<any[]>(() => {
+    let arr: any[] = [];
+    try {
+      if (Array.isArray(ticket.attachments)) arr = ticket.attachments;
+      else if (typeof ticket.attachments === "string") arr = JSON.parse(ticket.attachments);
+    } catch { arr = []; }
+    return arr;
+  });
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -172,6 +180,9 @@ export function TicketDetailClient({ ticket, activity }: Props) {
         setCommentText("");
         setCommentFiles([]);
         if (data.activity) setLocalActivity(prev => [...prev, data.activity]);
+        if (data.attachments && Array.isArray(data.attachments)) {
+          setLocalAttachments(prev => [...prev, ...data.attachments]);
+        }
         showToast("Comment added");
         router.refresh();
       } else {
@@ -443,7 +454,7 @@ export function TicketDetailClient({ ticket, activity }: Props) {
                 </div>
               ) : (
                 localActivity.map((entry) => (
-                  <ActivityItem key={entry.id} entry={entry} />
+                  <ActivityItem key={entry.id} entry={entry} ticketId={ticket.id} />
                 ))
               )}
             </div>
@@ -547,7 +558,7 @@ export function TicketDetailClient({ ticket, activity }: Props) {
           )}
 
           {/* Attachments */}
-          <AttachmentsPanel ticket={ticket} />
+          <AttachmentsPanel ticket={{ ...currentTicket, attachments: localAttachments }} />
 
           {ticket.projectContextId && (
             <LogTimeWidget ticketId={ticket.ticketNumber} projectId={ticket.projectContextId} />
@@ -775,7 +786,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ActivityItem({ entry }: { entry: ActivityEntry }) {
+function ActivityItem({ entry, ticketId }: { entry: ActivityEntry; ticketId?: string }) {
   if (entry.type === "email_inbound" || entry.type === "email_outbound") {
     const isInbound = entry.type === "email_inbound";
     return (
@@ -872,6 +883,26 @@ function ActivityItem({ entry }: { entry: ActivityEntry }) {
               {entry.newValue}
             </div>
           )}
+          {(entry as any).attachments && Array.isArray((entry as any).attachments) && (entry as any).attachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(entry as any).attachments.map((att: any, idx: number) => {
+                const url = att.storedFileName && ticketId
+                  ? `/api/itsm/tickets/${ticketId}/attachments/${encodeURIComponent(att.storedFileName)}`
+                  : att.data || null;
+                return (
+                  <div key={idx} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy-50/80 border border-navy-500/10 text-xs">
+                    <span>📎</span>
+                    <span className="font-medium text-navy-800">{att.originalName || att.name || "Attachment"}</span>
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 hover:underline">
+                        View
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -961,6 +992,8 @@ function AttachmentsPanel({ ticket }: { ticket: Ticket }) {
             ? `/api/portal/files/${att.portalServeId}`
             : att.storedFileName
             ? `/api/itsm/tickets/${ticket.id}/attachments/${encodeURIComponent(att.storedFileName)}`
+            : att.data
+            ? att.data
             : null;
 
           const isPreviewable = ["application/pdf", "image/png", "image/jpeg", "image/webp", "image/gif", "text/plain"].includes(att.mimeType || "");

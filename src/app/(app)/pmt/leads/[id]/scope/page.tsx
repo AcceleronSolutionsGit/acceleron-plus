@@ -31,9 +31,8 @@ export default function LeadScopePage({ params }: { params: Promise<{ id: string
           setLead(leadData.lead);
           setText(leadData.lead.scopeBaseline || "");
         }
-        if (docsData?.documents) {
-          setDocs(docsData.documents.filter((d: any) => d.documentType === "scope"));
-        }
+        const docsList = docsData?.documents || docsData?.data || [];
+        setDocs(docsList.filter((d: any) => (d.documentType || d.document_type) === "scope"));
       } catch (err) {
         console.error(err);
       } finally {
@@ -146,7 +145,8 @@ export default function LeadScopePage({ params }: { params: Promise<{ id: string
                   <div>
                     <h5 className="font-semibold text-navy-900 text-sm mb-1">{doc.title}</h5>
                     <p className="text-xs text-navy-500">
-                      {doc.fileName} • {doc.fileSizeDisplay} • {formatISODate(doc.createdAt)}
+                      {doc.fileName || doc.file_name} • {doc.fileSizeDisplay || (doc.file_size_bytes ? `${(Number(doc.file_size_bytes)/1024).toFixed(1)} KB` : "—")}
+                      {(doc.createdAt || doc.created_at) && ` • ${formatISODate(doc.createdAt || doc.created_at)}`}
                     </p>
                   </div>
                   <a

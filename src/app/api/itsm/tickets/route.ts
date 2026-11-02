@@ -5,6 +5,7 @@ import crypto from "crypto";
 
 import { getTickets } from "@/lib/api";
 import { notifyAsync, events } from "@/lib/notifications";
+import { saveTicketAttachment } from "@/lib/ticket-attachment-storage";
 
 export async function GET(req: Request) {
   try {
@@ -191,6 +192,38 @@ export async function POST(req: Request) {
         first_seen_at: now.toISOString(),
       })
       .returning("*");
+
+    // Process attachments to disk if base64 data was supplied
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const finalAttachments: any[] = [];
+      for (const att of attachments) {
+        if (att && att.data && typeof att.data === "string") {
+          try {
+            const base64Data = att.data.includes(",") ? att.data.split(",")[1] : att.data;
+            const buffer = Buffer.from(base64Data, "base64");
+            const meta = await saveTicketAttachment(
+              newTicket.id,
+              att.name || "attachment",
+              att.type || "application/octet-stream",
+              buffer
+            );
+            finalAttachments.push(meta);
+          } catch (attErr) {
+            console.error("Failed to save attachment to disk:", attErr);
+            finalAttachments.push(att);
+          }
+        } else if (att) {
+          finalAttachments.push(att);
+        }
+      }
+      if (finalAttachments.length > 0) {
+        await itsmDb("tickets")
+          .where("id", newTicket.id)
+          .update({ attachments: JSON.stringify(finalAttachments) })
+          .catch(() => {});
+        newTicket.attachments = JSON.stringify(finalAttachments);
+      }
+    }
 
     // --- REQ-ASN-01: Auto-Assignment Engine ---
     if (groupId) {

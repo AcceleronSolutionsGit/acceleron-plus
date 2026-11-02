@@ -49,9 +49,8 @@ export default function ConvertLeadPage({ params }: { params: Promise<{ id: stri
           setEstimate(finalEstimate || null);
         }
 
-        if (docsData?.documents) {
-          setDocsCount(docsData.documents.length);
-        }
+        const docsList = docsData?.documents || docsData?.data || [];
+        setDocsCount(docsList.length);
       } catch (err) {
         setError("Failed to load lead details.");
       } finally {

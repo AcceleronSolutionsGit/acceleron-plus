@@ -31,9 +31,11 @@ export default function LeadSolutionPage({ params }: { params: Promise<{ id: str
           setLead(leadData.lead);
           setText(leadData.lead.solutionApproach || "");
         }
-        if (docsData?.documents) {
-          setDocs(docsData.documents.filter((d: any) => d.documentType === "solution"));
-        }
+        const docsList = docsData?.documents || docsData?.data || [];
+        setDocs(docsList.filter((d: any) => {
+          const t = d.documentType || d.document_type;
+          return t === "solution" || t === "solution_approach";
+        }));
       } catch (err) {
         console.error(err);
       } finally {
@@ -122,7 +124,7 @@ export default function LeadSolutionPage({ params }: { params: Promise<{ id: str
               Attached Architecture & Solution Documents ({docs.length})
             </h4>
             <Link
-              href={`/pmt/leads/${leadId}/documents/upload?type=solution`}
+              href={`/pmt/leads/${leadId}/documents/upload?type=solution_approach`}
               className="px-4 py-2 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-sm font-bold transition-colors cursor-pointer"
             >
               + Upload Document
@@ -146,7 +148,8 @@ export default function LeadSolutionPage({ params }: { params: Promise<{ id: str
                   <div>
                     <h5 className="font-semibold text-navy-900 text-sm mb-1">{doc.title}</h5>
                     <p className="text-xs text-navy-500">
-                      {doc.fileName} • {doc.fileSizeDisplay} • {formatISODate(doc.createdAt)}
+                      {doc.fileName || doc.file_name} • {doc.fileSizeDisplay || (doc.file_size_bytes ? `${(Number(doc.file_size_bytes)/1024).toFixed(1)} KB` : "—")}
+                      {(doc.createdAt || doc.created_at) && ` • ${formatISODate(doc.createdAt || doc.created_at)}`}
                     </p>
                   </div>
                   <a

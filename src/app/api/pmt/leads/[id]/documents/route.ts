@@ -54,7 +54,15 @@ export async function GET(
     })
     .orderBy("created_at", "desc");
 
-  if (documentType) query = query.where("document_type", documentType);
+  if (documentType) {
+    if (documentType === "solution" || documentType === "solution_approach") {
+      query = query.where(function () {
+        this.where("document_type", "solution").orWhere("document_type", "solution_approach");
+      });
+    } else {
+      query = query.where("document_type", documentType);
+    }
+  }
   if (category) query = query.where("category", category);
   if (q) {
     query = query.where(function () {
@@ -72,60 +80,42 @@ export async function GET(
     "download_count", "created_at", "updated_at"
   );
 
+  const mapped = rows.map((r: any) => ({
+    id: r.id,
+    leadId: r.lead_id,
+    projectId: r.project_id,
+    documentType: r.document_type,
+    category: r.category,
+    title: r.title,
+    description: r.description,
+    version: r.version,
+    tags: r.tags ? r.tags.split(",").map((t: string) => t.trim()) : [],
+    fileName: r.file_name,
+    mimeType: r.mime_type,
+    fileSizeBytes: r.file_size_bytes,
+    fileSizeDisplay: formatFileSize(r.file_size_bytes),
+    accessLevel: r.access_level,
+    isLatestVersion: r.is_latest_version,
+    uploadedByUserId: r.uploaded_by_user_id,
+    uploadedByName: r.uploaded_by_name,
+    downloadCount: r.download_count,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+
   const grouped: Record<string, any[]> = {};
-  for (const row of rows) {
-    const type = row.document_type;
+  for (const item of mapped) {
+    const type = item.documentType;
     if (!grouped[type]) grouped[type] = [];
-    grouped[type].push({
-      id: row.id,
-      leadId: row.lead_id,
-      projectId: row.project_id,
-      documentType: row.document_type,
-      category: row.category,
-      title: row.title,
-      description: row.description,
-      version: row.version,
-      tags: row.tags ? row.tags.split(",").map((t: string) => t.trim()) : [],
-      fileName: row.file_name,
-      mimeType: row.mime_type,
-      fileSizeBytes: row.file_size_bytes,
-      fileSizeDisplay: formatFileSize(row.file_size_bytes),
-      accessLevel: row.access_level,
-      isLatestVersion: row.is_latest_version,
-      uploadedByUserId: row.uploaded_by_user_id,
-      uploadedByName: row.uploaded_by_name,
-      downloadCount: row.download_count,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    });
+    grouped[type].push(item);
   }
 
   return NextResponse.json({
     success: true,
     meta: { totalDocuments: rows.length },
     grouped,
-    data: rows.map((r: any) => ({
-      id: r.id,
-      leadId: r.lead_id,
-      projectId: r.project_id,
-      documentType: r.document_type,
-      category: r.category,
-      title: r.title,
-      description: r.description,
-      version: r.version,
-      tags: r.tags ? r.tags.split(",").map((t: string) => t.trim()) : [],
-      fileName: r.file_name,
-      mimeType: r.mime_type,
-      fileSizeBytes: r.file_size_bytes,
-      fileSizeDisplay: formatFileSize(r.file_size_bytes),
-      accessLevel: r.access_level,
-      isLatestVersion: r.is_latest_version,
-      uploadedByUserId: r.uploaded_by_user_id,
-      uploadedByName: r.uploaded_by_name,
-      downloadCount: r.download_count,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    })),
+    data: mapped,
+    documents: mapped,
   });
 }
 

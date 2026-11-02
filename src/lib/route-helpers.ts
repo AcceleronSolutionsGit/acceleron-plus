@@ -19,6 +19,7 @@ export interface ResolvedProject {
   code: string;
   name: string;
   tenant_id: string | null;
+  lead_id?: string | null;
   project_manager_user_id: string | null;
   sponsor_user_id: string | null;
   status: string | null;
@@ -47,6 +48,7 @@ export async function resolveProjectOr404(
           "code",
           "name",
           "tenant_id",
+          "lead_id",
           "project_manager_user_id",
           "sponsor_user_id",
           "status",

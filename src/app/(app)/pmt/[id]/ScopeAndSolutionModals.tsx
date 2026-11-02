@@ -44,9 +44,8 @@ export function ScopeAndSolutionModals({
     fetch(`/api/pmt/projects/${projectId}/documents`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.data) {
-          setDocs(data.data);
-        }
+        const docsList = data.data || data.documents || [];
+        setDocs(docsList);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -99,8 +98,11 @@ export function ScopeAndSolutionModals({
     }
   };
 
-  const scopeDocs = docs.filter((d) => d.documentType === "scope");
-  const solutionDocs = docs.filter((d) => d.documentType === "solution_approach");
+  const scopeDocs = docs.filter((d) => (d.documentType || d.document_type) === "scope");
+  const solutionDocs = docs.filter((d) => {
+    const type = d.documentType || d.document_type;
+    return type === "solution_approach" || type === "solution";
+  });
 
   const renderDocList = (list: any[], typeName: string, typeKey: "scope" | "solution_approach") => {
     return (
@@ -136,27 +138,32 @@ export function ScopeAndSolutionModals({
           </div>
         ) : (
           <div className="space-y-2">
-            {list.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center justify-between p-3.5 bg-white border border-neutral-200 rounded-xl hover:shadow-sm transition-shadow"
-              >
-                <div>
-                  <h5 className="font-semibold text-navy-900 text-sm">{doc.title}</h5>
-                  <p className="text-xs text-navy-500 mt-0.5">
-                    {doc.fileName} • Version {doc.version || "1.0"} • Uploaded by {doc.uploadedByName || "Team"} on{" "}
-                    {formatDate(doc.createdAt)}
-                  </p>
-                </div>
-                <a
-                  href={`/api/documents/${doc.id}/download`}
-                  download
-                  className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
+            {list.map((doc) => {
+              const fileName = doc.fileName || doc.file_name || "Document";
+              const uploadedByName = doc.uploadedByName || doc.uploaded_by_name || "Team";
+              const createdAt = doc.createdAt || doc.created_at;
+              return (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between p-3.5 bg-white border border-neutral-200 rounded-xl hover:shadow-sm transition-shadow"
                 >
-                  Download
-                </a>
-              </div>
-            ))}
+                  <div>
+                    <h5 className="font-semibold text-navy-900 text-sm">{doc.title}</h5>
+                    <p className="text-xs text-navy-500 mt-0.5">
+                      {fileName} • Version {doc.version || "1.0"} • Uploaded by {uploadedByName}
+                      {createdAt && ` on ${formatDate(createdAt)}`}
+                    </p>
+                  </div>
+                  <a
+                    href={`/api/documents/${doc.id}/download`}
+                    download
+                    className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    Download
+                  </a>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

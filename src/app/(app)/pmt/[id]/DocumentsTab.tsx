@@ -313,9 +313,16 @@ function DocumentCard({ doc, canDelete, onDelete }: {
   canDelete: boolean;
   onDelete: (id: string) => void;
 }) {
-  const meta = getDocTypeMeta(doc.documentType);
-  const docAccessLevels = (doc.accessLevel || "team").split(",");
+  const documentType = doc.documentType || doc.document_type || "other";
+  const meta = getDocTypeMeta(documentType);
+  const rawAccessLevel = doc.accessLevel || doc.access_level || "team";
+  const docAccessLevels = rawAccessLevel.split(",");
   const accessMetas = docAccessLevels.map((al: string) => ACCESS_LEVELS.find(a => a.value === al)).filter(Boolean) as typeof ACCESS_LEVELS;
+  const fileName = doc.fileName || doc.file_name || "Document";
+  const mimeType = doc.mimeType || doc.mime_type || "application/octet-stream";
+  const fileSizeDisplay = doc.fileSizeDisplay || (doc.file_size_bytes ? `${(Number(doc.file_size_bytes) / 1024).toFixed(1)} KB` : "—");
+  const uploadedByName = doc.uploadedByName || doc.uploaded_by_name;
+  const createdAt = doc.createdAt || doc.created_at;
 
   const handleDownload = () => {
     window.open(withBase(`/api/documents/${doc.id}/download`), "_blank");
@@ -324,13 +331,13 @@ function DocumentCard({ doc, canDelete, onDelete }: {
     window.open(withBase(`/api/documents/${doc.id}/download?mode=preview`), "_blank");
   };
 
-  const isPreviewable = ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(doc.mimeType);
+  const isPreviewable = ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(mimeType);
 
   return (
     <div className="group flex items-start gap-4 p-4 bg-white rounded-xl border border-navy-500/10 hover:border-navy-500/25 hover:shadow-md transition-all duration-200">
       {/* File icon */}
       <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-navy-50 flex items-center justify-center text-2xl">
-        {getMimeIcon(doc.mimeType)}
+        {getMimeIcon(mimeType)}
       </div>
 
       {/* Info */}
@@ -338,7 +345,7 @@ function DocumentCard({ doc, canDelete, onDelete }: {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="font-semibold text-sm text-navy-900 truncate">{doc.title}</p>
-            <p className="text-xs text-navy-500 truncate mt-0.5">{doc.fileName}</p>
+            <p className="text-xs text-navy-500 truncate mt-0.5">{fileName}</p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.color}`}>
@@ -349,9 +356,9 @@ function DocumentCard({ doc, canDelete, onDelete }: {
 
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-          <span className="text-[11px] text-navy-500">v{doc.version}</span>
+          <span className="text-[11px] text-navy-500">v{doc.version || "1.0"}</span>
           <span className="text-[11px] text-navy-400">•</span>
-          <span className="text-[11px] text-navy-500">{doc.fileSizeDisplay}</span>
+          <span className="text-[11px] text-navy-500">{fileSizeDisplay}</span>
           <span className="text-[11px] text-navy-400">•</span>
           <div className="flex items-center gap-1">
             {accessMetas.map(am => (
@@ -361,9 +368,13 @@ function DocumentCard({ doc, canDelete, onDelete }: {
             ))}
           </div>
           <span className="text-[11px] text-navy-400">•</span>
-          <span className="text-[11px] text-navy-500">↓ {doc.downloadCount}</span>
-          <span className="text-[11px] text-navy-400">•</span>
-          <span className="text-[11px] text-navy-500">{formatDate(doc.createdAt)}</span>
+          <span className="text-[11px] text-navy-500">↓ {doc.downloadCount ?? doc.download_count ?? 0}</span>
+          {createdAt && (
+            <>
+              <span className="text-[11px] text-navy-400">•</span>
+              <span className="text-[11px] text-navy-500">{formatDate(createdAt)}</span>
+            </>
+          )}
         </div>
 
         {/* Tags */}
@@ -378,8 +389,8 @@ function DocumentCard({ doc, canDelete, onDelete }: {
         )}
 
         {/* Uploaded by */}
-        {doc.uploadedByName && (
-          <p className="text-[11px] text-navy-400 mt-1.5">Uploaded by {doc.uploadedByName}</p>
+        {uploadedByName && (
+          <p className="text-[11px] text-navy-400 mt-1.5">Uploaded by {uploadedByName}</p>
         )}
       </div>
 
@@ -441,7 +452,7 @@ export function DocumentsTab({ projectId, userRole }: DocumentsTabProps) {
       const res = await fetch(`/api/pmt/projects/${projectId}/documents?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
-        setDocs(json.data ?? []);
+        setDocs(json.data ?? json.documents ?? []);
         setGrouped(json.grouped ?? {});
       }
     } finally {
@@ -458,12 +469,12 @@ export function DocumentsTab({ projectId, userRole }: DocumentsTabProps) {
   };
 
   const visibleDocs = filterAccess === "all" ? docs
-    : docs.filter((d: any) => d.accessLevel === filterAccess);
+    : docs.filter((d: any) => (d.accessLevel || d.access_level) === filterAccess);
 
   const visibleGrouped: Record<string, any[]> = {};
   if (filterType === "all") {
     for (const [type, items] of Object.entries(grouped)) {
-      const filtered = filterAccess === "all" ? items : items.filter((d: any) => d.accessLevel === filterAccess);
+      const filtered = filterAccess === "all" ? items : items.filter((d: any) => (d.accessLevel || d.access_level) === filterAccess);
       if (filtered.length > 0) visibleGrouped[type] = filtered;
     }
   }
