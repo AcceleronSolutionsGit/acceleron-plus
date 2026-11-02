@@ -2,8 +2,8 @@
 
 import { withBase } from "@/lib/base-path";
 import React, { useState, useRef, useCallback } from "react";
-import type { ProjectDocument, DocumentType, DocumentCategory, DocumentAccessLevel } from "@/lib/types";
-import { formatDate, formatStatus } from "@/lib/utils";
+import type { DocumentType, DocumentCategory, DocumentAccessLevel } from "@/lib/types";
+import { formatDate } from "@/lib/utils";
 import { Combobox } from "@/components/ui/Combobox";
 
 // ─── Constants ─────────────────────────────────────────────────────

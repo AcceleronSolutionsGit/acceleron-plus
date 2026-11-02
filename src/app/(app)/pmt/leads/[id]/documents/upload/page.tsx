@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function UploadLeadDocumentPage({ params }: { params: Promise<{ id: string }> }) {

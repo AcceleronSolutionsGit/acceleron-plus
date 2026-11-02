@@ -177,7 +177,7 @@ export async function POST(
   const matchedAccess = accessParts.find((p) => validAccess.includes(p)) || "team";
   const accessLevel = matchedAccess;
 
-  let effectiveMime = file ? resolveMimeType(file.name, file.type) : null;
+  const effectiveMime = file ? resolveMimeType(file.name, file.type) : null;
   if (file) {
     if (file.size > MAX_FILE_SIZE_BYTES) {
       errors.push({ field: "file", message: `File too large. Max is ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB` });

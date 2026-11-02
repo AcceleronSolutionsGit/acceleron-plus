@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { itsmDb, identityDb } from "@/lib/db";
 import { calculateSlaDueDate, autoAssignTicket } from "@/lib/itsm-engine";
-import crypto from "crypto";
 
 import { getTickets } from "@/lib/api";
 import { notifyAsync, events } from "@/lib/notifications";
