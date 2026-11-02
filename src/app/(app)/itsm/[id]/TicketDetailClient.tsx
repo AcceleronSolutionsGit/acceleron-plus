@@ -16,6 +16,7 @@ import {
 import { SlaCountdown } from "./SlaCountdown";
 import { LogTimeWidget } from "./LogTimeWidget";
 import { Modal } from "@/components/ui/Modal";
+import { withBase } from "@/lib/base-path";
 
 interface Props {
   ticket: Ticket;
@@ -989,9 +990,9 @@ function AttachmentsPanel({ ticket }: { ticket: Ticket }) {
           // Portal-uploaded files: serve via /api/portal/files/[id]
           // Direct-uploaded files: serve via /api/itsm/tickets/[id]/attachments/[filename]
           const downloadUrl = att.portalServeId
-            ? `/api/portal/files/${att.portalServeId}`
+            ? withBase(`/api/portal/files/${att.portalServeId}`)
             : att.storedFileName
-            ? `/api/itsm/tickets/${ticket.id}/attachments/${encodeURIComponent(att.storedFileName)}`
+            ? withBase(`/api/itsm/tickets/${ticket.id}/attachments/${encodeURIComponent(att.storedFileName)}`)
             : att.data
             ? att.data
             : null;

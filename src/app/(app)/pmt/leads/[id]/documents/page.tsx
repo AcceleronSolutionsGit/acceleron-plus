@@ -4,6 +4,7 @@ import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatISODate } from "@/lib/dates";
+import { withBase } from "@/lib/base-path";
 
 export default function LeadDocumentsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -131,7 +132,7 @@ export default function LeadDocumentsPage({ params }: { params: Promise<{ id: st
                   </p>
                 </div>
                 <a
-                  href={`/api/documents/${doc.id}/download`}
+                  href={withBase(`/api/documents/${doc.id}/download`)}
                   download
                   className="px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-semibold transition-colors text-center whitespace-nowrap"
                 >

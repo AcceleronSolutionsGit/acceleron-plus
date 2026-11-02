@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ColorBadge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils";
+import { withBase } from "@/lib/base-path";
 
 interface Props {
   isScopeOpen: boolean;
@@ -155,7 +156,7 @@ export function ScopeAndSolutionModals({
                     </p>
                   </div>
                   <a
-                    href={`/api/documents/${doc.id}/download`}
+                    href={withBase(`/api/documents/${doc.id}/download`)}
                     download
                     className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
                   >

@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
-import { saveDocument, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, formatFileSize } from "@/lib/document-storage";
+import { saveDocument, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, formatFileSize, resolveMimeType } from "@/lib/document-storage";
 
 export const runtime = "nodejs";
 
@@ -173,9 +173,10 @@ export async function POST(
       { status: 400 }
     );
   }
-  if (!ALLOWED_MIME_TYPES[file.type]) {
+  const effectiveMime = resolveMimeType(file.name, file.type);
+  if (!effectiveMime || !ALLOWED_MIME_TYPES[effectiveMime]) {
     return NextResponse.json(
-      { success: false, error: "INVALID_FILE_TYPE", message: `File type '${file.type}' is not supported.` },
+      { success: false, error: "INVALID_FILE_TYPE", message: `File type '${file.type || "unknown"}' is not supported.` },
       { status: 400 }
     );
   }
@@ -187,13 +188,14 @@ export async function POST(
     savedFile = await saveDocument(
       lead.id as string,
       file.name,
-      file.type,
+      effectiveMime,
       Buffer.from(arrayBuffer)
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[leads.documents.upload] Failed to save file:", err);
     return NextResponse.json(
-      { success: false, error: "UPLOAD_FAILED", message: err.message },
+      { success: false, error: "UPLOAD_FAILED", message },
       { status: 500 }
     );
   }

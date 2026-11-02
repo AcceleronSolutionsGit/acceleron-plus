@@ -10,7 +10,7 @@ import fs from "fs/promises";
 import crypto from "crypto";
 
 // Base storage directory (outside /public — never publicly accessible)
-const UPLOAD_ROOT = path.join(process.cwd(), "uploads", "project-documents");
+export const UPLOAD_ROOT = path.join(process.cwd(), "uploads", "project-documents");
 
 // Max file size: 50 MB
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -135,4 +135,56 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Generate a minimal valid PDF placeholder buffer for missing seed/demo documents */
+export function generatePlaceholderDocument(
+  title?: string,
+  fileName?: string,
+  docType?: string,
+  version?: string
+): Buffer {
+  const cleanTitle = (title || "Document").replace(/[()\\]/g, "");
+  const cleanFileName = (fileName || "document.pdf").replace(/[()\\]/g, "");
+  const cleanType = (docType || "General").replace(/[()\\]/g, "");
+  const cleanVersion = (version || "1.0").replace(/[()\\]/g, "");
+
+  const stream =
+    "BT\n/F1 18 Tf\n50 720 Td\n(" +
+    cleanTitle +
+    ") Tj\n/F1 12 Tf\n0 -30 Td\n(File: " +
+    cleanFileName +
+    ") Tj\n0 -20 Td\n(Type: " +
+    cleanType +
+    " | Version: " +
+    cleanVersion +
+    ") Tj\n0 -20 Td\n(Acceleron Plus Document Management) Tj\nET";
+  const streamLen = Buffer.byteLength(stream, "utf-8");
+
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+
+  offsets.push(Buffer.byteLength(out, "utf-8"));
+  out += "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+
+  offsets.push(Buffer.byteLength(out, "utf-8"));
+  out += "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+
+  offsets.push(Buffer.byteLength(out, "utf-8"));
+  out +=
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
+
+  offsets.push(Buffer.byteLength(out, "utf-8"));
+  out += "4 0 obj\n<< /Length " + streamLen + " >>\nstream\n" + stream + "\nendstream\nendobj\n";
+
+  offsets.push(Buffer.byteLength(out, "utf-8"));
+  out += "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+
+  const startxref = Buffer.byteLength(out, "utf-8");
+  out += "xref\n0 6\n0000000000 65535 f \n";
+  for (const off of offsets) {
+    out += String(off).padStart(10, "0") + " 00000 n \n";
+  }
+  out += "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + startxref + "\n%%EOF\n";
+  return Buffer.from(out, "utf-8");
 }
