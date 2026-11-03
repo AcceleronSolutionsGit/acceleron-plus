@@ -12,10 +12,15 @@ function isAuthorized(req: Request): boolean {
   if (!cronSecret && !sweepToken) return true;
 
   const authHeader = req.headers.get("authorization");
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
-
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
   const headerSweepToken = req.headers.get("x-sweep-token");
-  if (sweepToken && headerSweepToken === sweepToken) return true;
+
+  if (cronSecret && (bearerToken === cronSecret || headerSweepToken === cronSecret)) {
+    return true;
+  }
+  if (sweepToken && (bearerToken === sweepToken || headerSweepToken === sweepToken)) {
+    return true;
+  }
 
   return false;
 }

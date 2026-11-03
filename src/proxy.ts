@@ -25,6 +25,8 @@ const PUBLIC_PATHS = [
   "/api/notifications/sweep",
   // Darwinbox auto-sync scheduler — same shared token, checked in the handler.
   "/api/integrations/darwinbox/autosync",
+  // Timesheet reminder scheduler — authenticated in the handler via CRON_SECRET / x-sweep-token.
+  "/api/cron/timesheet-reminders",
 ];
 
 /** Path prefixes only an admin may open. */
