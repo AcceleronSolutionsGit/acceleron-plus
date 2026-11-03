@@ -88,6 +88,7 @@ if $MIGRATE; then
     migrate-sprints
     migrate-ticket-attachments
     migrate-user-roles-table
+    migrate-additional-cost-date
   )
   for m in "${MIGRATIONS[@]}"; do
     echo "  → $m"
