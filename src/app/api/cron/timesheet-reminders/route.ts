@@ -4,6 +4,10 @@ import { sendMail } from "@/lib/mailer";
 
 export const runtime = "nodejs";
 
+const isUUID = (str: unknown): str is string =>
+  typeof str === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+
 function isAuthorized(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
   const sweepToken = process.env.NOTIFICATION_SWEEP_TOKEN;
@@ -48,13 +52,15 @@ async function handleTimesheetReminders(req: Request) {
       year: "numeric",
     }).format(now);
 
-    // 2. Find all users allocated to active / non-closed projects
+    // 2. Find all active allocations on active projects
     const activeAllocations = await projectDb("project_team_members")
       .join("projects", "project_team_members.project_id", "projects.id")
       .where("project_team_members.is_active", true)
       .whereNotIn("projects.status", ["closed", "cancelled", "scrapped"])
       .select(
         "project_team_members.user_id",
+        "project_team_members.employee_id",
+        "project_team_members.user_name",
         "projects.code as project_code",
         "projects.name as project_name"
       );
@@ -63,37 +69,140 @@ async function handleTimesheetReminders(req: Request) {
       return NextResponse.json({ success: true, message: "No active project allocations found.", count: 0 });
     }
 
-    // Map allocated projects per user
-    const userProjectsMap: Record<string, Array<{ code: string; name: string }>> = {};
+    // Collect IDs separating valid UUIDs from Employee IDs (to prevent PostgreSQL invalid uuid syntax error)
+    const uuidList: string[] = [];
+    const empIdList: string[] = [];
+
     for (const alloc of activeAllocations) {
-      if (!userProjectsMap[alloc.user_id]) {
-        userProjectsMap[alloc.user_id] = [];
+      if (alloc.user_id) {
+        if (isUUID(alloc.user_id)) uuidList.push(alloc.user_id);
+        else empIdList.push(String(alloc.user_id).trim());
       }
-      if (!userProjectsMap[alloc.user_id].some((p) => p.code === alloc.project_code)) {
-        userProjectsMap[alloc.user_id].push({
+      if (alloc.employee_id) {
+        if (isUUID(alloc.employee_id)) uuidList.push(alloc.employee_id);
+        else empIdList.push(String(alloc.employee_id).trim());
+      }
+    }
+
+    const distinctUuids = [...new Set(uuidList)];
+    const distinctEmpIds = [...new Set(empIdList)];
+
+    // Map each identifier (UUID or employee ID) to their user profile
+    const userMap = new Map<string, { email: string; fullName: string; darwinboxRef?: string | null }>();
+
+    if (distinctUuids.length > 0) {
+      const usersById = await identityDb("users")
+        .whereIn("id", distinctUuids)
+        .select("id", "email", "full_name", "darwinbox_ref");
+
+      for (const u of usersById) {
+        const email = u.email ? u.email.toLowerCase().trim() : "";
+        if (email) {
+          const info = { email, fullName: u.full_name || "Team Member", darwinboxRef: u.darwinbox_ref };
+          userMap.set(u.id, info);
+          if (u.darwinbox_ref) userMap.set(String(u.darwinbox_ref).trim(), info);
+        }
+      }
+    }
+
+    if (distinctEmpIds.length > 0) {
+      // 1. Look up by darwinbox_ref in users
+      const usersByRef = await identityDb("users")
+        .whereIn("darwinbox_ref", distinctEmpIds)
+        .select("id", "email", "full_name", "darwinbox_ref");
+
+      for (const u of usersByRef) {
+        const email = u.email ? u.email.toLowerCase().trim() : "";
+        if (email) {
+          const info = { email, fullName: u.full_name || "Team Member", darwinboxRef: u.darwinbox_ref };
+          userMap.set(u.id, info);
+          if (u.darwinbox_ref) userMap.set(String(u.darwinbox_ref).trim(), info);
+        }
+      }
+
+      // 2. Look up remaining employee IDs in employee_master
+      const remainingEmpIds = distinctEmpIds.filter((id) => !userMap.has(id));
+      if (remainingEmpIds.length > 0) {
+        const emps = await identityDb("employee_master")
+          .whereIn("employee_id", remainingEmpIds)
+          .select("employee_id", "company_email_id", "full_name");
+
+        for (const emp of emps) {
+          const email = emp.company_email_id ? emp.company_email_id.toLowerCase().trim() : "";
+          if (email) {
+            userMap.set(String(emp.employee_id).trim(), {
+              email,
+              fullName: emp.full_name || "Team Member",
+              darwinboxRef: emp.employee_id,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Fetch today's timesheets for all possible identifiers
+    const allIdentifiers = [...new Set([...distinctUuids, ...distinctEmpIds])];
+    const todayTimesheets = await projectDb("project_timesheets")
+      .where("log_date", todayIST)
+      .whereIn("user_id", allIdentifiers)
+      .select("user_id", "hours_logged");
+
+    const hoursByIdentifier: Record<string, number> = {};
+    for (const ts of todayTimesheets) {
+      hoursByIdentifier[ts.user_id] = (hoursByIdentifier[ts.user_id] || 0) + Number(ts.hours_logged || 0);
+    }
+
+    // 4. Group allocations and total logged hours by recipient EMAIL (consolidating duplicates)
+    interface RecipientTarget {
+      email: string;
+      fullName: string;
+      projects: Array<{ code: string; name: string }>;
+      totalHoursToday: number;
+    }
+
+    const recipientMap = new Map<string, RecipientTarget>();
+
+    for (const alloc of activeAllocations) {
+      const uKey = alloc.user_id ? String(alloc.user_id).trim() : null;
+      const empKey = alloc.employee_id ? String(alloc.employee_id).trim() : null;
+
+      const profile = (uKey ? userMap.get(uKey) : undefined) || (empKey ? userMap.get(empKey) : undefined);
+      const email = profile?.email;
+      if (!email) continue; // cannot email without a destination address
+
+      const fullName = profile?.fullName || alloc.user_name || "Team Member";
+
+      if (!recipientMap.has(email)) {
+        recipientMap.set(email, {
+          email,
+          fullName,
+          projects: [],
+          totalHoursToday: 0,
+        });
+      }
+
+      const target = recipientMap.get(email)!;
+
+      // Add project if not already in list
+      if (!target.projects.some((p) => p.code === alloc.project_code)) {
+        target.projects.push({
           code: alloc.project_code || "—",
           name: alloc.project_name || "Untitled Project",
         });
       }
+
+      // Sum hours logged by any of the user's identifiers
+      const hoursFromU = uKey ? hoursByIdentifier[uKey] || 0 : 0;
+      const hoursFromEmp = empKey ? hoursByIdentifier[empKey] || 0 : 0;
+      target.totalHoursToday = Math.max(target.totalHoursToday, hoursFromU, hoursFromEmp);
     }
 
-    const allocatedUserIds = Object.keys(userProjectsMap);
+    // 5. Filter for individuals who have logged < 1 hour today
+    const missingRecipients = Array.from(recipientMap.values()).filter(
+      (target) => target.totalHoursToday < 1
+    );
 
-    // 3. Fetch today's timesheets for those users
-    const todayTimesheets = await projectDb("project_timesheets")
-      .where("log_date", todayIST)
-      .whereIn("user_id", allocatedUserIds)
-      .select("user_id", "hours_logged");
-
-    const hoursPerUser = todayTimesheets.reduce((acc, ts) => {
-      acc[ts.user_id] = (acc[ts.user_id] || 0) + Number(ts.hours_logged || 0);
-      return acc;
-    }, {} as Record<string, number>);
-
-    // 4. Users who haven't logged today (less than 1 hour logged)
-    const missingUserIds = allocatedUserIds.filter((uid) => (hoursPerUser[uid] || 0) < 1);
-
-    if (missingUserIds.length === 0) {
+    if (missingRecipients.length === 0) {
       return NextResponse.json({
         success: true,
         message: "All allocated members have logged their timesheets for today.",
@@ -102,32 +211,24 @@ async function handleTimesheetReminders(req: Request) {
       });
     }
 
-    // 5. Fetch user profiles
-    const usersToRemind = await identityDb("users")
-      .whereIn("id", missingUserIds)
-      .select("id", "email", "full_name");
-
     const rawBase = (process.env.NEXT_PUBLIC_APP_URL || "https://apps.acceleronsolutions.io").replace(/\/+$/, "");
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
     const baseUrl = basePath && !rawBase.endsWith(basePath) ? `${rawBase}${basePath}` : rawBase;
     const timesheetUrl = `${baseUrl}/my-timesheet`;
 
     let emailsSent = 0;
-    const recipients: string[] = [];
+    const dispatchedRecipients: string[] = [];
 
-    // 6. Send notification email to each individual
-    for (const user of usersToRemind) {
-      if (!user.email) continue;
-
-      const userProjects = userProjectsMap[user.id] || [];
-      const projectItemsHtml = userProjects
+    // 6. Send reminder email to each individual
+    for (const target of missingRecipients) {
+      const projectItemsHtml = target.projects
         .map(
           (p) =>
             `<li style="margin-bottom: 6px;"><strong>${p.code}:</strong> ${p.name}</li>`
         )
         .join("");
 
-      const projectItemsText = userProjects
+      const projectItemsText = target.projects
         .map((p) => `• [${p.code}] ${p.name}`)
         .join("\n");
 
@@ -137,7 +238,7 @@ async function handleTimesheetReminders(req: Request) {
             <h2 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 700;">Acceleron Plus &bull; Timesheet Reminder</h2>
           </div>
           <div style="padding: 28px; color: #1e293b;">
-            <p style="font-size: 16px; margin-top: 0;">Hi <strong>${user.full_name || "there"}</strong>,</p>
+            <p style="font-size: 16px; margin-top: 0;">Hi <strong>${target.fullName}</strong>,</p>
             <p style="font-size: 15px; line-height: 1.6; color: #334155;">
               This is a reminder to submit your timesheet for today (<strong>${formattedDate}</strong>).
             </p>
@@ -163,7 +264,7 @@ async function handleTimesheetReminders(req: Request) {
             </div>
 
             <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-bottom: 0;">
-              Link: <a href="${timesheetUrl}" style="color: #2563eb; text-decoration: underline;">${timesheetUrl}</a>
+              Direct Link: <a href="${timesheetUrl}" style="color: #2563eb; text-decoration: underline;">${timesheetUrl}</a>
             </p>
           </div>
           <div style="padding: 16px 28px; background-color: #f1f5f9; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #64748b;">
@@ -172,10 +273,10 @@ async function handleTimesheetReminders(req: Request) {
         </div>
       `;
 
-      const textBody = `Hi ${user.full_name || "there"},\n\nThis is a reminder to log your timesheet for today (${formattedDate}).\n\nYour Allocated Projects:\n${projectItemsText}\n\nPlease fill your timesheet here:\n${timesheetUrl}\n\nAcceleron Plus Automated System`;
+      const textBody = `Hi ${target.fullName},\n\nThis is a reminder to log your timesheet for today (${formattedDate}).\n\nYour Allocated Projects:\n${projectItemsText}\n\nPlease fill your timesheet here:\n${timesheetUrl}\n\nAcceleron Plus Automated System`;
 
       const result = await sendMail({
-        to: user.email,
+        to: target.email,
         subject: `Reminder: Please log your timesheet for today (${todayIST})`,
         text: textBody,
         html: htmlTemplate,
@@ -183,19 +284,19 @@ async function handleTimesheetReminders(req: Request) {
 
       if (result.sent) {
         emailsSent++;
-        recipients.push(user.email);
+        dispatchedRecipients.push(target.email);
       } else {
-        console.warn(`[timesheet-reminder] Failed to send email to ${user.email}: ${result.skipped || result.error}`);
+        console.warn(`[timesheet-reminder] Failed to send email to ${target.email}: ${result.skipped || result.error}`);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Reminder sent to ${emailsSent} users out of ${usersToRemind.length} missing timesheets for ${todayIST}.`,
+      message: `Reminder sent to ${emailsSent} users out of ${missingRecipients.length} missing timesheets for ${todayIST}.`,
       date: todayIST,
-      missingCount: usersToRemind.length,
+      missingCount: missingRecipients.length,
       emailsSent,
-      recipients,
+      recipients: dispatchedRecipients,
     });
   } catch (err: any) {
     console.error("[timesheet-reminders.cron] Error:", err);
