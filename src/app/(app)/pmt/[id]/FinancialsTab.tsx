@@ -19,6 +19,7 @@ interface AdditionalCostItem {
     | "device_software"
     | "subcontractor_po"
     | "provisional"
+    | "overtime_allowance"
     | "other"
     | "itsm_support";
   description: string;
@@ -26,6 +27,7 @@ interface AdditionalCostItem {
   actualAmountInr: number;
   varianceInr: number;
   status: "planned" | "incurred" | "approved" | "settled";
+  costDate?: string | null;
   notes?: string;
   poNumber?: string | null;
   poValueInr?: number | null;
@@ -44,6 +46,7 @@ const CATEGORY_META: Record<string, { label: string; icon: string; color: string
   device_software: { label: "Device / Software (Non-PO)", icon: "📱", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   subcontractor_po: { label: "Subcontractor / Purchase PO", icon: "📜", color: "bg-violet-50 text-violet-700 border-violet-200" },
   provisional: { label: "Provisional / Contingency", icon: "⏳", color: "bg-rose-50 text-rose-700 border-rose-200" },
+  overtime_allowance: { label: "Overtime/Hardship Allowance", icon: "🕒", color: "bg-orange-50 text-orange-700 border-orange-200" },
   itsm_support: { label: "ITSM Ops Support", icon: "🎫", color: "bg-teal-50 text-teal-700 border-teal-200" },
   other: { label: "Other Expenses", icon: "📦", color: "bg-neutral-50 text-neutral-700 border-neutral-200" },
 };
@@ -133,6 +136,7 @@ export function FinancialsTab({
   const [costForm, setCostForm] = useState({
     category: "software",
     description: "",
+    costDate: "",
     plannedAmountInr: "",
     actualAmountInr: "",
     status: "planned",
@@ -199,6 +203,7 @@ export function FinancialsTab({
     setCostForm({
       category: "software",
       description: "",
+      costDate: new Date().toISOString().slice(0, 10),
       plannedAmountInr: "",
       actualAmountInr: "0",
       status: "planned",
@@ -219,6 +224,7 @@ export function FinancialsTab({
     setCostForm({
       category: item.category,
       description: item.description,
+      costDate: item.costDate || "",
       plannedAmountInr: String(item.plannedAmountInr || 0),
       actualAmountInr: String(item.actualAmountInr || 0),
       status: item.status,
@@ -255,6 +261,7 @@ export function FinancialsTab({
       const payload = {
         category: costForm.category,
         description: costForm.description.trim(),
+        costDate: costForm.costDate || null,
         plannedAmountInr: plannedVal,
         actualAmountInr: actualVal,
         status: costForm.status,
@@ -982,6 +989,7 @@ export function FinancialsTab({
               <tr>
                 <th className="px-5 py-3">Category</th>
                 <th className="px-5 py-3">Description</th>
+                <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3 text-right">Planned (INR)</th>
                 <th className="px-5 py-3 text-right">Actual (INR)</th>
@@ -1021,6 +1029,9 @@ export function FinancialsTab({
                         )}
                       </div>
                       {item.notes && <span className="text-[10px] text-navy-400 block mt-0.5">{item.notes}</span>}
+                    </td>
+                    <td className="px-5 py-3 text-navy-600 whitespace-nowrap text-[11px]">
+                      {item.costDate || "—"}
                     </td>
                     <td className="px-5 py-3">
                       <span className="inline-block px-2 py-0.5 rounded capitalize text-[10px] font-bold bg-neutral-100 text-neutral-700">
@@ -1250,7 +1261,7 @@ export function FinancialsTab({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select
               label="Expense Category"
               value={costForm.category}
@@ -1259,6 +1270,7 @@ export function FinancialsTab({
               <option value="subcontractor_po">📜 Subcontractor / Purchase PO</option>
               <option value="device_software">📱 Device / Software (Non-PO)</option>
               <option value="provisional">⏳ Provisional Cost (No Reference / Contingency)</option>
+              <option value="overtime_allowance">🕒 Overtime/Hardship Allowance</option>
               <option value="software">💻 Software & Tooling</option>
               <option value="cloud_infra">☁️ Cloud & Infrastructure</option>
               <option value="travel">✈️ Travel & Logistics</option>
@@ -1268,15 +1280,20 @@ export function FinancialsTab({
             </Select>
 
             <Select
-              label="Payment / Approval Status"
+              label="Payment / Incurred Status"
               value={costForm.status}
               onChange={(e) => setCostForm((f) => ({ ...f, status: e.target.value }))}
             >
               <option value="planned">Planned (Budgeted)</option>
               <option value="incurred">Incurred (Billed)</option>
-              <option value="approved">Approved</option>
-              <option value="settled">Settled / Paid</option>
             </Select>
+
+            <Input
+              label="Expense Date"
+              type="date"
+              value={costForm.costDate}
+              onChange={(e) => setCostForm((f) => ({ ...f, costDate: e.target.value }))}
+            />
           </div>
 
           {costForm.category === "device_software" && (

@@ -84,6 +84,7 @@ export function AdminTimesheetsClient() {
   // Rejection modal
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectTargetIds, setRejectTargetIds] = useState<string[]>([]);
 
   const load = useCallback(async (page = 1) => {
     setLoading(true);
@@ -118,7 +119,7 @@ export function AdminTimesheetsClient() {
     if (allSelected) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(entries.filter((e) => e.status === "submitted").map((e) => e.id)));
+      setSelected(new Set(entries.filter((e) => e.status === "submitted" || e.status === "pending").map((e) => e.id)));
     }
   };
 
@@ -131,9 +132,11 @@ export function AdminTimesheetsClient() {
     });
   };
 
-  const bulkAction = async (action: "approve" | "reject") => {
-    if (selectedList.length === 0) return;
+  const bulkAction = async (action: "approve" | "reject", targetIds?: string[]) => {
+    const idsToAct = targetIds && targetIds.length > 0 ? targetIds : selectedList;
+    if (idsToAct.length === 0) return;
     if (action === "reject" && !rejectReason.trim()) {
+      setRejectTargetIds(idsToAct);
       setShowRejectModal(true);
       return;
     }
@@ -144,7 +147,7 @@ export function AdminTimesheetsClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ids: selectedList,
+          ids: idsToAct,
           action,
           rejectionReason: action === "reject" ? rejectReason.trim() : undefined,
         }),
@@ -159,6 +162,7 @@ export function AdminTimesheetsClient() {
       setTimeout(() => setHint(""), 4000);
       setShowRejectModal(false);
       setRejectReason("");
+      setRejectTargetIds([]);
       await load();
     } finally {
       setActionBusy(false);
@@ -220,7 +224,7 @@ export function AdminTimesheetsClient() {
     }
   };
 
-  const submittedInView = entries.filter((e) => e.status === "submitted");
+  const submittedInView = entries.filter((e) => e.status === "submitted" || e.status === "pending");
 
   return (
     <div className="space-y-5">
@@ -320,7 +324,10 @@ export function AdminTimesheetsClient() {
               Approve all
             </button>
             <button
-              onClick={() => setShowRejectModal(true)}
+              onClick={() => {
+                setRejectTargetIds(selectedList);
+                setShowRejectModal(true);
+              }}
               disabled={actionBusy}
               className="px-3.5 py-1.5 text-xs font-semibold bg-red-500 hover:bg-red-600 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
             >
@@ -341,7 +348,9 @@ export function AdminTimesheetsClient() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/40 backdrop-blur-sm">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50/60">
-              <h2 className="text-sm font-semibold text-navy-900">Reject {selectedList.length} {selectedList.length === 1 ? "entry" : "entries"}</h2>
+              <h2 className="text-sm font-semibold text-navy-900">
+                Reject {rejectTargetIds.length} {rejectTargetIds.length === 1 ? "entry" : "entries"}
+              </h2>
               <p className="text-xs text-navy-500 mt-0.5">A reason is required so the employee knows what to fix.</p>
             </div>
             <div className="px-6 py-5">
@@ -356,13 +365,17 @@ export function AdminTimesheetsClient() {
             </div>
             <div className="px-6 py-4 border-t border-neutral-100 flex justify-end gap-2.5">
               <button
-                onClick={() => { setShowRejectModal(false); setRejectReason(""); }}
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason("");
+                  setRejectTargetIds([]);
+                }}
                 className="px-4 py-2 text-xs font-semibold text-navy-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
-                onClick={() => bulkAction("reject")}
+                onClick={() => bulkAction("reject", rejectTargetIds)}
                 disabled={!rejectReason.trim() || actionBusy}
                 className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               >
@@ -423,7 +436,7 @@ export function AdminTimesheetsClient() {
               <tbody className="divide-y divide-neutral-100">
                 {entries.map((entry) => {
                   const isSelected = selected.has(entry.id);
-                  const canAct = entry.status === "submitted";
+                  const canAct = entry.status === "submitted" || entry.status === "pending";
                   return (
                     <tr
                       key={entry.id}
@@ -476,10 +489,7 @@ export function AdminTimesheetsClient() {
                         {canAct && (
                           <div className="flex justify-center gap-1.5">
                             <button
-                              onClick={async () => {
-                                setSelected(new Set([entry.id]));
-                                await bulkAction("approve");
-                              }}
+                              onClick={() => void bulkAction("approve", [entry.id])}
                               disabled={actionBusy}
                               title="Approve"
                               className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-40 cursor-pointer"
@@ -489,7 +499,10 @@ export function AdminTimesheetsClient() {
                               </svg>
                             </button>
                             <button
-                              onClick={() => { setSelected(new Set([entry.id])); setShowRejectModal(true); }}
+                              onClick={() => {
+                                setRejectTargetIds([entry.id]);
+                                setShowRejectModal(true);
+                              }}
                               disabled={actionBusy}
                               title="Reject"
                               className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 cursor-pointer"

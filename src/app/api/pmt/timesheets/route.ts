@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
+import { requireSession, projectsManagedBy } from "@/lib/auth";
 import { readJson, serverError } from "@/lib/route-helpers";
 import { toDateInput } from "@/lib/dates";
 import { directReportUserIds } from "@/lib/reportees";
@@ -30,13 +30,20 @@ export async function GET(req: Request) {
     const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10)));
     const offset = (page - 1) * limit;
 
-    // ── Find reportees ─────────────────────────────────────────────
-    // Admins see all; managers see only their direct reports.
+    // ── Find reportees & managed projects ─────────────────────────────
+    // Admins see all; managers/PMs see direct reports OR projects they manage.
     let reporteeUserIds: string[] | null = null;
+    let managedProjectIds: string[] | null = null;
 
     if (!isAdmin) {
-      reporteeUserIds = await directReportUserIds(userId);
-      if (reporteeUserIds.length === 0) {
+      const [reportees, managedProjects] = await Promise.all([
+        directReportUserIds(userId),
+        projectsManagedBy(userId),
+      ]);
+      reporteeUserIds = reportees;
+      managedProjectIds = Array.from(managedProjects);
+
+      if (reporteeUserIds.length === 0 && managedProjectIds.length === 0) {
         return NextResponse.json({
           success: true,
           entries: [],
@@ -50,7 +57,11 @@ export async function GET(req: Request) {
       .join("projects as p", "p.id", "ts.project_id");
 
     if (statusFilter && statusFilter !== "all") {
-      query = query.where("ts.status", statusFilter);
+      if (statusFilter === "submitted" || statusFilter === "pending") {
+        query = query.whereIn("ts.status", ["submitted", "pending"]);
+      } else {
+        query = query.where("ts.status", statusFilter);
+      }
     }
     if (projectFilter) {
       query = query.where("ts.project_id", projectFilter);
@@ -71,8 +82,21 @@ export async function GET(req: Request) {
         ]);
       }
     }
-    if (reporteeUserIds !== null) {
-      query = query.whereIn("ts.user_id", reporteeUserIds);
+    if (!isAdmin) {
+      query = query.where((q) => {
+        let applied = false;
+        if (reporteeUserIds && reporteeUserIds.length > 0) {
+          q.whereIn("ts.user_id", reporteeUserIds);
+          applied = true;
+        }
+        if (managedProjectIds && managedProjectIds.length > 0) {
+          if (applied) {
+            q.orWhereIn("ts.project_id", managedProjectIds);
+          } else {
+            q.whereIn("ts.project_id", managedProjectIds);
+          }
+        }
+      });
     }
 
     const countRes = await query.clone().count<{ count: string }>("* as count").first();
@@ -170,31 +194,59 @@ export async function POST(req: Request) {
 
     const newStatus = action === "approve" ? "approved" : "rejected";
 
-    // Who may this reviewer act on? This used to update whatever ids it was
-    // sent, so any signed-in user could approve anybody's hours — their own
-    // included. Now: admins act on anyone, managers on their direct reports,
-    // and nobody on their own entries.
-    const reportees = isAdmin ? null : await directReportUserIds(reviewerId);
-    if (reportees !== null && reportees.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "You can only review timesheets from your direct reports." },
-        { status: 403 }
-      );
+    // Who may this reviewer act on?
+    // Admins act on anyone (except own).
+    // Managers act on their direct reports.
+    // Project managers act on projects they manage.
+    let reportees: string[] | null = null;
+    let managedProjects: string[] | null = null;
+
+    if (!isAdmin) {
+      const [rep, mProjects] = await Promise.all([
+        directReportUserIds(reviewerId),
+        projectsManagedBy(reviewerId),
+      ]);
+      reportees = rep;
+      managedProjects = Array.from(mProjects);
+
+      if (reportees.length === 0 && managedProjects.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "You can only review timesheets from your direct reports or projects you manage." },
+          { status: 403 }
+        );
+      }
     }
 
     let scoped = projectDb("project_timesheets")
       .whereIn("id", ids)
-      .where("status", "submitted") // only submitted entries can be reviewed
+      .whereIn("status", ["submitted", "pending"]) // submitted or pending entries can be reviewed
       .whereNot("user_id", reviewerId);
-    if (reportees !== null) scoped = scoped.whereIn("user_id", reportees);
+
+    if (!isAdmin) {
+      scoped = scoped.where((q) => {
+        let applied = false;
+        if (reportees && reportees.length > 0) {
+          q.whereIn("user_id", reportees);
+          applied = true;
+        }
+        if (managedProjects && managedProjects.length > 0) {
+          if (applied) {
+            q.orWhereIn("project_id", managedProjects);
+          } else {
+            q.whereIn("project_id", managedProjects);
+          }
+        }
+      });
+    }
 
     const updated = await scoped.update({
-        status: newStatus,
-        reviewed_by_user_id: reviewerId,
-        reviewed_at: new Date(),
-        rejection_reason: action === "reject" ? rejectionReason : null,
-        updated_at: new Date(),
-      });
+      status: newStatus,
+      reviewed_by_user_id: reviewerId,
+      approved_by_user_id: reviewerId,
+      reviewed_at: new Date(),
+      rejection_reason: action === "reject" ? rejectionReason : null,
+      updated_at: new Date(),
+    });
 
     const skipped = ids.length - Number(updated ?? 0);
     return NextResponse.json({

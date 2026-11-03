@@ -19,12 +19,30 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string, user
   useEffect(() => { fetchTimesheets(); }, [projectId]);
 
   const handleAction = async (id: string, action: "approve" | "reject") => {
-    if (!confirm(`Are you sure you want to ${action} this timesheet?`)) return;
-    const res = await fetch("/api/pmt/timesheets/action", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ timesheetIds: [id], action })
-    });
-    if (res.ok) fetchTimesheets();
+    let rejectionReason: string | undefined = undefined;
+    if (action === "reject") {
+      const reason = prompt("Please provide a reason for rejecting this timesheet:");
+      if (!reason || !reason.trim()) return;
+      rejectionReason = reason.trim();
+    } else {
+      if (!confirm(`Are you sure you want to approve this timesheet entry?`)) return;
+    }
+
+    try {
+      const res = await fetch("/api/pmt/timesheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id], action, rejectionReason })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchTimesheets();
+      } else {
+        alert(data.error || "Failed to update timesheet.");
+      }
+    } catch {
+      alert("Failed to update timesheet.");
+    }
   };
 
   if (loading) return <div className="p-6 animate-pulse bg-navy-50 h-64 rounded-xl" />;
@@ -73,37 +91,47 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string, user
             </tr>
           </thead>
           <tbody className="divide-y divide-navy-500/10">
-            {timesheets.map((t) => (
-              <tr key={t.id} className="hover:bg-navy-50/30">
-                <td className="px-5 py-3 font-medium text-navy-900">{formatDate(t.date_logged).split(',')[0]}</td>
-                <td className="px-5 py-3">{t.user_name}</td>
-                <td className="px-5 py-3 font-bold">{t.hours}</td>
-                <td className="px-5 py-3">
-                  <span className="text-navy-900">{t.task_description}</span>
-                  {t.itsm_ticket_id && (
-                    <span className="block text-[10px] text-blue-600 mt-0.5">Ticket: {t.itsm_ticket_id}</span>
-                  )}
-                </td>
-                <td className="px-5 py-3">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase
-                    ${t.status === 'approved' ? 'bg-green-100 text-green-700' : t.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {t.status}
-                  </span>
-                </td>
-                {canApprove && (
-                  <td className="px-5 py-3 text-right">
-                    {t.status === "pending" ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => handleAction(t.id, "approve")} className="text-xs px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100 font-semibold">Approve</button>
-                        <button onClick={() => handleAction(t.id, "reject")} className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 font-semibold">Reject</button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-navy-400 italic">No actions</span>
+            {timesheets.map((t) => {
+              const dateVal = t.logDate || t.date_logged || t.log_date;
+              const formattedDate = dateVal ? formatDate(dateVal).split(",")[0] : "—";
+              const userVal = t.userName || t.user_name || "—";
+              const hoursVal = t.hoursLogged ?? t.hours ?? 0;
+              const taskVal = t.wbsName || t.task_description || t.notes || "—";
+              const statusVal = t.status || "pending";
+              const canAct = statusVal === "pending" || statusVal === "submitted";
+
+              return (
+                <tr key={t.id} className="hover:bg-navy-50/30">
+                  <td className="px-5 py-3 font-medium text-navy-900">{formattedDate}</td>
+                  <td className="px-5 py-3">{userVal}</td>
+                  <td className="px-5 py-3 font-bold">{hoursVal}h</td>
+                  <td className="px-5 py-3">
+                    <span className="text-navy-900">{taskVal}</span>
+                    {(t.itsmTicketId || t.itsm_ticket_id) && (
+                      <span className="block text-[10px] text-blue-600 mt-0.5">Ticket: {t.itsmTicketId || t.itsm_ticket_id}</span>
                     )}
                   </td>
-                )}
-              </tr>
-            ))}
+                  <td className="px-5 py-3">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase
+                      ${statusVal === 'approved' ? 'bg-green-100 text-green-700' : statusVal === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {statusVal}
+                    </span>
+                  </td>
+                  {canApprove && (
+                    <td className="px-5 py-3 text-right">
+                      {canAct ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => handleAction(t.id, "approve")} className="text-xs px-2.5 py-1 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg font-semibold cursor-pointer transition-colors">Approve</button>
+                          <button onClick={() => handleAction(t.id, "reject")} className="text-xs px-2.5 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg font-semibold cursor-pointer transition-colors">Reject</button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-navy-400 capitalize">{statusVal}</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
             {timesheets.length === 0 && (
               <tr><td colSpan={canApprove ? 6 : 5} className="px-5 py-8 text-center text-navy-500">No timesheets found for this project.</td></tr>
             )}

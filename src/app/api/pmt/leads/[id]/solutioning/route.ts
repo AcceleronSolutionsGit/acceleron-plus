@@ -30,7 +30,9 @@ async function getEnrichedSession(sessionId: string, isPMOrAdmin: boolean) {
     })),
     additionalCosts: additionalCosts.map((r: any) => ({
       id: r.id, sessionId: r.session_id, description: r.description,
-      category: r.category, amountInr: isPMOrAdmin ? parseFloat(r.amount_inr) : 0, sequence: r.sequence,
+      category: r.category, amountInr: isPMOrAdmin ? parseFloat(r.amount_inr) : 0,
+      costDate: r.cost_date ? String(r.cost_date).slice(0, 10) : null,
+      sequence: r.sequence,
     })),
   };
 }
@@ -151,6 +153,7 @@ async function updateExistingSession(leadId: string, sessionId: string, body: an
           description: c.description || "Expense",
           category: c.category ?? "other",
           amount_inr: Number(c.amountInr) || 0,
+          cost_date: c.costDate ? String(c.costDate).slice(0, 10) : null,
           sequence: idx + 1,
         }))
       );
@@ -287,6 +290,7 @@ export async function POST(
         description: c.description || "Expense",
         category: c.category ?? "other",
         amount_inr: Number(c.amountInr) || 0,
+        cost_date: c.costDate ? String(c.costDate).slice(0, 10) : null,
         sequence: idx + 1,
       }))
     );

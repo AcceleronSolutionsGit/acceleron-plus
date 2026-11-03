@@ -105,5 +105,24 @@ module.exports = {
       out_file: path.join(__dirname, "logs/darwinbox-sync.out.log"),
       error_file: path.join(__dirname, "logs/darwinbox-sync.err.log"),
     },
+
+    {
+      // Daily timesheet reminders to all active project members who haven't logged today.
+      // Runs daily at 5:30 PM (17:30). Cron uses the server's timezone.
+      name: "acceleron-timesheet-reminder",
+      cwd: __dirname,
+      script: path.join(__dirname, "scripts/timesheet-reminder-cron.js"),
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: false,
+      cron_restart: "30 17 * * *", // 17:30 (5:30 PM) every day
+      env: {
+        NODE_ENV: "production",
+        REMINDER_URL: `http://127.0.0.1:${PORT}${BASE_PATH}/api/cron/timesheet-reminders`,
+      },
+      time: true,
+      out_file: path.join(__dirname, "logs/timesheet-reminder.out.log"),
+      error_file: path.join(__dirname, "logs/timesheet-reminder.err.log"),
+    },
   ],
 };

@@ -157,7 +157,7 @@ export function SolutioningClient({
     },
   ]);
   const [additionalCosts, setAdditionalCosts] = useState<
-    { id: string; description: string; category: string; amountInr: number }[]
+    { id: string; description: string; category: string; amountInr: number; costDate?: string }[]
   >([]);
   const [overheadMargin, setOverheadMargin] = useState(0);
   const [actualMargin, setActualMargin] = useState(0);
@@ -401,7 +401,7 @@ export function SolutioningClient({
   const handleAddCost = () => {
     setAdditionalCosts([
       ...additionalCosts,
-      { id: crypto.randomUUID(), description: "", category: "software", amountInr: 0 },
+      { id: crypto.randomUUID(), description: "", category: "software", amountInr: 0, costDate: new Date().toISOString().slice(0, 10) },
     ]);
   };
   const handleRemoveCost = (id: string) => setAdditionalCosts(additionalCosts.filter((c) => c.id !== id));
@@ -471,6 +471,7 @@ export function SolutioningClient({
           description: c.description || "",
           category: c.category || "other",
           amountInr: Number(c.amountInr) || 0,
+          costDate: c.costDate || (c.cost_date ? String(c.cost_date).slice(0, 10) : ""),
         }))
       );
     } else {
@@ -1341,11 +1342,12 @@ export function SolutioningClient({
                 {additionalCosts.length === 0 ? (
                   <p className="text-xs text-navy-500 italic">No additional expenses. Click + Add Cost if needed.</p>
                 ) : (
-                  <table className="w-full text-left text-sm max-w-2xl border border-navy-500/10 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm max-w-3xl border border-navy-500/10 rounded-xl overflow-hidden">
                     <thead className="bg-navy-50/50 text-navy-500 font-medium text-xs uppercase">
                       <tr>
-                        <th className="px-3 py-2">Category</th>
-                        <th className="px-3 py-2">Description</th>
+                        <th className="px-3 py-2 w-1/4">Category</th>
+                        <th className="px-3 py-2 w-1/3">Description</th>
+                        <th className="px-3 py-2 w-1/5">Date</th>
                         <th className="px-3 py-2 text-right">Amount (INR)</th>
                         <th></th>
                       </tr>
@@ -1361,11 +1363,12 @@ export function SolutioningClient({
                                 v[idx].category = e.target.value;
                                 setAdditionalCosts(v);
                               }}
-                              className="bg-transparent text-xs"
+                              className="bg-transparent text-xs w-full"
                             >
                               <option value="software">Software / Licensing</option>
                               <option value="travel">Travel & Client Site</option>
                               <option value="hardware">Hardware</option>
+                              <option value="overtime_allowance">Overtime/Hardship Allowance</option>
                               <option value="other">Other</option>
                             </select>
                           </td>
@@ -1379,6 +1382,18 @@ export function SolutioningClient({
                               }}
                               className="w-full bg-transparent focus:outline-none border-b border-transparent focus:border-blue-400 text-xs"
                               placeholder="e.g. Server hosting / licenses"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="date"
+                              value={c.costDate || ""}
+                              onChange={(e) => {
+                                const v = [...additionalCosts];
+                                v[idx].costDate = e.target.value;
+                                setAdditionalCosts(v);
+                              }}
+                              className="w-full bg-transparent focus:outline-none border-b border-transparent focus:border-blue-400 text-xs"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -1731,7 +1746,8 @@ function BreakdownModal({
                   <div key={cost.id} className="flex justify-between text-sm">
                     <span className="text-navy-700">
                       {cost.description}
-                      <span className="text-navy-500 text-xs"> ({cost.category})</span>
+                      <span className="text-navy-500 text-xs"> ({cost.category === "overtime_allowance" ? "Overtime/Hardship Allowance" : cost.category})</span>
+                      {cost.costDate && <span className="text-navy-400 text-xs font-mono ml-2">📅 {cost.costDate}</span>}
                     </span>
                     <span className="font-medium text-navy-900">{formatCurrency(cost.amountInr)}</span>
                   </div>

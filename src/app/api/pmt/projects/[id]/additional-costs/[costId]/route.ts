@@ -57,6 +57,7 @@ export async function PATCH(
     }
     if (body.invoiceDate !== undefined) updateData.invoice_date = body.invoiceDate || null;
     if (body.vendorName !== undefined) updateData.vendor_name = body.vendorName ? String(body.vendorName).trim() : null;
+    if (body.costDate !== undefined) updateData.cost_date = body.costDate ? String(body.costDate).slice(0, 10) : null;
 
     const [updated] = await projectDb("project_additional_costs")
       .where({ id: costId, project_id: projectId })
@@ -76,6 +77,7 @@ export async function PATCH(
         plannedAmountInr: parseFloat(updated.planned_amount_inr || 0),
         actualAmountInr: parseFloat(updated.actual_amount_inr || 0),
         status: updated.status,
+        costDate: updated.cost_date ? String(updated.cost_date).slice(0, 10) : null,
         notes: updated.notes,
         poNumber: updated.po_number || null,
         poValueInr: updated.po_value_inr !== null ? parseFloat(updated.po_value_inr) : null,
