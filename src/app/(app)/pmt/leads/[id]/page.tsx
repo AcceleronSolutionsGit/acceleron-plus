@@ -58,7 +58,7 @@ export default async function LeadSolutioningPage({
     )
     .orderBy("full_name", "asc");
 
-  const canSeeCosts = session?.role === "admin" || session?.userId === leadRow.pm_owner_user_id;
+  const canSeeCosts = session?.role === "admin" || session?.role === "sales" || session?.userId === leadRow.pm_owner_user_id;
   const safeRateBands = canSeeCosts ? rateBands : rateBands.map(rb => ({ ...rb, daily_cost_inr: 0, daily_billable_rate_inr: 0 }));
 
   return (

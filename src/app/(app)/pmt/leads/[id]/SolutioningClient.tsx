@@ -129,6 +129,8 @@ export function SolutioningClient({
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [busyOn, setBusyOn] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
   const [viewing, setViewing] = useState<any | null>(null);
@@ -280,7 +282,9 @@ export function SolutioningClient({
     if (res.ok) {
       const json = await res.json();
       setSessions(json.data || []);
-      setSessionName(`v${(json.data?.length || 0) + 1}.0 Draft`);
+      if (!editingSessionId) {
+        setSessionName(`v${(json.data?.length || 0) + 1}.0 Draft`);
+      }
     }
     setLoading(false);
   };
@@ -402,26 +406,198 @@ export function SolutioningClient({
   };
   const handleRemoveCost = (id: string) => setAdditionalCosts(additionalCosts.filter((c) => c.id !== id));
 
-  const handleSave = async () => {
-    if (!confirm("Save this solutioning draft?")) return;
-    const payload = {
-      sessionName,
-      overheadMarginPercent: overheadMargin,
-      actualMarginPercent: actualMargin,
-      lineItems: lineItems.map((l) => ({ ...l, rateBandId: l.rateBandId || null, allocatedUserId: l.employeeId || null })),
-      additionalCosts: additionalCosts.map((c) => ({ ...c, amountInr: Number(c.amountInr) })),
-    };
+  const handleStartNew = () => {
+    setEditingSessionId(null);
+    setSessionName(`v${(sessions.length || 0) + 1}.0 Draft`);
+    setRiskBuffer(15);
+    setOverheadMargin(0);
+    setActualMargin(0);
+    setLineItems([
+      {
+        id: crypto.randomUUID(),
+        phaseName: "Discovery",
+        taskDescription: "Requirement Gathering & Architecture",
+        rateBandId: rateBands[0]?.id || "",
+        quantityResources: 1,
+        estimatedDays: 5,
+        employeeId: "",
+      },
+    ]);
+    setAdditionalCosts([]);
+    setActionError("");
+    setIsCreating(true);
+    setTimeout(() => {
+      document.getElementById("solutioning-editor-section")?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  };
 
-    const res = await fetch(`/api/pmt/leads/${lead.id}/solutioning`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      setIsCreating(false);
-      loadSessions();
+  const handleStartEdit = (s: any) => {
+    setEditingSessionId(s.id);
+    setSessionName(s.sessionName || "Estimate");
+    setRiskBuffer(Number(s.riskBufferPercent) || 15);
+    setOverheadMargin(Number(s.overheadMarginPercent) || 0);
+    setActualMargin(Number(s.actualMarginPercent) || 0);
+
+    if (s.lineItems && s.lineItems.length > 0) {
+      setLineItems(
+        s.lineItems.map((li: any) => ({
+          id: li.id || crypto.randomUUID(),
+          phaseName: li.phaseName || "",
+          taskDescription: li.taskDescription || "",
+          rateBandId: li.rateBandId || (rateBands[0]?.id || ""),
+          quantityResources: Number(li.quantityResources) || 1,
+          estimatedDays: Number(li.estimatedDays) || 1,
+          employeeId: li.allocatedUserId || "",
+        }))
+      );
     } else {
-      alert("Failed to save solutioning session");
+      setLineItems([
+        {
+          id: crypto.randomUUID(),
+          phaseName: "Discovery",
+          taskDescription: "Requirement Gathering & Architecture",
+          rateBandId: rateBands[0]?.id || "",
+          quantityResources: 1,
+          estimatedDays: 5,
+          employeeId: "",
+        },
+      ]);
+    }
+
+    if (s.additionalCosts && s.additionalCosts.length > 0) {
+      setAdditionalCosts(
+        s.additionalCosts.map((c: any) => ({
+          id: c.id || crypto.randomUUID(),
+          description: c.description || "",
+          category: c.category || "other",
+          amountInr: Number(c.amountInr) || 0,
+        }))
+      );
+    } else {
+      setAdditionalCosts([]);
+    }
+
+    setActionError("");
+    setIsCreating(true);
+    setTimeout(() => {
+      document.getElementById("solutioning-editor-section")?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  };
+
+  const handleCancel = () => {
+    setIsCreating(false);
+    setEditingSessionId(null);
+    setActionError("");
+  };
+
+  const handleSave = async () => {
+    setIsSubmitting(true);
+    setActionError("");
+    try {
+      const payload = {
+        sessionName,
+        overheadMarginPercent: overheadMargin,
+        actualMarginPercent: actualMargin,
+        riskBufferPercent: riskBuffer,
+        lineItems: lineItems.map((l) => ({ ...l, rateBandId: l.rateBandId || null, allocatedUserId: l.employeeId || null })),
+        additionalCosts: additionalCosts.map((c) => ({ ...c, amountInr: Number(c.amountInr) })),
+      };
+
+      const res = await fetch(`/api/pmt/leads/${lead.id}/solutioning`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || "Failed to save solutioning session");
+        return;
+      }
+      setIsCreating(false);
+      setEditingSessionId(null);
+      await loadSessions();
+      await loadLeadDetailsAndDocs();
+      router.refresh();
+    } catch {
+      setActionError("Failed to save solutioning session");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingSessionId) return;
+    setIsSubmitting(true);
+    setActionError("");
+    try {
+      const payload = {
+        sessionId: editingSessionId,
+        sessionName,
+        overheadMarginPercent: overheadMargin,
+        actualMarginPercent: actualMargin,
+        riskBufferPercent: riskBuffer,
+        lineItems: lineItems.map((l) => ({ ...l, rateBandId: l.rateBandId || null, allocatedUserId: l.employeeId || null })),
+        additionalCosts: additionalCosts.map((c) => ({ ...c, amountInr: Number(c.amountInr) })),
+      };
+
+      const res = await fetch(`/api/pmt/leads/${lead.id}/solutioning`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || "Failed to update solutioning session");
+        return;
+      }
+      setIsCreating(false);
+      setEditingSessionId(null);
+      await loadSessions();
+      await loadLeadDetailsAndDocs();
+      router.refresh();
+    } catch {
+      setActionError("Failed to update solutioning session");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveAsNew = async () => {
+    setIsSubmitting(true);
+    setActionError("");
+    try {
+      const newVersionName = sessionName.includes("v")
+        ? sessionName.replace(/v\d+(\.\d+)?/i, `v${(sessions.length || 0) + 1}.0`)
+        : `v${(sessions.length || 0) + 1}.0 - ${sessionName}`;
+
+      const payload = {
+        sessionName: newVersionName,
+        overheadMarginPercent: overheadMargin,
+        actualMarginPercent: actualMargin,
+        riskBufferPercent: riskBuffer,
+        lineItems: lineItems.map((l) => ({ ...l, rateBandId: l.rateBandId || null, allocatedUserId: l.employeeId || null })),
+        additionalCosts: additionalCosts.map((c) => ({ ...c, amountInr: Number(c.amountInr) })),
+      };
+
+      const res = await fetch(`/api/pmt/leads/${lead.id}/solutioning`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || "Failed to save new solutioning version");
+        return;
+      }
+      setIsCreating(false);
+      setEditingSessionId(null);
+      await loadSessions();
+      await loadLeadDetailsAndDocs();
+      router.refresh();
+    } catch {
+      setActionError("Failed to save new solutioning version");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -541,7 +717,7 @@ export function SolutioningClient({
 
           {!isCreating && (
             <button
-              onClick={() => setIsCreating(true)}
+              onClick={handleStartNew}
               className="px-4 py-2 bg-navy-900 text-white text-xs font-bold rounded-xl hover:bg-navy-700 transition-colors shadow-sm shadow-navy-900/20 cursor-pointer"
             >
               + New Effort Estimation
@@ -636,17 +812,52 @@ export function SolutioningClient({
       )}
 
       {isCreating && (
-        <div className="bg-white rounded-2xl border-2 border-blue-500/20 shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+        <div id="solutioning-editor-section" className="bg-white rounded-2xl border-2 border-blue-500/20 shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="bg-gradient-to-r from-blue-50 to-white p-6 border-b border-navy-500/10">
-            <h2 className="text-lg font-bold text-navy-900 flex items-center gap-2">
-              <span className="text-blue-600">⚒</span> Effort Estimation & Solutioning Draft
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                    editingSessionId
+                      ? "bg-amber-100 text-amber-800 border border-amber-200"
+                      : "bg-blue-100 text-blue-800 border border-blue-200"
+                  }`}>
+                    {editingSessionId ? "Editing Existing Solutioning" : "New Estimation"}
+                  </span>
+                  {editingSessionId && sessions.find((s) => s.id === editingSessionId)?.status === "finalized" && (
+                    <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Finalized (saving will update lead proposal value)
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg font-bold text-navy-900 flex items-center gap-2">
+                  <span className="text-blue-600">{editingSessionId ? "✏️" : "⚒"}</span>
+                  {editingSessionId ? "Edit Solutioning & Additional Costs" : "Effort Estimation & Solutioning Draft"}
+                </h2>
+                <p className="text-xs text-navy-500 mt-0.5">
+                  {editingSessionId
+                    ? "Update roles, person-days, rate bands, and add or adjust additional project costs in-place."
+                    : "Select Darwinbox grades or staff, set person-days, and configure additional project expenses."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="self-start sm:self-auto text-xs font-semibold px-3 py-1.5 rounded-lg border border-navy-200 text-navy-600 hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+
             <div className="mt-4 max-w-sm">
-              <label className="block text-xs font-bold text-navy-700 mb-1.5 uppercase">Version Name</label>
+              <label className="block text-xs font-bold text-navy-700 mb-1.5 uppercase">
+                {editingSessionId ? "Session / Version Name" : "Version Name"}
+              </label>
               <input
                 value={sessionName}
                 onChange={(e) => setSessionName(e.target.value)}
-                className="w-full text-sm border border-navy-500/15 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full text-sm border border-navy-500/15 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500/20 bg-white"
+                placeholder="e.g. v1.0 - Initial Draft"
               />
             </div>
           </div>
@@ -1277,19 +1488,46 @@ export function SolutioningClient({
             )}
           </div>
 
-          <div className="bg-navy-50 px-6 py-4 flex justify-end gap-3 border-t border-navy-500/10">
+          <div className="bg-navy-50 px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-t border-navy-500/10">
             <button
-              onClick={() => setIsCreating(false)}
+              type="button"
+              onClick={handleCancel}
               className="px-5 py-2 rounded-xl text-sm font-semibold text-navy-700 hover:bg-navy-100 transition-colors cursor-pointer"
             >
               Cancel
             </button>
-            <button
-              onClick={handleSave}
-              className="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/30 cursor-pointer"
-            >
-              Save Solutioning Version
-            </button>
+            <div className="flex items-center gap-2">
+              {editingSessionId ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleSaveAsNew}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-white border border-navy-300 text-navy-800 hover:bg-neutral-100 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Save current modifications as a new session version"
+                  >
+                    Save as New Version
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpdate}
+                    disabled={isSubmitting}
+                    className="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/30 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isSubmitting ? "Updating..." : "Save Changes"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/30 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting ? "Saving..." : "Save Solutioning Version"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1340,18 +1578,25 @@ export function SolutioningClient({
                     </>
                   )}
                 </div>
-                <div className="mt-5 pt-4 border-t border-navy-500/10 flex gap-2">
+                <div className="mt-5 pt-4 border-t border-navy-500/10 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleStartEdit(s)}
+                    className="flex-1 min-w-[70px] text-xs font-bold py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-1 cursor-pointer border border-blue-200/60"
+                    title="Edit effort, roles, and additional costs"
+                  >
+                    <span>✏️</span> Edit
+                  </button>
                   <button
                     onClick={() => setViewing(s)}
-                    className="flex-1 text-xs font-semibold py-1.5 bg-navy-50 text-navy-700 rounded-lg hover:bg-navy-100 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    className="flex-1 min-w-[70px] text-xs font-semibold py-1.5 bg-navy-50 text-navy-700 rounded-lg hover:bg-navy-100 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    <span>📄</span> View breakdown
+                    <span>📄</span> View
                   </button>
                   {canSeeCosts && s.status === "draft" && (
                     <button
                       onClick={() => setSessionStatus(s.id, "finalize")}
                       disabled={busyOn === s.id}
-                      className="flex-1 text-xs font-semibold py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="flex-1 min-w-[70px] text-xs font-semibold py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 border border-emerald-200/60"
                     >
                       <span>✓</span> {busyOn === s.id ? "Saving…" : "Finalize"}
                     </button>
@@ -1360,7 +1605,7 @@ export function SolutioningClient({
                     <button
                       onClick={() => setSessionStatus(s.id, "reopen")}
                       disabled={busyOn === s.id}
-                      className="flex-1 text-xs font-semibold py-1.5 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer disabled:opacity-50"
+                      className="flex-1 min-w-[70px] text-xs font-semibold py-1.5 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer disabled:opacity-50 border border-amber-200/60"
                     >
                       Reopen
                     </button>
@@ -1372,7 +1617,14 @@ export function SolutioningClient({
         </div>
       )}
 
-      {viewing && <BreakdownModal session={viewing} canSeeCosts={canSeeCosts} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <BreakdownModal
+          session={viewing}
+          canSeeCosts={canSeeCosts}
+          onClose={() => setViewing(null)}
+          onEdit={(session) => handleStartEdit(session)}
+        />
+      )}
 
     </div>
   );
@@ -1380,11 +1632,21 @@ export function SolutioningClient({
 
 // ─── What the estimate is actually made of ─────────────────────────
 
-function BreakdownModal({ session, canSeeCosts, onClose }: { session: any; canSeeCosts?: boolean; onClose: () => void }) {
+function BreakdownModal({
+  session,
+  canSeeCosts,
+  onClose,
+  onEdit,
+}: {
+  session: any;
+  canSeeCosts?: boolean;
+  onClose: () => void;
+  onEdit?: (session: any) => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/40 backdrop-blur-sm p-4">
       <div className="bg-white w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl shadow-2xl">
-        <div className="px-6 py-4 border-b border-neutral-100 flex items-start justify-between gap-4 sticky top-0 bg-white">
+        <div className="px-6 py-4 border-b border-neutral-100 flex items-start justify-between gap-4 sticky top-0 bg-white z-10">
           <div>
             <h3 className="text-lg font-bold text-navy-900 font-[family-name:var(--font-league-spartan)]">
               {session.sessionName}
@@ -1393,12 +1655,25 @@ function BreakdownModal({ session, canSeeCosts, onClose }: { session: any; canSe
               {session.status} · {formatDate(session.createdAt)}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold rounded-xl border border-navy-500/20 text-navy-700 hover:bg-neutral-50 cursor-pointer"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            {onEdit && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEdit(session);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <span>✏️</span> Edit Solutioning
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 text-xs font-semibold rounded-xl border border-navy-500/20 text-navy-700 hover:bg-neutral-50 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-5">
