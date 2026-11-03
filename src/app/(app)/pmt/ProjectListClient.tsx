@@ -43,6 +43,8 @@ export const PHASES = [
   "Testing",
   "UAT",
   "Go-Live",
+  "Hypercare",
+  "Support",
   "Closure",
 ];
 
@@ -63,6 +65,10 @@ export function phaseColorClass(phase?: string) {
       return "bg-orange-50 text-orange-700 border-orange-200";
     case "go-live":
       return "bg-teal-50 text-teal-700 border-teal-200";
+    case "hypercare":
+      return "bg-rose-50 text-rose-700 border-rose-200";
+    case "support":
+      return "bg-indigo-50 text-indigo-700 border-indigo-200";
     case "closure":
       return "bg-neutral-100 text-neutral-700 border-neutral-200";
     default:

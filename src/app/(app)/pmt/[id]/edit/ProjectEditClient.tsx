@@ -19,6 +19,8 @@ const PHASES = [
   "Testing",
   "UAT",
   "Go-Live",
+  "Hypercare",
+  "Support",
   "Closure",
 ];
 
@@ -385,7 +387,7 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                   autoComplete="off"
                 />
                 <Select
-                  label="Delivery phase"
+                  label="Project phase"
                   value={draft.currentPhase}
                   onChange={(e) => set("currentPhase", e.target.value)}
                 >

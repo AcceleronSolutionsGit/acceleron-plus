@@ -15,6 +15,8 @@ const PHASES = [
   "Testing",
   "UAT",
   "Go-Live",
+  "Hypercare",
+  "Support",
   "Closure",
 ];
 
@@ -172,7 +174,7 @@ export default function NewProjectPage() {
                 hint={clientNames.length ? "Start typing to reuse an existing client." : undefined}
               />
               <Select
-                label="Starting phase"
+                label="Project phase"
                 value={draft.currentPhase}
                 onChange={(e) => set("currentPhase", e.target.value)}
               >

@@ -76,7 +76,8 @@ export default async function PMTDashboardPage() {
   // 1. Phase distribution (pie chart)
   const PHASES = [
     "Discovery", "Design", "Build", "Execution",
-    "Testing", "UAT", "Go-Live", "Closure",
+    "Testing", "UAT", "Go-Live", "Hypercare",
+    "Support", "Closure",
   ];
   const phaseCounts: Record<string, number> = {};
   for (const p of targetProjects) {

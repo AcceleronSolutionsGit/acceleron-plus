@@ -46,6 +46,8 @@ const PHASES = [
   "Testing",
   "UAT",
   "Go-Live",
+  "Hypercare",
+  "Support",
   "Closure",
 ];
 

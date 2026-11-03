@@ -30,6 +30,8 @@ const PHASES = [
   "Testing",
   "UAT",
   "Go-Live",
+  "Hypercare",
+  "Support",
   "Closure",
 ];
 
@@ -698,6 +700,8 @@ function PhaseBoard({
     { name: "Testing", badgeBg: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
     { name: "UAT", badgeBg: "bg-pink-100 text-pink-800", dot: "bg-pink-500" },
     { name: "Go-Live", badgeBg: "bg-emerald-100 text-emerald-800", dot: "bg-emerald-500" },
+    { name: "Hypercare", badgeBg: "bg-rose-100 text-rose-800", dot: "bg-rose-500" },
+    { name: "Support", badgeBg: "bg-indigo-100 text-indigo-800", dot: "bg-indigo-500" },
     { name: "Closure", badgeBg: "bg-neutral-200 text-neutral-800", dot: "bg-neutral-500" },
   ];
 

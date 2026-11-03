@@ -102,3 +102,19 @@ export function getCategoryForType(projectType?: string | null): string | null {
   return null;
 }
 
+export const PROJECT_PHASES = [
+  "Discovery",
+  "Design",
+  "Build",
+  "Execution",
+  "Testing",
+  "UAT",
+  "Go-Live",
+  "Hypercare",
+  "Support",
+  "Closure",
+] as const;
+
+export type ProjectPhase = (typeof PROJECT_PHASES)[number];
+
+
