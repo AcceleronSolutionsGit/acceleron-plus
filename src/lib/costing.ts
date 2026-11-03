@@ -117,18 +117,19 @@ export function calculateCostingMetrics(input: CostingInput): CostingMetrics {
   // 1. Target Cost Calculation:
   // Target Cost = Order Value - Target Margin
   // If margin is percentage-based: Target Cost = Order Value * (1 - Target Margin % / 100)
-  // If targetMarginPercent is null, targetCost defaults to orderValue (0% target margin)
-  const effectiveMarginPct = targetMarginPercent !== null ? targetMarginPercent : 0;
-  const targetMarginAmount = round2((orderValue * effectiveMarginPct) / 100);
-  const targetCost = round2(orderValue * (1 - effectiveMarginPct / 100));
+  // When financial is not calculated (targetMarginPercent is null/undefined):
+  // Target Cost defaults to 0 and is NOT equal to Order Value.
+  const hasTargetMargin = targetMarginPercent !== null && Number.isFinite(targetMarginPercent);
+  const targetMarginAmount = hasTargetMargin ? round2((orderValue * targetMarginPercent) / 100) : 0;
+  const targetCost = hasTargetMargin ? round2(orderValue * (1 - targetMarginPercent / 100)) : 0;
 
   // 2. Planned Cost vs Target Cost:
-  // Cost Deviation = Target Cost - Planned Cost
-  const targetVsPlannedBalance = round2(targetCost - plannedCost);
+  // Cost Deviation = Target Cost - Planned Cost (only evaluated when target margin is configured)
+  const targetVsPlannedBalance = hasTargetMargin ? round2(targetCost - plannedCost) : 0;
 
   // 3. Target Cost vs Actual Cost:
-  // Actual Cost Deviation = Target Cost - Actual Cost
-  const targetVsActualBalance = round2(targetCost - actualCost);
+  // Actual Cost Deviation = Target Cost - Actual Cost (only evaluated when target margin is configured)
+  const targetVsActualBalance = hasTargetMargin ? round2(targetCost - actualCost) : 0;
 
   // 4. Order Value vs Planned Cost (Planned Margin):
   // Planned Margin = Order Value - Planned Cost
@@ -153,10 +154,10 @@ export function calculateCostingMetrics(input: CostingInput): CostingMetrics {
     targetCost,
     plannedCost,
     targetVsPlannedBalance,
-    targetVsPlannedStatus: getStatus(targetVsPlannedBalance),
+    targetVsPlannedStatus: hasTargetMargin ? getStatus(targetVsPlannedBalance) : "balanced",
     actualCost,
     targetVsActualBalance,
-    targetVsActualStatus: getStatus(targetVsActualBalance),
+    targetVsActualStatus: hasTargetMargin ? getStatus(targetVsActualBalance) : "balanced",
     plannedMargin,
     plannedMarginPercent,
     plannedMarginStatus: getStatus(plannedMargin),

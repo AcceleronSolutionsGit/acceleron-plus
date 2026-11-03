@@ -177,7 +177,12 @@ test("8. Order Value and Target Margin compute Target Cost correctly", () => {
   });
   assert.equal(result2.orderValue, 500000);
   assert.equal(result2.targetMarginPercent, null);
-  assert.equal(result2.targetCost, 500000, "Target Cost defaults to Order Value when margin is unconfigured");
+  assert.equal(result2.targetCost, 0, "Target Cost defaults to 0 and not equal to Order Value when margin is unconfigured");
+  assert.notEqual(result2.targetCost, result2.orderValue, "Target Cost must not equal Order Value when financials not calculated");
+  assert.equal(result2.targetVsPlannedBalance, 0);
+  assert.equal(result2.targetVsPlannedStatus, "balanced");
+  assert.equal(result2.targetVsActualBalance, 0);
+  assert.equal(result2.targetVsActualStatus, "balanced");
 });
 
 test("9. Financial redaction hides budgetInr, targetMarginPercent, and targetCostInr for non-financial viewers", async () => {

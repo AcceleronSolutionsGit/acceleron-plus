@@ -413,7 +413,7 @@ export function FinancialsTab({
             <p className="text-[11.5px] text-navy-500 mt-1">
               {costing.targetMarginPercent !== null
                 ? `Order Value − ${costing.targetMarginPercent}% margin`
-                : "No target margin configured"}
+                : "Not calculated (default ₹0)"}
             </p>
           </div>
 
@@ -527,7 +527,7 @@ export function FinancialsTab({
                 <td className="px-5 py-3.5 text-xs text-navy-500">
                   {costing.targetMarginPercent !== null
                     ? `Deducts applicable margin (${costing.targetMarginPercent}%) from Order Value.`
-                    : "Equals Order Value (no target margin percentage configured)."}
+                    : "Defaults to ₹0 (target margin percentage not calculated/configured)."}
                 </td>
               </tr>
 
@@ -567,7 +567,9 @@ export function FinancialsTab({
                   </span>
                 </td>
                 <td className="px-5 py-3.5 text-xs text-navy-600">
-                  {costing.targetVsPlannedStatus === "favorable"
+                  {costing.targetMarginPercent === null
+                    ? "Target Cost not configured; balance calculation deferred."
+                    : costing.targetVsPlannedStatus === "favorable"
                     ? "Positive balance: Planned Cost is below Target Cost."
                     : costing.targetVsPlannedStatus === "unfavorable"
                       ? "Negative balance: Planned Cost exceeds Target Cost."
@@ -611,7 +613,9 @@ export function FinancialsTab({
                   </span>
                 </td>
                 <td className="px-5 py-3.5 text-xs text-navy-600">
-                  {costing.targetVsActualStatus === "favorable"
+                  {costing.targetMarginPercent === null
+                    ? "Target Cost not configured; balance calculation deferred."
+                    : costing.targetVsActualStatus === "favorable"
                     ? "Positive balance: Actual Cost is below Target Cost."
                     : costing.targetVsActualStatus === "unfavorable"
                       ? "Negative balance: Actual Cost exceeds Target Cost."

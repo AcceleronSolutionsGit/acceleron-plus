@@ -1069,7 +1069,7 @@ const ProjectRow = memo(function ProjectRow({
 
       {/* Target Cost */}
       <td className={cn(cell, "text-right")}>
-        {p.targetCostInr ? (
+        {p.targetMarginPercent !== null && p.targetMarginPercent !== undefined && p.targetCostInr ? (
           <div>
             <span
               title={`Target Cost: ${formatCurrency(Number(p.targetCostInr), p.currency)}`}
@@ -1077,14 +1077,22 @@ const ProjectRow = memo(function ProjectRow({
             >
               {compactCurrency(p.targetCostInr, p.currency)}
             </span>
-            {p.targetMarginPercent !== null && p.targetMarginPercent !== undefined && (
-              <span className="block text-[10.5px] text-navy-400 font-medium">
-                {p.targetMarginPercent}% margin
-              </span>
-            )}
+            <span className="block text-[10.5px] text-navy-400 font-medium">
+              {p.targetMarginPercent}% margin
+            </span>
           </div>
         ) : (
-          <span className="text-navy-300">—</span>
+          <div>
+            <span
+              title="Target Cost: ₹0 (Not calculated)"
+              className="text-[13px] font-semibold tabular-nums text-navy-400"
+            >
+              ₹0
+            </span>
+            <span className="block text-[10px] text-navy-400 font-medium">
+              Not set
+            </span>
+          </div>
         )}
       </td>
     </tr>

@@ -246,12 +246,11 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
   const budgetWords = lakhs(draft.budgetInr);
   const orderValueNum = Number(draft.budgetInr) || 0;
   const targetMarginNum = draft.targetMarginPercent !== "" ? Number(draft.targetMarginPercent) : null;
-  const targetCostNum = orderValueNum > 0
-    ? targetMarginNum !== null && Number.isFinite(targetMarginNum)
-      ? Math.round(orderValueNum * (1 - targetMarginNum / 100))
-      : orderValueNum
+  const hasTargetMargin = targetMarginNum !== null && Number.isFinite(targetMarginNum);
+  const targetCostNum = orderValueNum > 0 && hasTargetMargin
+    ? Math.round(orderValueNum * (1 - targetMarginNum / 100))
     : 0;
-  const targetMarginAmount = orderValueNum > 0 && targetMarginNum !== null ? Math.round(orderValueNum * (targetMarginNum / 100)) : 0;
+  const targetMarginAmount = orderValueNum > 0 && hasTargetMargin ? Math.round(orderValueNum * (targetMarginNum / 100)) : 0;
 
   return (
     <div className="flex h-[calc(100vh-64px)] flex-col bg-surface-2 md:flex-row">
@@ -531,16 +530,16 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                       <div className="flex flex-col justify-center rounded-xl border border-emerald-600/20 bg-emerald-50/50 p-3 min-h-[58px]">
                         <div className="flex items-center justify-between">
                           <span className="text-base font-bold text-emerald-950 tabular-nums">
-                            {orderValueNum > 0 ? formatCurrency(targetCostNum) : "—"}
+                            {hasTargetMargin && orderValueNum > 0 ? formatCurrency(targetCostNum) : formatCurrency(0)}
                           </span>
                           <span className="px-2 py-0.5 rounded text-[10.5px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            Auto-Calculated
+                            {hasTargetMargin ? "Auto-Calculated" : "Unconfigured"}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] text-emerald-700">
-                          {targetMarginNum !== null && orderValueNum > 0
+                          {hasTargetMargin && orderValueNum > 0
                             ? `Order Value (₹${orderValueNum.toLocaleString()}) − ${targetMarginNum}% margin`
-                            : "Order Value − Target Margin (read-only ceiling)"}
+                            : "Not calculated (default ₹0) — configure Target Margin % to set Target Cost"}
                         </p>
                       </div>
                     </div>

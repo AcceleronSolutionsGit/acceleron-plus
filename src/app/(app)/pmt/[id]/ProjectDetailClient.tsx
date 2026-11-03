@@ -438,21 +438,19 @@ export function ProjectDetailClient({
               <MetaItem
                 label="Target Cost (INR)"
                 value={
-                  project.targetCostInr !== undefined && project.targetCostInr !== null
-                    ? formatCurrency(Number(project.targetCostInr), "INR")
-                    : project.budgetInr
+                  project.targetMarginPercent !== undefined && project.targetMarginPercent !== null
                     ? formatCurrency(
-                        project.targetMarginPercent !== undefined && project.targetMarginPercent !== null
-                          ? Math.round(Number(project.budgetInr) * (1 - Number(project.targetMarginPercent) / 100))
-                          : Number(project.budgetInr),
+                        project.targetCostInr !== undefined && project.targetCostInr !== null
+                          ? Number(project.targetCostInr)
+                          : Math.round(Number(project.budgetInr || 0) * (1 - Number(project.targetMarginPercent) / 100)),
                         "INR"
                       )
-                    : "—"
+                    : formatCurrency(0, "INR")
                 }
                 subtext={
                   project.targetMarginPercent !== null && project.targetMarginPercent !== undefined
                     ? `${project.targetMarginPercent}% target margin`
-                    : undefined
+                    : "Not calculated (default ₹0)"
                 }
               />
             </>
