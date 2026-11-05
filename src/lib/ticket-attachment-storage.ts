@@ -57,7 +57,10 @@ export async function saveTicketAttachment(
   const id = crypto.randomUUID();
   const storedFileName = `${id}${ext}`;
   const dir = await ensureTicketDir(ticketId);
-  const absPath = path.join(dir, storedFileName);
+  const absPath = path.resolve(dir, storedFileName);
+  if (!absPath.startsWith(path.resolve(UPLOAD_ROOT))) {
+    throw new Error("Access denied: invalid file path");
+  }
   const relativePath = ticketId + "/" + storedFileName;
 
   await fs.writeFile(absPath, buffer);
@@ -75,14 +78,20 @@ export async function saveTicketAttachment(
 
 /** Read a stored attachment as a Buffer. */
 export async function readTicketAttachment(filePath: string): Promise<Buffer> {
-  const absPath = path.join(UPLOAD_ROOT, filePath);
+  const absPath = path.resolve(UPLOAD_ROOT, filePath);
+  if (!absPath.startsWith(path.resolve(UPLOAD_ROOT))) {
+    throw new Error("Access denied: invalid file path");
+  }
   return fs.readFile(absPath);
 }
 
 /** Delete a stored attachment from disk. */
 export async function deleteTicketAttachment(filePath: string): Promise<void> {
   try {
-    const absPath = path.join(UPLOAD_ROOT, filePath);
+    const absPath = path.resolve(UPLOAD_ROOT, filePath);
+    if (!absPath.startsWith(path.resolve(UPLOAD_ROOT))) {
+      return;
+    }
     await fs.unlink(absPath);
   } catch {
     // Non-fatal

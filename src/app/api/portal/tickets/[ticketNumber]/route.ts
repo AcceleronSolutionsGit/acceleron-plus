@@ -10,9 +10,15 @@ export async function GET(
 ) {
   try {
     const { ticketNumber } = await params;
+    const cleanNumber = (ticketNumber || "").trim().toUpperCase();
+
+    // Strict validation: Reject malformed ticket numbers and enumeration payloads
+    if (!cleanNumber || !/^[A-Z]{2,5}-\d{4}-[A-Z0-9]{3,10}$/.test(cleanNumber)) {
+      return NextResponse.json({ error: "Invalid ticket number format." }, { status: 400 });
+    }
 
     const ticket = await itsmDb("tickets")
-      .where("ticket_number", ticketNumber.toUpperCase())
+      .where("ticket_number", cleanNumber)
       .first();
 
     if (!ticket) {

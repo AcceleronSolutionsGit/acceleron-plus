@@ -25,12 +25,81 @@ export async function GET(
 
   if (!doc) return NextResponse.json({ success: false, error: "NOT_FOUND" }, { status: 404 });
 
-  // ── Access control ───────────────────────────────────────────────
-  if (session.role === "client" && doc.access_level !== "client_visible") {
-    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
-  }
-  if (session.role === "member" && doc.access_level === "pm_only") {
-    return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+  // ── Access control: Role & Project Tenancy (BOLA Defense) ────────
+  const isAdmin = session.role === "admin" || Boolean(session.additionalRoles?.includes("admin"));
+
+  if (!isAdmin && doc.project_id) {
+    if (session.role === "client") {
+      if (doc.access_level !== "client_visible") {
+        return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+      }
+      // Verify client is associated with this project (via team, contact, or company domain)
+      const email = String(session.email ?? "").toLowerCase();
+      const domain = email.includes("@") ? email.split("@")[1] : "";
+      const label = domain ? domain.split(".")[0] : "";
+
+      const clientHasAccess = await projectDb("projects")
+        .where("id", doc.project_id)
+        .where(function () {
+          this.whereExists(
+            projectDb("project_team_members")
+              .where("project_id", doc.project_id)
+              .where("user_id", session.userId)
+              .where("is_active", true)
+          );
+          this.orWhereExists(
+            projectDb("project_client_contacts")
+              .where("project_id", doc.project_id)
+              .andWhere(function () {
+                this.where("user_id", session.userId).orWhereRaw("lower(email) = ?", [email]);
+              })
+          );
+          if (label && label.length >= 4) {
+            this.orWhere("client_company_name", "ilike", `%${label}%`);
+          }
+        })
+        .first();
+
+      if (!clientHasAccess) {
+        return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+      }
+    } else {
+      // Internal member: PM / delivery manager / team allocation check
+      if (doc.access_level === "pm_only") {
+        const isPm = await projectDb("projects")
+          .where("id", doc.project_id)
+          .andWhere(function () {
+            this.where("project_manager_user_id", session.userId)
+              .orWhere("delivery_manager_user_id", session.userId)
+              .orWhere("sponsor_user_id", session.userId);
+          })
+          .first();
+
+        if (!isPm) {
+          return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+        }
+      } else {
+        // Internal team document: user must be allocated to project or project manager
+        const isTeamOrManager = await projectDb("projects")
+          .where("id", doc.project_id)
+          .andWhere(function () {
+            this.where("project_manager_user_id", session.userId)
+              .orWhere("delivery_manager_user_id", session.userId)
+              .orWhere("sponsor_user_id", session.userId)
+              .orWhereExists(
+                projectDb("project_team_members")
+                  .where("project_id", doc.project_id)
+                  .where("user_id", session.userId)
+                  .where("is_active", true)
+              );
+          })
+          .first();
+
+        if (!isTeamOrManager) {
+          return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+        }
+      }
+    }
   }
 
   // ── Check mode: preview (inline) vs download ─────────────────────
@@ -107,7 +176,7 @@ export async function DELETE(
   const session = await getSession();
   if (!session) return NextResponse.json({ success: false, error: "UNAUTHORIZED" }, { status: 401 });
 
-  if (session.role === "member" || session.role === "client") {
+  if (session.role === "client") {
     return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -117,6 +186,20 @@ export async function DELETE(
     .first();
 
   if (!doc) return NextResponse.json({ success: false, error: "NOT_FOUND" }, { status: 404 });
+
+  const isAdmin = session.role === "admin" || Boolean(session.additionalRoles?.includes("admin"));
+  if (!isAdmin && doc.project_id) {
+    const isPmOrDm = await projectDb("projects")
+      .where("id", doc.project_id)
+      .andWhere(function () {
+        this.where("project_manager_user_id", session.userId)
+          .orWhere("delivery_manager_user_id", session.userId);
+      })
+      .first();
+    if (!isPmOrDm) {
+      return NextResponse.json({ success: false, error: "FORBIDDEN" }, { status: 403 });
+    }
+  }
 
   // Soft delete in DB
   await projectDb("project_documents")

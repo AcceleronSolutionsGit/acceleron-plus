@@ -116,14 +116,20 @@ export async function saveDocument(
 
 /** Read a stored document as a Buffer. */
 export async function readDocument(filePath: string): Promise<Buffer> {
-  const absPath = path.join(UPLOAD_ROOT, filePath);
+  const absPath = path.resolve(UPLOAD_ROOT, filePath);
+  if (!absPath.startsWith(path.resolve(UPLOAD_ROOT))) {
+    throw new Error("Access denied: invalid file path");
+  }
   return fs.readFile(absPath);
 }
 
 /** Delete a stored document from disk. */
 export async function deleteDocument(filePath: string): Promise<void> {
   try {
-    const absPath = path.join(UPLOAD_ROOT, filePath);
+    const absPath = path.resolve(UPLOAD_ROOT, filePath);
+    if (!absPath.startsWith(path.resolve(UPLOAD_ROOT))) {
+      return;
+    }
     await fs.unlink(absPath);
   } catch {
     // Non-fatal: file may already be gone

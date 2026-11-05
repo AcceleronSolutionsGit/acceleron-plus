@@ -36,7 +36,10 @@ export async function GET(
       return NextResponse.json({ error: "Attachment not found." }, { status: 404 });
     }
 
-    const absPath = path.join(PORTAL_UPLOAD_DIR, att.file_path);
+    const absPath = path.resolve(PORTAL_UPLOAD_DIR, att.file_path);
+    if (!absPath.startsWith(path.resolve(PORTAL_UPLOAD_DIR))) {
+      return NextResponse.json({ error: "Access denied." }, { status: 403 });
+    }
 
     let buffer: Buffer;
     try {
@@ -45,10 +48,12 @@ export async function GET(
       return NextResponse.json({ error: "File not found on disk." }, { status: 404 });
     }
 
+    const safeName = path.basename(att.file_name || "attachment").replace(/"/g, '\\"');
+    const encodedName = encodeURIComponent(path.basename(att.file_name || "attachment"));
     const isPreview = PREVIEWABLE.has(att.mime_type);
     const disposition = isPreview
-      ? `inline; filename="${att.file_name}"`
-      : `attachment; filename="${att.file_name}"`;
+      ? `inline; filename="${safeName}"; filename*=UTF-8''${encodedName}`
+      : `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`;
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
@@ -57,6 +62,7 @@ export async function GET(
         "Content-Disposition": disposition,
         "Content-Length": String(buffer.byteLength),
         "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (err) {

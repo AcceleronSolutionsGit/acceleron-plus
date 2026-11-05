@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { itsmDb } from "@/lib/db";
-import { saveDocument, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/document-storage";
+import { resolveMimeType, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/document-storage";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
@@ -17,10 +17,14 @@ const PORTAL_UPLOAD_DIR = path.join(process.cwd(), "uploads", "portal-tickets");
 async function savePortalFile(ticketId: string, fileName: string, mimeType: string, buffer: Buffer) {
   const dir = path.join(PORTAL_UPLOAD_DIR, ticketId);
   await fs.mkdir(dir, { recursive: true });
-  const ext = path.extname(fileName) || `.${ALLOWED_MIME_TYPES[mimeType] ?? "bin"}`;
+  const ext = `.${ALLOWED_MIME_TYPES[mimeType] || "bin"}`;
   const storedName = `${crypto.randomUUID()}${ext}`;
-  await fs.writeFile(path.join(dir, storedName), buffer);
-  return { storedName, relativePath: path.join(ticketId, storedName), mimeType, fileSizeBytes: buffer.byteLength };
+  const absPath = path.resolve(dir, storedName);
+  if (!absPath.startsWith(path.resolve(PORTAL_UPLOAD_DIR))) {
+    throw new Error("Invalid destination path");
+  }
+  await fs.writeFile(absPath, buffer);
+  return { storedName, relativePath: `${ticketId}/${storedName}`, mimeType, fileSizeBytes: buffer.byteLength };
 }
 
 export async function POST(req: NextRequest) {
@@ -45,10 +49,12 @@ export async function POST(req: NextRequest) {
           if (val.size > MAX_FILE_SIZE_BYTES) {
             return NextResponse.json({ error: `File "${val.name}" exceeds the 50 MB limit.` }, { status: 400 });
           }
-          if (!ALLOWED_MIME_TYPES[val.type]) {
-            return NextResponse.json({ error: `File type "${val.type}" is not allowed.` }, { status: 400 });
+          const safeName = path.basename(val.name);
+          const effectiveMime = resolveMimeType(safeName, val.type);
+          if (!effectiveMime || !ALLOWED_MIME_TYPES[effectiveMime]) {
+            return NextResponse.json({ error: `File type for "${val.name}" is not allowed.` }, { status: 400 });
           }
-          fileBuffers.push({ name: val.name, type: val.type, buffer: Buffer.from(await val.arrayBuffer()) });
+          fileBuffers.push({ name: safeName, type: effectiveMime, buffer: Buffer.from(await val.arrayBuffer()) });
         }
       }
     } else {

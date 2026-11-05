@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { itsmDb } from "@/lib/db";
+import { requireSession } from "@/lib/auth";
 import { readTicketAttachment } from "@/lib/ticket-attachment-storage";
 import path from "path";
 
@@ -18,6 +19,9 @@ export async function GET(
   context: { params: Promise<{ id: string; filename: string }> }
 ) {
   try {
+    const auth = await requireSession();
+    if (!auth.ok) return auth.response;
+
     const { id, filename } = await context.params;
 
     if (!id || !filename) {
@@ -66,6 +70,7 @@ export async function GET(
         "Content-Disposition": `inline; filename="${encodeURIComponent(att.originalName)}"`,
         "Content-Length": String(buffer.byteLength),
         "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error: any) {
