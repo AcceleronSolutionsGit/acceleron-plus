@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { projectDb, identityDb } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
+import { requireSession, projectsManagedBy } from "@/lib/auth";
 import { toDateInput } from "@/lib/dates";
 import { directReportUserIds } from "@/lib/reportees";
 
@@ -67,13 +67,20 @@ export async function GET(req: Request) {
     const isAdmin = auth.session.role === "admin";
     const userId = auth.session.userId;
 
-    // Resolve which user IDs this caller may see.
-    // Admins: everyone. Managers: only their direct reports.
+    // Resolve which user IDs and projects this caller may see.
+    // Admins: everyone. Managers & PMs: direct reports OR projects they manage.
     let allowedUserIds: string[] | null = null;
+    let managedProjectIds: string[] | null = null;
     if (!isAdmin) {
-      allowedUserIds = await directReportUserIds(userId);
-      if (allowedUserIds.length === 0) {
-        return NextResponse.json({ error: "You have no direct reports to export." }, { status: 403 });
+      const [reportees, mProjects] = await Promise.all([
+        directReportUserIds(userId),
+        projectsManagedBy(userId),
+      ]);
+      allowedUserIds = reportees;
+      managedProjectIds = Array.from(mProjects);
+
+      if (allowedUserIds.length === 0 && managedProjectIds.length === 0) {
+        return NextResponse.json({ error: "You have no direct reports or managed projects to export." }, { status: 403 });
       }
     }
 
@@ -105,15 +112,32 @@ export async function GET(req: Request) {
       )
       .orderBy([{ column: "ts.log_date", order: "asc" }, { column: "ts.user_name", order: "asc" }]);
 
-    if (allowedUserIds !== null) {
-      if (userFilter) {
-        if (!allowedUserIds.includes(userFilter)) {
-          return NextResponse.json({ error: "You cannot export this user's timesheets." }, { status: 403 });
+    if (!isAdmin) {
+      query = query.where((q) => {
+        let applied = false;
+        if (allowedUserIds && allowedUserIds.length > 0) {
+          if (userFilter) {
+            if (allowedUserIds.includes(userFilter)) {
+              q.where("ts.user_id", userFilter);
+              applied = true;
+            }
+          } else {
+            q.whereIn("ts.user_id", allowedUserIds);
+            applied = true;
+          }
         }
-        query = query.where("ts.user_id", userFilter);
-      } else {
-        query = query.whereIn("ts.user_id", allowedUserIds);
-      }
+        if (managedProjectIds && managedProjectIds.length > 0) {
+          if (projectFilter) {
+            if (managedProjectIds.includes(projectFilter)) {
+              if (applied) q.orWhere("ts.project_id", projectFilter);
+              else { q.where("ts.project_id", projectFilter); applied = true; }
+            }
+          } else {
+            if (applied) q.orWhereIn("ts.project_id", managedProjectIds);
+            else { q.whereIn("ts.project_id", managedProjectIds); applied = true; }
+          }
+        }
+      });
     } else if (userFilter) {
       query = query.where("ts.user_id", userFilter);
     }

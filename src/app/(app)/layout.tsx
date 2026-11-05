@@ -1,6 +1,6 @@
 import React from "react";
 import { redirect } from "next/navigation";
-import { getCurrentUser, mustChangePassword } from "@/lib/auth";
+import { getCurrentUser, mustChangePassword, projectsManagedBy } from "@/lib/auth";
 import { REQUIRE_PASSWORD } from "@/lib/auth-config";
 import { deriveAppRole } from "@/lib/session";
 import { isPhase1Restricted } from "@/lib/rollout";
@@ -24,11 +24,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/change-password?required=1");
   }
 
-  // Only a Phase 1 member's sidebar depends on this — admins and PMs
-  // always see the approval screens — so nobody else pays for the lookup.
-  const showApprovals = isPhase1Restricted(deriveAppRole(user.role?.code))
-    ? await hasDirectReports(user.id)
-    : false;
+  // Admins, PMs, and reporting managers see the approval screens.
+  const appRole = deriveAppRole(user.role?.code);
+  let showApprovals = false;
+  if (isPhase1Restricted(appRole)) {
+    const [hasReports, managedProjects] = await Promise.all([
+      hasDirectReports(user.id),
+      projectsManagedBy(user.id),
+    ]);
+    showApprovals = hasReports || managedProjects.size > 0;
+  } else {
+    showApprovals = true;
+  }
 
   return (
     <GuideProvider>

@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth";
 import { readJson, validationError, serverError } from "@/lib/route-helpers";
 import { toISODate, toDateInput, parseISODate } from "@/lib/dates";
 import { tasksForUser } from "@/lib/assignments";
+import { notify } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 
@@ -220,12 +221,40 @@ export async function POST(req: Request) {
         .where("id", String(existing.id))
         .update(values)
         .returning("*");
+
+      if (body.submit === true) {
+        void notify({
+          project: projectId,
+          eventType: "manual_update",
+          title: "Timesheet submitted for review",
+          message: `${auth.session.fullName || "A team member"} submitted ${hours}h for ${logDate}.`,
+          audience: ["pm"],
+          actorUserId: userId,
+          actionUrl: `/admin/timesheets?project=${projectId}`,
+          dedupeKey: `timesheet_submit:${projectId}:${userId}:${logDate}`,
+        }).catch(() => {});
+      }
+
       return NextResponse.json({ success: true, entry: updated });
     }
 
     const [created] = await projectDb("project_timesheets")
       .insert({ ...values, created_at: new Date() })
       .returning("*");
+
+    if (body.submit === true) {
+      void notify({
+        project: projectId,
+        eventType: "manual_update",
+        title: "Timesheet submitted for review",
+        message: `${auth.session.fullName || "A team member"} submitted ${hours}h for ${logDate}.`,
+        audience: ["pm"],
+        actorUserId: userId,
+        actionUrl: `/admin/timesheets?project=${projectId}`,
+        dedupeKey: `timesheet_submit:${projectId}:${userId}:${logDate}`,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ success: true, entry: created }, { status: 201 });
   } catch (err) {
     return serverError("myTimesheet.POST", err);
