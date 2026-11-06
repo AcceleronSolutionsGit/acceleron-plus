@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import { GLOBAL_ROLE_LABELS } from "@/lib/permissions";
 import { deriveAppRole } from "@/lib/session";
 import { readJson } from "@/lib/route-helpers";
+import { syncDarwinboxUsersToDirectory } from "@/lib/darwinbox";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,11 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   try {
+    // Ensure all Darwinbox employees are in users and directory
+    await syncDarwinboxUsersToDirectory(identityDb).catch((e) => {
+      console.error("[admin.users.GET] Auto-sync Darwinbox users error:", e);
+    });
+
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q")?.trim().toLowerCase();
     const roleFilter = searchParams.get("role")?.trim();
@@ -54,6 +60,7 @@ export async function GET(req: Request) {
         q
           .whereRaw("lower(u.email) like ?", [`%${query}%`])
           .orWhereRaw("lower(u.full_name) like ?", [`%${query}%`])
+          .orWhereRaw("lower(coalesce(u.darwinbox_ref, '')) like ?", [`%${query}%`])
       );
     }
 

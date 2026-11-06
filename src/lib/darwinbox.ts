@@ -1,5 +1,6 @@
 import { identityDb } from "./db";
 import { todayISO } from "./dates";
+import crypto from "crypto";
 
 export interface DarwinboxSyncedEmployee {
   darwinboxRef: string;
@@ -365,6 +366,9 @@ export interface DarwinboxSyncResult {
   updated?: number;
   deactivated?: number;
   skipped?: number;
+  usersCreated?: number;
+  usersUpdated?: number;
+  usersDeactivated?: number;
   error?: string;
 }
 
@@ -444,6 +448,9 @@ export async function syncDarwinboxEmployees(options?: {
         .update({ is_active: false, updated_at: now });
     }
 
+    // ─── Sync with Users & People/Roles ───────────────────────────
+    const userSync = await syncDarwinboxUsersToDirectory(identityDb);
+
     const parts = [
       `${matching.length} employee(s) matched ${companyCodes.join(", ")} out of ${all.length} returned`,
       `${created} created`,
@@ -451,6 +458,9 @@ export async function syncDarwinboxEmployees(options?: {
     ];
     if (deactivated) parts.push(`${deactivated} marked inactive`);
     if (skipped) parts.push(`${skipped} skipped (no employee id)`);
+    if (userSync.created) parts.push(`${userSync.created} user(s) added to People & Roles`);
+    if (userSync.updated) parts.push(`${userSync.updated} user(s) updated in People & Roles`);
+    if (userSync.deactivated) parts.push(`${userSync.deactivated} user(s) deactivated in People & Roles`);
 
     return {
       success: true,
@@ -462,10 +472,152 @@ export async function syncDarwinboxEmployees(options?: {
       updated,
       deactivated,
       skipped,
+      usersCreated: userSync.created,
+      usersUpdated: userSync.updated,
+      usersDeactivated: userSync.deactivated,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[darwinbox] Employee sync failed:", message);
     return { success: false, message, error: message };
   }
+}
+
+/**
+ * Deterministic UUID from a string (e.g. employee ID).
+ * Matches seed-comprehensive.js and grant-role.js.
+ */
+export function uuidFromStr(str: string): string {
+  const hash = crypto.createHash("md5").update(str).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+/**
+ * Ensures all Darwinbox employees in employee_master exist as users in identity_db.users
+ * and have an assigned role in identity_db.user_roles so they appear in People & Roles.
+ */
+export async function syncDarwinboxUsersToDirectory(
+  db = identityDb
+): Promise<{ created: number; updated: number; deactivated: number; total: number }> {
+  let defaultRole = await db("roles").where("code", "member").first();
+  if (!defaultRole) {
+    defaultRole = (await db("roles").where("code", "viewer").first()) || (await db("roles").first());
+  }
+
+  const employees = await db("employee_master").select(
+    "employee_id",
+    "company_email_id",
+    "full_name",
+    "mobile_number",
+    "avatar_url",
+    "is_active"
+  );
+
+  const users = await db("users").select(
+    "id",
+    "email",
+    "full_name",
+    "darwinbox_ref",
+    "role_id",
+    "is_active"
+  );
+
+  const userByRef = new Map<string, typeof users[0]>();
+  const userByEmail = new Map<string, typeof users[0]>();
+  for (const u of users) {
+    if (u.darwinbox_ref) userByRef.set(String(u.darwinbox_ref).trim(), u);
+    if (u.email) userByEmail.set(String(u.email).toLowerCase().trim(), u);
+  }
+
+  let created = 0;
+  let updated = 0;
+  let deactivated = 0;
+
+  for (const emp of employees) {
+    const empId = String(emp.employee_id || "").trim();
+    if (!empId) continue;
+
+    const rawEmail = emp.company_email_id ? String(emp.company_email_id).trim().toLowerCase() : "";
+    const email = rawEmail || `${empId.toLowerCase()}@acceleronsolutions.io`;
+
+    const existing = userByRef.get(empId) || (rawEmail ? userByEmail.get(rawEmail) : undefined);
+
+    if (existing) {
+      const updates: Record<string, unknown> = {};
+      if (!existing.darwinbox_ref || existing.darwinbox_ref !== empId) {
+        updates.darwinbox_ref = empId;
+      }
+      if (emp.full_name && (!existing.full_name || existing.full_name === existing.email)) {
+        updates.full_name = emp.full_name;
+      }
+      if (emp.is_active === false && existing.is_active !== false) {
+        const isAdmin = await db("user_roles")
+          .join("roles", "roles.id", "user_roles.role_id")
+          .where("user_roles.user_id", existing.id)
+          .where("roles.code", "admin")
+          .first();
+        if (!isAdmin) {
+          updates.is_active = false;
+          deactivated++;
+        }
+      } else if (emp.is_active === true && existing.is_active === false) {
+        updates.is_active = true;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date();
+        await db("users").where("id", existing.id).update(updates);
+        updated++;
+      }
+
+      // Ensure user has at least one role in user_roles
+      const hasRoles = await db("user_roles").where("user_id", existing.id).first();
+      if (!hasRoles && defaultRole) {
+        await db("user_roles").insert({ user_id: existing.id, role_id: existing.role_id || defaultRole.id });
+        if (!existing.role_id) {
+          await db("users").where("id", existing.id).update({ role_id: defaultRole.id });
+        }
+      }
+    } else {
+      const userId = uuidFromStr("user_" + empId);
+      const tenantId = process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001";
+      const roleId = defaultRole ? defaultRole.id : null;
+
+      await db("users").insert({
+        id: userId,
+        tenant_id: tenantId,
+        email: email,
+        full_name: emp.full_name || email,
+        darwinbox_ref: empId,
+        role_id: roleId,
+        is_active: emp.is_active !== false,
+        mobile_phone: emp.mobile_number || null,
+        avatar_url: emp.avatar_url || null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).onConflict("id").merge({
+        email: email,
+        full_name: emp.full_name || email,
+        darwinbox_ref: empId,
+        is_active: emp.is_active !== false,
+        updated_at: new Date(),
+      });
+
+      if (roleId) {
+        const existsInUserRoles = await db("user_roles")
+          .where({ user_id: userId, role_id: roleId })
+          .first();
+        if (!existsInUserRoles) {
+          await db("user_roles").insert({
+            user_id: userId,
+            role_id: roleId,
+          }).catch(() => null);
+        }
+      }
+
+      created++;
+    }
+  }
+
+  return { created, updated, deactivated, total: employees.length };
 }

@@ -98,6 +98,7 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
   } | null>(null);
   const [modalError, setModalError] = useState("");
   const [showMatrix, setShowMatrix] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Modals for Create
   const [creatingUser, setCreatingUser] = useState(false);
@@ -132,7 +133,8 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
         u.fullName?.toLowerCase().includes(q) ||
         u.email?.toLowerCase().includes(q) ||
         u.designation?.toLowerCase().includes(q) ||
-        u.department?.toLowerCase().includes(q)
+        u.department?.toLowerCase().includes(q) ||
+        u.darwinboxRef?.toLowerCase().includes(q)
       );
     });
   }, [users, search, roleFilter]);
@@ -250,6 +252,27 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
     } catch { alert("Error"); }
   };
 
+  const syncDarwinbox = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/sync-employees", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setNotice(data.message || "Darwinbox users synced successfully.");
+        await load();
+      } else {
+        setError(data.message || data.error || "Darwinbox sync failed.");
+      }
+    } catch {
+      setError("Failed to trigger Darwinbox sync.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -259,6 +282,9 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowMatrix(true)}>What can each role do?</Button>
+          <Button variant="secondary" onClick={syncDarwinbox} disabled={syncing}>
+            {syncing ? "Syncing..." : "Sync Darwinbox"}
+          </Button>
           <Button variant="secondary" onClick={() => setCreatingRole(true)}>Add Role</Button>
           <Button onClick={() => setCreatingUser(true)}>Add Person</Button>
         </div>
@@ -314,7 +340,7 @@ export function RoleManagerClient({ currentUserId }: { currentUserId: string }) 
                 </div>
                 <p className="text-xs text-navy-500 truncate">{user.email}</p>
                 <p className="text-[11px] text-navy-500/70 truncate mt-0.5">
-                  {[user.officeLocation, user.jobLevel].filter(Boolean).join(" · ") || "Not in the employee master"}
+                  {[user.darwinboxRef ? `ID: ${user.darwinboxRef}` : null, user.officeLocation, user.jobLevel].filter(Boolean).join(" · ") || "Not in the employee master"}
                   {" · last signed in "} {relative(user.lastLoginAt)}
                 </p>
               </div>

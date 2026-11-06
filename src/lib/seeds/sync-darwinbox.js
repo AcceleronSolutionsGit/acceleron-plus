@@ -325,6 +325,100 @@ async function run() {
       .update({ is_active: false, updated_at: now });
   }
 
+  // ─── Sync with Users & People/Roles ───────────────────────────
+  console.log("\n👥 Syncing Darwinbox employees with People & Roles (users)...");
+  let defaultRole = await identityDb("roles").where("code", "member").first();
+  if (!defaultRole) {
+    defaultRole = (await identityDb("roles").where("code", "viewer").first()) || (await identityDb("roles").first());
+  }
+
+  const crypto = require("crypto");
+  function uuidFromStr(str) {
+    const hash = crypto.createHash("md5").update(str).digest("hex");
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+  }
+
+  const allEmps = await identityDb("employee_master").select(
+    "employee_id", "company_email_id", "full_name", "mobile_number", "avatar_url", "is_active"
+  );
+  const existingUsers = await identityDb("users").select(
+    "id", "email", "full_name", "darwinbox_ref", "role_id", "is_active"
+  );
+  const userByRef = new Map();
+  const userByEmail = new Map();
+  for (const u of existingUsers) {
+    if (u.darwinbox_ref) userByRef.set(String(u.darwinbox_ref).trim(), u);
+    if (u.email) userByEmail.set(String(u.email).toLowerCase().trim(), u);
+  }
+
+  let usersCreated = 0;
+  let usersUpdated = 0;
+
+  for (const emp of allEmps) {
+    const empId = String(emp.employee_id || "").trim();
+    if (!empId) continue;
+    const rawEmail = emp.company_email_id ? String(emp.company_email_id).trim().toLowerCase() : "";
+    const email = rawEmail || `${empId.toLowerCase()}@acceleronsolutions.io`;
+
+    const existing = userByRef.get(empId) || (rawEmail ? userByEmail.get(rawEmail) : undefined);
+    if (existing) {
+      const updates = {};
+      if (!existing.darwinbox_ref || existing.darwinbox_ref !== empId) updates.darwinbox_ref = empId;
+      if (emp.full_name && (!existing.full_name || existing.full_name === existing.email)) updates.full_name = emp.full_name;
+      if (emp.is_active === false && existing.is_active !== false) {
+        const isAdmin = await identityDb("user_roles")
+          .join("roles", "roles.id", "user_roles.role_id")
+          .where("user_roles.user_id", existing.id)
+          .where("roles.code", "admin")
+          .first();
+        if (!isAdmin) updates.is_active = false;
+      } else if (emp.is_active === true && existing.is_active === false) {
+        updates.is_active = true;
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date();
+        await identityDb("users").where("id", existing.id).update(updates);
+        usersUpdated++;
+      }
+      const hasRoles = await identityDb("user_roles").where("user_id", existing.id).first();
+      if (!hasRoles && defaultRole) {
+        await identityDb("user_roles").insert({ user_id: existing.id, role_id: existing.role_id || defaultRole.id });
+        if (!existing.role_id) await identityDb("users").where("id", existing.id).update({ role_id: defaultRole.id });
+      }
+    } else {
+      const userId = uuidFromStr("user_" + empId);
+      const tenantId = process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001";
+      const roleId = defaultRole ? defaultRole.id : null;
+      await identityDb("users").insert({
+        id: userId,
+        tenant_id: tenantId,
+        email: email,
+        full_name: emp.full_name || email,
+        darwinbox_ref: empId,
+        role_id: roleId,
+        is_active: emp.is_active !== false,
+        mobile_phone: emp.mobile_number || null,
+        avatar_url: emp.avatar_url || null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }).onConflict("id").merge({
+        email: email,
+        full_name: emp.full_name || email,
+        darwinbox_ref: empId,
+        is_active: emp.is_active !== false,
+        updated_at: new Date(),
+      });
+      if (roleId) {
+        const existsRole = await identityDb("user_roles").where({ user_id: userId, role_id: roleId }).first();
+        if (!existsRole) {
+          await identityDb("user_roles").insert({ user_id: userId, role_id: roleId }).catch(() => null);
+        }
+      }
+      usersCreated++;
+    }
+  }
+  console.log(`   People & Roles: ${usersCreated} user(s) created, ${usersUpdated} user(s) updated.`);
+
   console.log("\n✅ Employee master synced.");
   console.log(`   created     : ${created}`);
   console.log(`   updated     : ${updated}`);
