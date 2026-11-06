@@ -493,10 +493,30 @@ export function uuidFromStr(str: string): string {
 }
 
 /**
+ * In-flight promise to prevent concurrent sync executions.
+ */
+let activeDarwinboxUserSyncPromise: Promise<{ created: number; updated: number; deactivated: number; total: number }> | null = null;
+
+/**
  * Ensures all Darwinbox employees in employee_master exist as users in identity_db.users
  * and have an assigned role in identity_db.user_roles so they appear in People & Roles.
+ * Deduplicates concurrent calls and gracefully handles duplicate emails.
  */
 export async function syncDarwinboxUsersToDirectory(
+  db = identityDb
+): Promise<{ created: number; updated: number; deactivated: number; total: number }> {
+  if (activeDarwinboxUserSyncPromise) {
+    return activeDarwinboxUserSyncPromise;
+  }
+
+  activeDarwinboxUserSyncPromise = _executeDarwinboxUsersSync(db).finally(() => {
+    activeDarwinboxUserSyncPromise = null;
+  });
+
+  return activeDarwinboxUserSyncPromise;
+}
+
+async function _executeDarwinboxUsersSync(
   db = identityDb
 ): Promise<{ created: number; updated: number; deactivated: number; total: number }> {
   let defaultRole = await db("roles").where("code", "member").first();
@@ -532,6 +552,7 @@ export async function syncDarwinboxUsersToDirectory(
   let created = 0;
   let updated = 0;
   let deactivated = 0;
+  const processedEmails = new Set<string>();
 
   for (const emp of employees) {
     const empId = String(emp.employee_id || "").trim();
@@ -540,7 +561,20 @@ export async function syncDarwinboxUsersToDirectory(
     const rawEmail = emp.company_email_id ? String(emp.company_email_id).trim().toLowerCase() : "";
     const email = rawEmail || `${empId.toLowerCase()}@acceleronsolutions.io`;
 
-    const existing = userByRef.get(empId) || (rawEmail ? userByEmail.get(rawEmail) : undefined);
+    // 1. Check memory lookup by employee ID or email
+    let existing = userByRef.get(empId) || (email ? userByEmail.get(email) : undefined);
+
+    // 2. Fallback to direct DB query if not matched in memory
+    if (!existing) {
+      existing = await db("users")
+        .where("darwinbox_ref", empId)
+        .orWhereRaw("lower(trim(email)) = ?", [email])
+        .first();
+      if (existing) {
+        if (existing.darwinbox_ref) userByRef.set(String(existing.darwinbox_ref).trim(), existing);
+        if (existing.email) userByEmail.set(String(existing.email).toLowerCase().trim(), existing);
+      }
+    }
 
     if (existing) {
       const updates: Record<string, unknown> = {};
@@ -578,44 +612,86 @@ export async function syncDarwinboxUsersToDirectory(
           await db("users").where("id", existing.id).update({ role_id: defaultRole.id });
         }
       }
+
+      userByRef.set(empId, existing);
+      userByEmail.set(email, existing);
+      processedEmails.add(email);
     } else {
+      // If we already linked/created a user with this email in the current loop, do not attempt second insert
+      if (processedEmails.has(email)) {
+        continue;
+      }
+
       const userId = uuidFromStr("user_" + empId);
       const tenantId = process.env.DEFAULT_TENANT_ID || "10000000-0000-0000-0000-000000000001";
       const roleId = defaultRole ? defaultRole.id : null;
 
-      await db("users").insert({
-        id: userId,
-        tenant_id: tenantId,
-        email: email,
-        full_name: emp.full_name || email,
-        darwinbox_ref: empId,
-        role_id: roleId,
-        is_active: emp.is_active !== false,
-        mobile_phone: emp.mobile_number || null,
-        avatar_url: emp.avatar_url || null,
-        created_at: new Date(),
-        updated_at: new Date(),
-      }).onConflict("id").merge({
-        email: email,
-        full_name: emp.full_name || email,
-        darwinbox_ref: empId,
-        is_active: emp.is_active !== false,
-        updated_at: new Date(),
-      });
+      try {
+        await db("users").insert({
+          id: userId,
+          tenant_id: tenantId,
+          email: email,
+          full_name: emp.full_name || email,
+          darwinbox_ref: empId,
+          role_id: roleId,
+          is_active: emp.is_active !== false,
+          mobile_phone: emp.mobile_number || null,
+          avatar_url: emp.avatar_url || null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }).onConflict("id").merge({
+          email: email,
+          full_name: emp.full_name || email,
+          darwinbox_ref: empId,
+          is_active: emp.is_active !== false,
+          updated_at: new Date(),
+        });
 
-      if (roleId) {
-        const existsInUserRoles = await db("user_roles")
-          .where({ user_id: userId, role_id: roleId })
-          .first();
-        if (!existsInUserRoles) {
-          await db("user_roles").insert({
-            user_id: userId,
-            role_id: roleId,
-          }).catch(() => null);
+        if (roleId) {
+          const existsInUserRoles = await db("user_roles")
+            .where({ user_id: userId, role_id: roleId })
+            .first();
+          if (!existsInUserRoles) {
+            await db("user_roles").insert({
+              user_id: userId,
+              role_id: roleId,
+            }).catch(() => null);
+          }
+        }
+
+        const newUserRecord = { id: userId, email, darwinbox_ref: empId, role_id: roleId, is_active: emp.is_active !== false };
+        userByRef.set(empId, newUserRecord as any);
+        userByEmail.set(email, newUserRecord as any);
+        processedEmails.add(email);
+        created++;
+      } catch (insertErr: any) {
+        // Handle unique constraint conflict on (tenant_id, email) or (email)
+        if (
+          insertErr &&
+          (insertErr.code === "23505" ||
+            String(insertErr.message).includes("uq_users_tenant_email") ||
+            String(insertErr.message).includes("duplicate key"))
+        ) {
+          const existingByEmail = await db("users")
+            .whereRaw("lower(trim(email)) = ?", [email])
+            .first();
+          if (existingByEmail) {
+            await db("users")
+              .where("id", existingByEmail.id)
+              .update({
+                darwinbox_ref: empId,
+                full_name: emp.full_name || existingByEmail.full_name,
+                updated_at: new Date(),
+              });
+            userByRef.set(empId, existingByEmail);
+            userByEmail.set(email, existingByEmail);
+            processedEmails.add(email);
+            updated++;
+          }
+        } else {
+          throw insertErr;
         }
       }
-
-      created++;
     }
   }
 

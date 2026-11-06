@@ -19,10 +19,20 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   try {
-    // Ensure all Darwinbox employees are in users and directory
-    await syncDarwinboxUsersToDirectory(identityDb).catch((e) => {
-      console.error("[admin.users.GET] Auto-sync Darwinbox users error:", e);
-    });
+    // Fast check: do we have any unlinked active employees?
+    const unlinked = await identityDb("employee_master as e")
+      .where("e.is_active", true)
+      .whereNotExists(
+        identityDb("users as u").whereRaw("u.darwinbox_ref = e.employee_id")
+      )
+      .first("e.employee_id")
+      .catch(() => null);
+
+    if (unlinked) {
+      await syncDarwinboxUsersToDirectory(identityDb).catch((e) => {
+        console.error("[admin.users.GET] Auto-sync Darwinbox users error:", e);
+      });
+    }
 
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q")?.trim().toLowerCase();
