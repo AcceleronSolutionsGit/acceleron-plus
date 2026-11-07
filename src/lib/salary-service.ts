@@ -281,6 +281,7 @@ export async function generateSalaryExcelTemplate(): Promise<Buffer> {
   };
   headerRow.alignment = { vertical: "middle", horizontal: "left" };
   headerRow.height = 28;
+  headerRow.getCell(3).note = "Daily cost in INR (₹/day). If you have monthly salary, divide by 22 working days (e.g. ₹1,10,000 / month = ₹5,000 / day).";
 
   // Add employee data
   for (const emp of employees) {

@@ -325,7 +325,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
             </span>
           </div>
           <p className="mt-1 text-sm text-navy-600">
-            Configure individual daily costs for employees. Once set, these individual rates override grade-band averages across all project allocations and timesheets.
+            Configure individual daily costs for employees (<strong>Daily Rate in ₹/day</strong>, i.e. Monthly CTC ÷ 22 days). Once set, these individual daily rates override grade-band averages across all project allocations and timesheets.
           </p>
         </div>
 
@@ -458,6 +458,10 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
                 <strong className="text-navy-900">name</strong>, and{" "}
                 <strong className="text-navy-900">cost of employee</strong>.
               </p>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs text-blue-800">
+                <span className="font-bold uppercase tracking-wider text-[10px] bg-blue-200/90 text-blue-900 px-1.5 py-0.5 rounded">Daily Rate</span>
+                <span>The cost must be entered as <strong>Daily Cost in INR (₹/day)</strong>. If you have monthly salary, divide by 22 working days (e.g. ₹1,10,000 / month = ₹5,000 / day).</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-1 rounded-lg border border-navy-900/15 bg-surface p-1">
@@ -644,7 +648,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
                 <th className="py-3 px-4">name</th>
                 <th className="py-3 px-4">designation / dept</th>
                 <th className="py-3 px-4">grade band</th>
-                <th className="py-3 px-4 text-right">cost of employee</th>
+                <th className="py-3 px-4 text-right">cost of employee (₹/day)</th>
                 <th className="py-3 px-4 text-center">cost status</th>
                 <th className="py-3 px-4 text-right">actions</th>
               </tr>
@@ -790,7 +794,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-navy-700">
-                Cost of Employee (₹ per day)
+                Cost of Employee (₹ per day - Daily Rate)
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-2 text-sm text-navy-500">₹</span>
@@ -803,7 +807,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
                 />
               </div>
               <p className="text-[11px] text-navy-500">
-                This exact daily cost overrides any Darwinbox job-level grade average across all active projects.
+                <strong>Note:</strong> Enter <strong>Daily Cost in INR (₹/day)</strong>. If you have Monthly Salary, divide by 22 working days (e.g. ₹1,10,000 / month ÷ 22 = ₹5,000 / day). This rate overrides grade averages in all active projects.
               </p>
             </div>
           </div>
@@ -871,7 +875,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-navy-700">
-              cost of employee (₹ per day)
+              cost of employee (₹ per day - Daily Rate)
             </label>
             <div className="relative">
               <span className="absolute left-3 top-2 text-sm text-navy-500">₹</span>
@@ -883,6 +887,9 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
                 className="w-full rounded-lg border border-navy-900/15 pl-8 pr-3 py-1.5 text-sm text-navy-900 focus:border-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-900/10"
               />
             </div>
+            <p className="text-[11px] text-navy-500">
+              <strong>Note:</strong> Enter <strong>Daily Cost in INR (₹/day)</strong>. (Monthly CTC ÷ 22 working days).
+            </p>
           </div>
         </div>
       </Modal>
