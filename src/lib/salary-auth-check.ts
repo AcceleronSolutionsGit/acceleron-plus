@@ -33,3 +33,4 @@ export function isSalaryManager(
 
   return false;
 }
+

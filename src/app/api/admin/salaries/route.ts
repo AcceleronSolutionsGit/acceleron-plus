@@ -185,3 +185,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || "Failed to update employee salaries." }, { status: 500 });
   }
 }
+

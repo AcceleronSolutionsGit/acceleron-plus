@@ -17,3 +17,4 @@ export default async function AdminSalariesPage() {
 
   return <SalariesManagerClient currentUserEmail={session.email || ""} />;
 }
+

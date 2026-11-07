@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { ColorBadge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { parseSalaryPasteText } from "@/lib/salary-service";
+import { parseSalaryPasteText } from "@/lib/salary-parser";
 
 interface SalaryEmployee {
   empCode: string;
@@ -889,3 +889,4 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
     </div>
   );
 }
+
