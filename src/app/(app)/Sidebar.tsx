@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { NavItem, NavSection } from "@/components/ui/NavItem";
 import { deriveAppRole } from "@/lib/session";
 import { isPhase1Restricted } from "@/lib/rollout";
+import { isSalaryManager } from "@/lib/salary-auth-check";
 
 // ─── Icons ─────────────────────────────────────────────────────────
 // All drawn on the same 24-grid at the same 1.75 stroke. Mixing filled
@@ -167,12 +168,21 @@ const SettingsIcon = icon(
   </>
 );
 
+const SalaryIcon = icon(
+  <>
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 12h.01M18 12h.01" />
+  </>
+);
+
 const COLLAPSE_KEY = "acceleron.sidebar.collapsed";
 
 export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDirectReports?: boolean }) {
   const appRole = deriveAppRole(user.role?.code);
   const allRoles = [appRole, ...(user.roles?.map(r => deriveAppRole(r.code)) || [])];
   const isAdmin = allRoles.includes("admin");
+  const canManageSalaries = isSalaryManager(user);
   const canManageItsmMasters = isAdmin || allRoles.includes("sales") || allRoles.includes("ticket_handler");
 
   // Phase 1 rollout: a regular member gets My Projects, My Timesheet and
@@ -434,6 +444,9 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavItem href="/admin/allocations" icon={<ChartIcon />} label="Resource Allocation" isCollapsed={isCollapsed} />
             <NavItem href="/admin/masters" icon={<DatabaseIcon />} label="Master Data" isCollapsed={isCollapsed} />
             <NavItem href="/admin/roles" icon={<PeopleIcon />} label="People & Roles" isCollapsed={isCollapsed} />
+            {canManageSalaries && (
+              <NavItem href="/admin/salaries" icon={<SalaryIcon />} label="Employee Salaries" isCollapsed={isCollapsed} />
+            )}
             <NavItem href="/admin/external-users" icon={<UserPlusIcon />} label="Non-Darwinbox Users" isCollapsed={isCollapsed} />
             <NavItem href="/admin/skills" icon={<SkillIcon />} label="Skills" isCollapsed={isCollapsed} />
             <NavItem href="/admin/audit-logs" icon={<ActivityIcon />} label="Audit Logs" isCollapsed={isCollapsed} />

@@ -50,11 +50,11 @@ export default async function PMTDashboardPage() {
       this.on("project_timesheets.project_id", "=", "project_team_members.project_id")
           .andOn("project_timesheets.user_id", "=", "project_team_members.user_id")
     })
-    .join("employee_rate_bands", "project_team_members.rate_band_id", "employee_rate_bands.id")
+    .leftJoin("employee_rate_bands", "project_team_members.rate_band_id", "employee_rate_bands.id")
     .where("project_timesheets.status", "approved")
     .whereIn("project_timesheets.project_id", projectIds)
     .select("project_timesheets.project_id")
-    .sum({ cost: projectDb.raw("project_timesheets.hours_logged * (employee_rate_bands.daily_cost_inr / 8)") })
+    .sum({ cost: projectDb.raw("project_timesheets.hours_logged * (coalesce(project_team_members.custom_daily_cost_inr, project_team_members.daily_cost_inr, employee_rate_bands.daily_cost_inr, 0) / 8)") })
     .groupBy("project_timesheets.project_id") : [];
 
   const costData = targetProjects.filter((p) => financeIds.has(p.id)).map(p => {

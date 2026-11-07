@@ -31,6 +31,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   allocations: "Resource Allocation",
   reports: "Reports",
   roles: "People & Roles",
+  salaries: "Employee Salaries",
   skills: "Skills",
   "consultant-view": "Consultant View",
   "my-tasks": "My Tasks",

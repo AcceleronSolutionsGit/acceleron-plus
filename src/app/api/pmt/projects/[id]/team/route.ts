@@ -278,17 +278,33 @@ export async function POST(req: Request, context: Params) {
       return validationError(["That rate band does not exist or is no longer active."]);
     }
 
-    // No band chosen? Their grade decides it if Darwinbox employee.
+    // Check individual salary cost first ("no more grade wise avg")
+    const individualCost =
+      employeeRecord?.cost_rate_inr !== null && employeeRecord?.cost_rate_inr !== undefined
+        ? Number(employeeRecord.cost_rate_inr)
+        : null;
+
+    // No band chosen? Individual cost or their grade decides it if Darwinbox employee.
     let bandNote: string | null = null;
     if (!band && employeeRecord) {
-      const suggestion = suggestBandFor(employeeRecord as { job_level?: string | null }, await listRateBands());
-      bandNote = describeBandSource(suggestion);
-      band = {
-        id: suggestion.rateBandId ?? "",
-        bandName: suggestion.bandName,
-        dailyCostInr: suggestion.dailyCostInr,
-        dailyBillableRateInr: suggestion.dailyBillableRateInr,
-      };
+      if (individualCost !== null) {
+        bandNote = `Individual salary cost (₹${individualCost.toLocaleString("en-IN")}/day)`;
+        band = {
+          id: "",
+          bandName: "Individual Salary",
+          dailyCostInr: individualCost,
+          dailyBillableRateInr: null,
+        };
+      } else {
+        const suggestion = suggestBandFor(employeeRecord as { job_level?: string | null }, await listRateBands());
+        bandNote = describeBandSource(suggestion);
+        band = {
+          id: suggestion.rateBandId ?? "",
+          bandName: suggestion.bandName,
+          dailyCostInr: suggestion.dailyCostInr,
+          dailyBillableRateInr: suggestion.dailyBillableRateInr,
+        };
+      }
     } else if (isExternalUser && !band) {
       bandNote = "Non-Darwinbox external resource (custom CTC / daily cost)";
     }
@@ -344,7 +360,7 @@ export async function POST(req: Request, context: Params) {
     const customDailyCostInr =
       body.customDailyCostInr !== undefined && body.customDailyCostInr !== null && body.customDailyCostInr !== ""
         ? Number(body.customDailyCostInr)
-        : null;
+        : individualCost;
 
     const effectiveDailyCost = customDailyCostInr !== null ? customDailyCostInr : (band?.dailyCostInr ?? null);
 

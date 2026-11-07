@@ -245,7 +245,7 @@ export async function getProjectTeam(
     };
 
     if (options.includeCost) {
-      // For consultants, custom daily cost overrides the band rate.
+      // Individual employee cost takes priority over grade band average ("no more grade wise avg")
       const matchedBand = bands.find((b) => b.id === row.rate_band_id || b.bandName === row.rate_band_name);
       let bandDailyCost =
         row.daily_cost_inr === null || row.daily_cost_inr === undefined
@@ -254,7 +254,8 @@ export async function getProjectTeam(
       if ((bandDailyCost === null || bandDailyCost === 0) && matchedBand) {
         bandDailyCost = matchedBand.dailyCostInr;
       }
-      const dailyCost = customDailyCost !== null ? customDailyCost : bandDailyCost;
+      const individualCost = profile?.costRateInr ?? customDailyCost;
+      const dailyCost = individualCost !== null && individualCost !== undefined ? individualCost : bandDailyCost;
 
       let billableRate =
         row.daily_billable_rate_inr !== null && row.daily_billable_rate_inr !== undefined
@@ -306,7 +307,9 @@ export async function getProjectTeam(
         ? explicitPlannedDays
         : planned.plannedDays;
       const plannedCost =
-        !hasPeriods && row.planned_cost_inr !== null && Number(row.planned_cost_inr) > 0
+        profile?.costRateInr !== null && profile?.costRateInr !== undefined
+          ? planned.plannedCostInr
+          : !hasPeriods && row.planned_cost_inr !== null && Number(row.planned_cost_inr) > 0
           ? Number(row.planned_cost_inr)
           : planned.plannedCostInr;
       const plannedBillable =
@@ -343,6 +346,7 @@ interface DirectoryEntry {
   email: string | null;
   designation: string | null;
   department: string | null;
+  costRateInr?: number | null;
 }
 
 async function usersDirectory(userIds: string[]): Promise<Map<string, DirectoryEntry>> {
@@ -372,7 +376,7 @@ async function employeeDirectory(employeeIds: string[]): Promise<Map<string, Dir
 
   const rows = await identityDb("employee_master")
     .whereIn("employee_id", employeeIds)
-    .select("employee_id", "full_name", "company_email_id", "designation", "department")
+    .select("employee_id", "full_name", "company_email_id", "designation", "department", "cost_rate_inr")
     .catch(() => []);
 
   for (const row of rows as Record<string, unknown>[]) {
@@ -381,6 +385,10 @@ async function employeeDirectory(employeeIds: string[]): Promise<Map<string, Dir
       email: row.company_email_id ? String(row.company_email_id) : null,
       designation: row.designation ? String(row.designation) : null,
       department: row.department ? String(row.department) : null,
+      costRateInr:
+        row.cost_rate_inr !== null && row.cost_rate_inr !== undefined
+          ? Number(row.cost_rate_inr)
+          : null,
     });
   }
   return map;
