@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { ColorBadge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { parseSalaryPasteText } from "@/lib/salary-parser";
+import { withBase } from "@/lib/base-path";
 
 interface SalaryEmployee {
   empCode: string;
@@ -39,6 +40,7 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
 
   // Search & Filter state
   const [search, setSearch] = useState("");
@@ -127,9 +129,43 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
     });
   }, [employees, search, filterMode]);
 
-  // Handle template download
-  const handleDownloadTemplate = () => {
-    window.location.href = "/api/admin/salaries/template";
+  // Handle template download (Excel or CSV/TSV)
+  const handleDownloadTemplate = async (format: "xlsx" | "csv" = "xlsx") => {
+    try {
+      setDownloadingFormat(format);
+      setError("");
+      setNotice(`Preparing ${format === "csv" ? "TSV/CSV" : "Excel"} template...`);
+      const targetUrl = withBase(`/api/admin/salaries/template?format=${format}`);
+      const res = await fetch(targetUrl);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `Download failed with HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download =
+        format === "csv"
+          ? "employee_salaries_template.tsv"
+          : "employee_salaries_template.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+      setNotice(`${format === "csv" ? "TSV/CSV" : "Excel"} template downloaded successfully.`);
+      setTimeout(() => setNotice(""), 3500);
+    } catch (err: any) {
+      console.error("Template download error:", err);
+      // Fallback: direct window.location with withBase
+      try {
+        window.location.href = withBase(`/api/admin/salaries/template?format=${format}`);
+      } catch {
+        setError(err?.message || "Failed to download salary template.");
+      }
+    } finally {
+      setDownloadingFormat(null);
+    }
   };
 
   // Handle copy sample template to clipboard
@@ -333,13 +369,27 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
           <Button
             variant="secondary"
             size="sm"
-            onClick={handleDownloadTemplate}
+            loading={downloadingFormat === "xlsx"}
+            onClick={() => handleDownloadTemplate("xlsx")}
             title="Download Excel spreadsheet with active employees and 3 columns"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Download Excel Template
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={downloadingFormat === "csv"}
+            onClick={() => handleDownloadTemplate("csv")}
+            title="Download tab-separated template for quick Excel copy-paste"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download TSV/CSV
           </Button>
 
           <Button
@@ -492,9 +542,27 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
 
           {bulkMode === "paste" ? (
             <div className="space-y-3">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700">
-                Paste from Excel / Google Sheets (Tab or Comma-separated)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700">
+                  Paste from Excel / Google Sheets (Tab or Comma-separated)
+                </label>
+                <div className="flex items-center gap-3 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate("csv")}
+                    className="text-navy-600 hover:text-navy-900 underline"
+                  >
+                    Download TSV Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyTemplate}
+                    className="text-navy-600 hover:text-navy-900 underline"
+                  >
+                    Copy Template
+                  </button>
+                </div>
+              </div>
               <textarea
                 rows={8}
                 value={pasteContent}
@@ -525,9 +593,18 @@ export function SalariesManagerClient({ currentUserEmail }: { currentUserEmail: 
             </div>
           ) : (
             <div className="space-y-3">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700">
-                Upload Excel Spreadsheet (.xlsx)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-navy-700">
+                  Upload Excel Spreadsheet (.xlsx)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadTemplate("xlsx")}
+                  className="text-xs text-navy-600 hover:text-navy-900 underline"
+                >
+                  Download .xlsx Template
+                </button>
+              </div>
               <div className="flex items-center gap-4">
                 <input
                   type="file"

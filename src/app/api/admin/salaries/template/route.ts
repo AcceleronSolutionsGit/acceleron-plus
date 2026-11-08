@@ -38,12 +38,15 @@ export async function GET(req: NextRequest) {
     }
 
     const excelBuffer = await generateSalaryExcelTemplate();
-    return new NextResponse(new Uint8Array(excelBuffer), {
+    const nodeBuf = Buffer.from(excelBuffer);
+    return new NextResponse(nodeBuf, {
       status: 200,
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": 'attachment; filename="employee_salaries_template.xlsx"',
+        "Content-Length": String(nodeBuf.length),
+        "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
   } catch (error: any) {

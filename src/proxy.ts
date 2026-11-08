@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionCookie } from "@/lib/session";
 import { BASE_PATH, COOKIE_PATH } from "@/lib/base-path";
 import { MANAGER_PATHS, PHASE2_PAGES, homeFor, isPhase1Restricted, matchesPrefix } from "@/lib/rollout";
+import { isSalaryManager } from "@/lib/salary-auth-check";
 
 // Next.js 16 renamed the `middleware` file convention to `proxy`; Proxy
 // now defaults to the Node.js runtime, and setting `runtime` here throws.
@@ -131,8 +132,17 @@ export async function proxy(request: NextRequest) {
   // caller's direct reports, so letting them through exposes nothing.
   const isManagerPath = payload.role !== "client" && matchesPrefix(pathname, MANAGER_PATHS);
 
+  // Individual salary management is exclusively for Arindam Hari regardless of his app role.
+  const isSalaryPath =
+    (pathname === "/admin/salaries" ||
+      pathname.startsWith("/admin/salaries/") ||
+      pathname === "/api/admin/salaries" ||
+      pathname.startsWith("/api/admin/salaries/")) &&
+    isSalaryManager(payload);
+
   if (
     !isManagerPath &&
+    !isSalaryPath &&
     ADMIN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) &&
     payload.role !== "admin"
   ) {
