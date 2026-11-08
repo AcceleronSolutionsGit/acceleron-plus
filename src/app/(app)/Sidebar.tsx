@@ -453,6 +453,12 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
             <NavItem href="/admin/settings" icon={<SettingsIcon />} label="Settings" isCollapsed={isCollapsed} />
           </>
         )}
+        {!isAdmin && canManageSalaries && (
+          <>
+            <NavSection label="Compensation" isCollapsed={isCollapsed} />
+            <NavItem href="/admin/salaries" icon={<SalaryIcon />} label="Employee Salaries" isCollapsed={isCollapsed} />
+          </>
+        )}
       </nav>
 
       {/* ─── Who is signed in ─────────────────────────────────── */}

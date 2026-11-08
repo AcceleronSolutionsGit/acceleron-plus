@@ -24,6 +24,49 @@ export {
   type SalaryUpdateOutcome,
 };
 
+let schemaEnsured = false;
+
+/**
+ * Ensures employee_salaries table and employee_master.cost_rate_inr column
+ * exist on the database. Self-heals the database schema in any environment
+ * without requiring manual migration execution.
+ */
+export async function ensureSalarySchema(): Promise<void> {
+  if (schemaEnsured) return;
+  try {
+    const hasEmployeeMaster = await identityDb.schema.hasTable("employee_master");
+    if (hasEmployeeMaster) {
+      const hasCostRate = await identityDb.schema.hasColumn("employee_master", "cost_rate_inr");
+      if (!hasCostRate) {
+        await identityDb.schema.alterTable("employee_master", (t) => {
+          t.decimal("cost_rate_inr", 12, 2).nullable();
+        });
+      }
+    }
+
+    const hasSalariesTable = await identityDb.schema.hasTable("employee_salaries");
+    if (!hasSalariesTable) {
+      await identityDb.schema.createTable("employee_salaries", (t) => {
+        t.uuid("id").primary().defaultTo(identityDb.raw("gen_random_uuid()"));
+        t.string("employee_id", 64).notNullable().unique();
+        t.string("employee_name", 255).nullable();
+        t.decimal("cost_per_day", 12, 2).notNullable();
+        t.string("currency", 10).notNullable().defaultTo("INR");
+        t.string("updated_by_email", 255).nullable();
+        t.timestamp("created_at", { useTz: true }).notNullable().defaultTo(identityDb.fn.now());
+        t.timestamp("updated_at", { useTz: true }).notNullable().defaultTo(identityDb.fn.now());
+      });
+      await identityDb.raw(
+        "CREATE INDEX IF NOT EXISTS idx_employee_salaries_emp_id ON employee_salaries (employee_id)"
+      ).catch(() => {});
+    }
+
+    schemaEnsured = true;
+  } catch (err: any) {
+    console.error("[salary-schema] auto-migration error:", err);
+  }
+}
+
 /**
  * Parses an Excel (.xlsx) file buffer.
  */
@@ -114,6 +157,7 @@ export async function applySalaryUpdates(
   items: ParsedSalaryRow[],
   updatedByEmail: string
 ): Promise<SalaryUpdateOutcome> {
+  await ensureSalarySchema();
   let updatedCount = 0;
   let createdCount = 0;
   let totalAllocationsUpdated = 0;
@@ -250,6 +294,7 @@ export async function applySalaryUpdates(
  * Pre-filled with active employees from employee_master for copy-pasting.
  */
 export async function generateSalaryExcelTemplate(): Promise<Buffer> {
+  await ensureSalarySchema();
   const employees = await identityDb("employee_master")
     .where("is_active", true)
     .select("employee_id", "full_name", "cost_rate_inr", "designation", "department")
@@ -303,6 +348,7 @@ export async function generateSalaryExcelTemplate(): Promise<Buffer> {
  * Generates plain CSV template string for clipboard copy or raw text download.
  */
 export async function generateSalaryCsvTemplate(): Promise<string> {
+  await ensureSalarySchema();
   const employees = await identityDb("employee_master")
     .where("is_active", true)
     .select("employee_id", "full_name", "cost_rate_inr")

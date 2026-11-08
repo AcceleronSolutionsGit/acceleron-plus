@@ -45,17 +45,29 @@ export default async function PMTDashboardPage() {
     : [];
 
   // Fetch cost summaries (budget vs actual)
-  const timesheetCostsWithRates = projectIds.length > 0 ? await projectDb("project_timesheets")
-    .join("project_team_members", function() {
-      this.on("project_timesheets.project_id", "=", "project_team_members.project_id")
-          .andOn("project_timesheets.user_id", "=", "project_team_members.user_id")
-    })
-    .leftJoin("employee_rate_bands", "project_team_members.rate_band_id", "employee_rate_bands.id")
-    .where("project_timesheets.status", "approved")
-    .whereIn("project_timesheets.project_id", projectIds)
-    .select("project_timesheets.project_id")
-    .sum({ cost: projectDb.raw("project_timesheets.hours_logged * (coalesce(project_team_members.custom_daily_cost_inr, project_team_members.daily_cost_inr, employee_rate_bands.daily_cost_inr, 0) / 8)") })
-    .groupBy("project_timesheets.project_id") : [];
+  let timesheetCostsWithRates: Array<{ project_id: string; cost: number | string }> = [];
+  try {
+    if (projectIds.length > 0) {
+      timesheetCostsWithRates = await projectDb("project_timesheets")
+        .join("project_team_members", function () {
+          this.on("project_timesheets.project_id", "=", "project_team_members.project_id")
+              .andOn("project_timesheets.user_id", "=", "project_team_members.user_id");
+        })
+        .leftJoin("employee_rate_bands", "project_team_members.rate_band_id", "employee_rate_bands.id")
+        .where("project_timesheets.status", "approved")
+        .whereIn("project_timesheets.project_id", projectIds)
+        .select("project_timesheets.project_id")
+        .select(
+          projectDb.raw(
+            "COALESCE(SUM(project_timesheets.hours_logged * (COALESCE(project_team_members.custom_daily_cost_inr, project_team_members.daily_cost_inr, employee_rate_bands.daily_cost_inr, 0) / 8.0)), 0) as cost"
+          )
+        )
+        .groupBy("project_timesheets.project_id");
+    }
+  } catch (err) {
+    console.error("[pmt.dashboard] Failed to aggregate timesheet costs:", err);
+    timesheetCostsWithRates = [];
+  }
 
   const costData = targetProjects.filter((p) => financeIds.has(p.id)).map(p => {
     const tsCost = timesheetCostsWithRates.find((c: any) => c.project_id === p.id);
@@ -122,7 +134,7 @@ export default async function PMTDashboardPage() {
       .where("created_at", ">=", isoStart)
       .select(itsmDb.raw("to_char(created_at, 'YYYY-MM') as month"))
       .count("* as count")
-      .groupBy("month")
+      .groupByRaw("to_char(created_at, 'YYYY-MM')")
       .orderBy("month");
 
     const resolvedRows = await itsmDb("tickets")
@@ -130,7 +142,7 @@ export default async function PMTDashboardPage() {
       .where("updated_at", ">=", isoStart)
       .select(itsmDb.raw("to_char(updated_at, 'YYYY-MM') as month"))
       .count("* as count")
-      .groupBy("month")
+      .groupByRaw("to_char(updated_at, 'YYYY-MM')")
       .orderBy("month");
 
     // Build 6 months of data

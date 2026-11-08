@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { PmtHeaderTabs } from "@/components/layout/PmtHeaderTabs";
 import { Card, StatCard } from "@/components/ui/Card";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, formatCurrency, cn } from "@/lib/utils";
 import type { Project, Milestone, ProjectManagerRef } from "@/lib/types";
 
 export interface ProjectMisItem {
@@ -24,6 +24,13 @@ export interface ProjectMisItem {
     plannedDurationDays: number | null;
     elapsedDays: number | null;
     timelineProgressPercent: number;
+    canSeeCost: boolean;
+    budget: number | null;
+    actualCost: number | null;
+    costVariance: number | null;
+    costConsumedPercent: number | null;
+    isOverBudget: boolean;
+    costOverrunInr: number;
   };
 }
 
@@ -62,6 +69,7 @@ export function MisClient({
   // Project Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [healthFilter, setHealthFilter] = useState<string>("all");
+  const [costFilter, setCostFilter] = useState<"all" | "over_budget" | "within_budget">("all");
   const [phaseFilter, setPhaseFilter] = useState<string>("all");
   const [pmFilter, setPmFilter] = useState<string>("all");
 
@@ -76,6 +84,7 @@ export function MisClient({
   const atRiskProjects = items.filter((i) => i.metrics.scheduleHealth === "at_risk").length;
   const onTrackProjects = items.filter((i) => i.metrics.scheduleHealth === "on_track").length;
   const completedProjects = items.filter((i) => i.metrics.scheduleHealth === "completed").length;
+  const overBudgetProjects = items.filter((i) => Boolean(i.metrics.isOverBudget)).length;
 
   const totalMilestonesCount = milestones.length;
   const overdueMilestonesCount = milestones.filter((m) => m.isOverdue).length;
@@ -103,6 +112,14 @@ export function MisClient({
         return false;
       }
 
+      // Cost overrun filter
+      if (costFilter === "over_budget" && !item.metrics.isOverBudget) {
+        return false;
+      }
+      if (costFilter === "within_budget" && item.metrics.isOverBudget) {
+        return false;
+      }
+
       // Phase filter
       if (phaseFilter !== "all") {
         const phase = p.currentPhase || "Discovery";
@@ -120,7 +137,7 @@ export function MisClient({
 
       return true;
     });
-  }, [items, searchQuery, healthFilter, phaseFilter, pmFilter]);
+  }, [items, searchQuery, healthFilter, costFilter, phaseFilter, pmFilter]);
 
   // Filtered milestones
   const filteredMilestones = useMemo(() => {
@@ -193,6 +210,10 @@ export function MisClient({
         "Phase",
         "Status",
         "Schedule Health",
+        "Budget (INR)",
+        "Burned Cost (INR)",
+        "Cost Overrun (INR)",
+        "Cost Status",
         "Start Date",
         "Planned End Date",
         "Delay (Days)",
@@ -218,6 +239,10 @@ export function MisClient({
           `"${p.currentPhase || "Discovery"}"`,
           `"${p.status || ""}"`,
           `"${m.scheduleHealth}"`,
+          m.canSeeCost ? (m.budget ?? 0) : '"Restricted"',
+          m.canSeeCost ? (m.actualCost ?? 0) : '"Restricted"',
+          m.canSeeCost ? (m.costOverrunInr ?? 0) : '"Restricted"',
+          m.canSeeCost ? (m.isOverBudget ? '"Over Budget"' : '"Within Budget"') : '"Restricted"',
           `"${p.startDate || ""}"`,
           `"${p.plannedEndDate || ""}"`,
           m.delayDays,
@@ -379,7 +404,7 @@ export function MisClient({
       </div>
 
       {/* ── Executive Stat Cards ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           label="Total Projects"
           value={totalProjects}
@@ -461,6 +486,31 @@ export function MisClient({
             icon={
               <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            }
+          />
+        </div>
+
+        <div
+          onClick={() => setCostFilter(costFilter === "over_budget" ? "all" : "over_budget")}
+          className="cursor-pointer"
+        >
+          <StatCard
+            label="Cost Overruns"
+            value={overBudgetProjects}
+            tone={overBudgetProjects > 0 ? "critical" : "positive"}
+            accentTop={overBudgetProjects > 0 ? "#ef4444" : "#10b981"}
+            hint={
+              <span className={cn("font-medium", overBudgetProjects > 0 ? "text-rose-600 font-bold" : "text-emerald-700")}>
+                {overBudgetProjects > 0
+                  ? `${overBudgetProjects} project${overBudgetProjects > 1 ? "s" : ""} over budget`
+                  : "All within budget"}
+              </span>
+            }
+            className={costFilter === "over_budget" ? "ring-2 ring-rose-500" : ""}
+            icon={
+              <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
           />
@@ -637,11 +687,28 @@ export function MisClient({
                 ))}
               </select>
 
-              {(searchQuery || healthFilter !== "all" || phaseFilter !== "all" || pmFilter !== "all") && (
+              {/* Cost Filter */}
+              <select
+                value={costFilter}
+                onChange={(e) => setCostFilter(e.target.value as any)}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1.5 text-xs font-medium shadow-2xs focus:border-navy-900 focus:outline-none transition",
+                  costFilter === "over_budget"
+                    ? "border-rose-300 bg-rose-50 text-rose-800 font-bold"
+                    : "border-navy-900/10 bg-white text-navy-800"
+                )}
+              >
+                <option value="all">All Costs</option>
+                <option value="over_budget">Over Budget Only (Red Alert)</option>
+                <option value="within_budget">Within Budget</option>
+              </select>
+
+              {(searchQuery || healthFilter !== "all" || costFilter !== "all" || phaseFilter !== "all" || pmFilter !== "all") && (
                 <button
                   onClick={() => {
                     setSearchQuery("");
                     setHealthFilter("all");
+                    setCostFilter("all");
                     setPhaseFilter("all");
                     setPmFilter("all");
                   }}
@@ -667,6 +734,7 @@ export function MisClient({
                       <th className="px-3 py-3">Milestone Progress</th>
                       <th className="px-3 py-3">Planned Timeline</th>
                       <th className="px-3 py-3">Timeline Delay Variance</th>
+                      <th className="px-3 py-3">Cost & Budget</th>
                       <th className="px-3 py-3">Health</th>
                       <th className="py-3 pl-3 pr-4 text-right">Action</th>
                     </tr>
@@ -674,7 +742,7 @@ export function MisClient({
                   <tbody className="divide-y divide-navy-900/5 font-medium text-navy-800">
                     {filteredProjects.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-navy-400">
+                        <td colSpan={10} className="py-12 text-center text-navy-400">
                           <p className="text-sm font-semibold text-navy-600">No projects match the selected criteria.</p>
                           <p className="mt-1 text-xs">Try adjusting your search or health filters.</p>
                         </td>
@@ -808,6 +876,67 @@ export function MisClient({
                               )}
                             </td>
 
+                            {/* Cost & Budget */}
+                            <td className="px-3 py-3 whitespace-nowrap">
+                              {m.canSeeCost ? (
+                                <div className="space-y-1">
+                                  <div className="flex items-baseline gap-1">
+                                    <span
+                                      className={cn(
+                                        "text-xs font-bold",
+                                        m.isOverBudget
+                                          ? "text-rose-600 font-extrabold"
+                                          : "text-navy-900"
+                                      )}
+                                    >
+                                      {formatCurrency(m.actualCost ?? 0)}
+                                    </span>
+                                    <span className="text-[10px] text-navy-400">/</span>
+                                    <span className="text-[11px] text-navy-500">
+                                      {typeof m.budget === "number" && m.budget > 0
+                                        ? formatCurrency(m.budget)
+                                        : "—"}
+                                    </span>
+                                  </div>
+
+                                  {m.isOverBudget ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                      +{formatCurrency(m.costOverrunInr)} Over Budget
+                                    </span>
+                                  ) : typeof m.costConsumedPercent === "number" && m.costConsumedPercent > 0 ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="h-1 w-14 overflow-hidden rounded-full bg-navy-100">
+                                        <div
+                                          className={cn(
+                                            "h-full rounded-full transition-all",
+                                            m.costConsumedPercent >= 85
+                                              ? "bg-amber-500"
+                                              : "bg-emerald-500"
+                                          )}
+                                          style={{ width: `${Math.min(100, m.costConsumedPercent)}%` }}
+                                        />
+                                      </div>
+                                      <span
+                                        className={cn(
+                                          "text-[10px]",
+                                          m.costConsumedPercent >= 85
+                                            ? "text-amber-700 font-semibold"
+                                            : "text-navy-400"
+                                        )}
+                                      >
+                                        {m.costConsumedPercent.toFixed(0)}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-navy-400">0% consumed</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-navy-400 italic text-[11px]">Restricted</span>
+                              )}
+                            </td>
+
                             {/* Schedule Health Badge */}
                             <td className="px-3 py-3 whitespace-nowrap">
                               <span
@@ -864,7 +993,9 @@ export function MisClient({
                   <Card
                     key={p.id}
                     accent={
-                      m.scheduleHealth === "delayed"
+                      m.isOverBudget
+                        ? "#ef4444"
+                        : m.scheduleHealth === "delayed"
                         ? "#ef4444"
                         : m.scheduleHealth === "at_risk"
                         ? "#f59e0b"
@@ -964,6 +1095,61 @@ export function MisClient({
                             <span className="font-medium">{p.plannedEndDate ? formatDate(p.plannedEndDate) : "—"}</span>
                           </div>
                         </div>
+
+                        {/* Cost & Budget Details */}
+                        {m.canSeeCost && (
+                          <div
+                            className={cn(
+                              "rounded-lg p-2.5 text-xs flex items-center justify-between border",
+                              m.isOverBudget
+                                ? "bg-rose-50/80 border-rose-200"
+                                : "bg-navy-50/50 border-navy-900/5"
+                            )}
+                          >
+                            <div>
+                              <span className="block text-[10px] text-navy-400 uppercase font-semibold">
+                                Burned / Budget
+                              </span>
+                              <div className="flex items-baseline gap-1 mt-0.5">
+                                <span
+                                  className={cn(
+                                    "font-bold text-xs",
+                                    m.isOverBudget ? "text-rose-600 font-extrabold" : "text-navy-900"
+                                  )}
+                                >
+                                  {formatCurrency(m.actualCost ?? 0)}
+                                </span>
+                                <span className="text-navy-400 text-[10px]">/</span>
+                                <span className="text-navy-600 text-xs font-medium">
+                                  {typeof m.budget === "number" && m.budget > 0 ? formatCurrency(m.budget) : "No budget"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {m.isOverBudget ? (
+                              <div className="text-right">
+                                <span className="inline-flex items-center gap-1 rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                  +{formatCurrency(m.costOverrunInr)}
+                                </span>
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-rose-600 mt-0.5">
+                                  Over Budget
+                                </span>
+                              </div>
+                            ) : typeof m.costConsumedPercent === "number" ? (
+                              <span
+                                className={cn(
+                                  "text-[10px] font-semibold px-2 py-0.5 rounded",
+                                  m.costConsumedPercent >= 85
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-emerald-50 text-emerald-700"
+                                )}
+                              >
+                                {m.costConsumedPercent.toFixed(0)}% consumed
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     </div>
 

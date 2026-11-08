@@ -5,6 +5,7 @@ import {
   parseSalaryPasteText,
   parseSalaryExcelBuffer,
   applySalaryUpdates,
+  ensureSalarySchema,
   ParsedSalaryRow,
 } from "@/lib/salary-service";
 
@@ -19,6 +20,8 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
+    await ensureSalarySchema();
+
     const [employees, standaloneSalaries] = await Promise.all([
       identityDb("employee_master as e")
         .leftJoin("employee_salaries as s", "e.employee_id", "s.employee_id")
@@ -35,7 +38,11 @@ export async function GET() {
           "s.updated_at as salary_updated_at",
           "s.updated_by_email"
         )
-        .orderBy("e.full_name", "asc"),
+        .orderBy("e.full_name", "asc")
+        .catch((err) => {
+          console.error("[admin.salaries.GET] employee_master join error:", err);
+          return [];
+        }),
       identityDb("employee_salaries as s")
         .whereNotExists(
           identityDb("employee_master as e").whereRaw("e.employee_id = s.employee_id")
@@ -46,7 +53,11 @@ export async function GET() {
           "s.cost_per_day",
           "s.updated_at as salary_updated_at",
           "s.updated_by_email"
-        ),
+        )
+        .catch((err) => {
+          console.error("[admin.salaries.GET] standalone salaries error:", err);
+          return [];
+        }),
     ]);
 
     const formattedEmps = employees.map((emp) => {
@@ -87,6 +98,32 @@ export async function GET() {
     }));
 
     const allRecords = [...formattedEmps, ...formattedJoiners];
+
+    // Fallback: If employee_master is not yet populated or synced on the server, load active employees from identityDb("users")
+    if (allRecords.length === 0) {
+      const fallbackUsers = await identityDb("users")
+        .where("is_active", true)
+        .select("id", "full_name", "email", "darwinbox_ref")
+        .orderBy("full_name", "asc")
+        .catch(() => []);
+
+      for (const u of fallbackUsers) {
+        allRecords.push({
+          empCode: u.darwinbox_ref || u.id.slice(0, 8),
+          name: u.full_name || u.email,
+          designation: "Team Member",
+          department: "—",
+          jobLevel: "—",
+          officeLocation: "—",
+          isActive: true,
+          costOfEmployee: null,
+          updatedAt: null,
+          updatedBy: null,
+          isNewJoiner: false,
+        });
+      }
+    }
+
     const configuredCount = allRecords.filter((r) => r.costOfEmployee !== null && r.costOfEmployee > 0).length;
 
     return NextResponse.json({

@@ -302,7 +302,9 @@ export function DashboardClient({
                       </Link>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-bold text-navy-900">{formatCurrency(c.actualCost)}</span>
+                      <span className={`text-xs font-bold ${c.consumedPercent > 100 ? "text-rose-600 font-extrabold" : "text-navy-900"}`}>
+                        {formatCurrency(c.actualCost)}
+                      </span>
                       <span className="text-xs text-navy-400 mx-1">/</span>
                       <span className="text-xs text-navy-500">{formatCurrency(c.budget)}</span>
                     </div>

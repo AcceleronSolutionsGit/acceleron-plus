@@ -2,6 +2,7 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { isSalaryManager } from "@/lib/salary-auth";
+import { ensureSalarySchema } from "@/lib/salary-service";
 import { SalariesManagerClient } from "./SalariesManagerClient";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export default async function AdminSalariesPage() {
     redirect("/pmt");
   }
 
-  return <SalariesManagerClient currentUserEmail={session.email || ""} />;
+  await ensureSalarySchema();
+
+  return <SalariesManagerClient currentUserEmail={session.email || "arindam.hari@acceleronsolutions.io"} />;
 }
 

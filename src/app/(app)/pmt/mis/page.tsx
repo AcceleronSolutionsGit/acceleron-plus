@@ -3,6 +3,7 @@ import { getProjects } from "@/lib/api";
 import { getSession, projectsManagedBy, projectsAllocatedTo } from "@/lib/auth";
 import { projectDb } from "@/lib/db";
 import { mapMilestoneRow } from "@/lib/row-mapper";
+import { canSeeProjectFinancials } from "@/lib/permissions";
 import { MisClient, type ProjectMisItem, type MisMilestone } from "./MisClient";
 
 export const metadata = {
@@ -65,6 +66,42 @@ export default async function PMTMisPage() {
     );
   }
 
+  // Fetch actual project timesheet costs with rate bands & individual salaries
+  let timesheetCostsWithRates: Array<{ project_id: string; cost: number | string }> = [];
+  try {
+    if (projectIds.length > 0) {
+      timesheetCostsWithRates = await projectDb("project_timesheets")
+        .join("project_team_members", function () {
+          this.on("project_timesheets.project_id", "=", "project_team_members.project_id")
+              .andOn("project_timesheets.user_id", "=", "project_team_members.user_id");
+        })
+        .leftJoin("employee_rate_bands", "project_team_members.rate_band_id", "employee_rate_bands.id")
+        .where("project_timesheets.status", "approved")
+        .whereIn("project_timesheets.project_id", projectIds)
+        .select("project_timesheets.project_id")
+        .select(
+          projectDb.raw(
+            "COALESCE(SUM(project_timesheets.hours_logged * (COALESCE(project_team_members.custom_daily_cost_inr, project_team_members.daily_cost_inr, employee_rate_bands.daily_cost_inr, 0) / 8.0)), 0) as cost"
+          )
+        )
+        .groupBy("project_timesheets.project_id");
+    }
+  } catch (err) {
+    console.error("[pmt.mis] Failed to aggregate timesheet costs:", err);
+    timesheetCostsWithRates = [];
+  }
+
+  const timesheetCostByProject = new Map<string, number>();
+  for (const c of timesheetCostsWithRates) {
+    timesheetCostByProject.set(c.project_id, Number(c.cost) || 0);
+  }
+
+  const viewer = {
+    role: session?.role ?? "member",
+    additionalRoles: session?.additionalRoles,
+    userId: session?.userId,
+  };
+
   // Pre-calculate project metrics
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -73,6 +110,17 @@ export default async function PMTMisPage() {
   const projectMap = new Map(visibleProjects.map((p) => [p.id, p]));
 
   const misItems: ProjectMisItem[] = visibleProjects.map((p) => {
+    const canSeeCost = canSeeProjectFinancials(viewer, p, managed);
+    const actualCost = canSeeCost ? (timesheetCostByProject.get(p.id) ?? 0) : null;
+    const budget = canSeeCost && p.budgetInr ? Number(p.budgetInr) : null;
+    const costVariance = budget !== null && actualCost !== null ? budget - actualCost : null;
+    const costConsumedPercent =
+      budget !== null && budget > 0 && actualCost !== null
+        ? (actualCost / budget) * 100
+        : null;
+    const isOverBudget =
+      budget !== null && budget > 0 && actualCost !== null && actualCost > budget;
+    const costOverrunInr = isOverBudget && actualCost !== null && budget !== null ? actualCost - budget : 0;
     const pMilestones = allMilestones.filter((m) => m.projectId === p.id);
     const totalMilestones = pMilestones.length;
     const completedMilestones = pMilestones.filter((m) => m.status === "completed").length;
@@ -179,6 +227,13 @@ export default async function PMTMisPage() {
         plannedDurationDays,
         elapsedDays,
         timelineProgressPercent,
+        canSeeCost,
+        budget,
+        actualCost,
+        costVariance,
+        costConsumedPercent,
+        isOverBudget,
+        costOverrunInr,
       },
     };
   });

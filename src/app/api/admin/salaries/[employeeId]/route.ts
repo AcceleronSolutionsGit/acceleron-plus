@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { identityDb, projectDb } from "@/lib/db";
 import { requireSalaryManager } from "@/lib/salary-auth";
-import { cleanNumericCost } from "@/lib/salary-service";
+import { cleanNumericCost, ensureSalarySchema } from "@/lib/salary-service";
 
 export const runtime = "nodejs";
 
@@ -17,6 +17,8 @@ interface RouteContext {
 export async function PATCH(req: NextRequest, context: RouteContext) {
   const auth = await requireSalaryManager();
   if (!auth.ok) return auth.response;
+
+  await ensureSalarySchema();
 
   const { employeeId } = await context.params;
   const empCode = String(employeeId || "").trim();
