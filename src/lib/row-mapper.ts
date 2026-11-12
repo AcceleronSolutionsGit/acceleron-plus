@@ -134,6 +134,21 @@ export function mapProjectRow(row: any, userMap?: Map<string, User>): Project {
   }
   p.totalOrderValueInr = Number(p.budgetInr || 0);
 
+  if (row.balance_amount !== undefined && row.balance_amount !== null) {
+    p.balanceAmount = Number(row.balance_amount);
+  } else if (
+    row.invoiced_amount !== undefined &&
+    row.invoiced_amount !== null &&
+    p.budgetInr !== undefined &&
+    p.budgetInr !== null
+  ) {
+    p.balanceAmount = Number(p.budgetInr) - Number(row.invoiced_amount);
+  }
+
+  if (row.invoiced_amount !== undefined && row.invoiced_amount !== null) {
+    p.invoicedAmount = Number(row.invoiced_amount);
+  }
+
   if (p.budgetInr !== undefined && p.budgetInr !== null) {
     const ov = Number(p.budgetInr);
     const hasMargin =

@@ -464,6 +464,21 @@ export function ProjectDetailClient({
                     : "Not calculated (default ₹0)"
                 }
               />
+              <MetaItem
+                label="Remaining Balance"
+                value={
+                  project.balanceAmount !== undefined && project.balanceAmount !== null
+                    ? formatCurrency(Number(project.balanceAmount), "INR")
+                    : "—"
+                }
+                subtext={
+                  project.balanceAmount !== undefined && project.balanceAmount !== null
+                    ? Number(project.balanceAmount) < 0
+                      ? "⚠️ Over-billed (Negative)"
+                      : "Unbilled contract balance"
+                    : undefined
+                }
+              />
             </>
           )}
           <MetaItem label="Start Date" value={formatDate(project.startDate)} />

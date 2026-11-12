@@ -255,6 +255,8 @@ export const PROJECT_FINANCIAL_FIELDS = [
   "totalOrderValueInr",
   "targetMarginPercent",
   "targetCostInr",
+  "balanceAmount",
+  "invoicedAmount",
   "marginSetByUserId",
   "marginSetAt",
   "marginNotes",

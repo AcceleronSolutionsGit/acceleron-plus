@@ -245,21 +245,22 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
         onClick={toggle}
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-expanded={!isCollapsed}
+        title={isCollapsed ? "Expand sidebar (show full navigation)" : "Collapse sidebar (minimize navigation)"}
         className={[
-          "absolute -right-3 top-[26px] z-20 grid h-6 w-6 place-items-center rounded-full",
-          "border border-navy-900/10 bg-surface text-navy-600 shadow-sm",
-          "cursor-pointer transition-[background,color,transform] duration-200",
-          "hover:bg-navy-900 hover:text-white",
+          "absolute -right-4 top-[22px] z-30 grid h-8 w-8 place-items-center rounded-full",
+          "border-2 border-white/95 bg-white text-navy-800 shadow-md ring-1 ring-navy-900/15",
+          "cursor-pointer transition-all duration-200 ease-[var(--ease-out-soft)]",
+          "hover:scale-110 hover:border-navy-900 hover:bg-navy-900 hover:text-white hover:shadow-lg active:scale-95",
         ].join(" ")}
       >
         <svg
-          className={`h-3.5 w-3.5 transition-transform duration-300 ease-[var(--ease-out-soft)] ${
+          className={`h-4 w-4 transition-transform duration-300 ease-[var(--ease-out-soft)] ${
             isCollapsed ? "rotate-180" : ""
           }`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
@@ -291,6 +292,18 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
 
       {/* ─── Navigation ───────────────────────────────────────── */}
       <nav
+        onClick={(e) => {
+          // Automatically collapse the sidebar when any navigation tab/link is selected
+          const target = e.target as HTMLElement;
+          if (target.closest("a, button[data-guide^='nav:']")) {
+            if (!isCollapsed) {
+              setIsCollapsed(true);
+              try {
+                window.localStorage.setItem(COLLAPSE_KEY, "1");
+              } catch {}
+            }
+          }
+        }}
         className={`flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden py-2 ${
           isCollapsed ? "px-3" : "px-3"
         }`}

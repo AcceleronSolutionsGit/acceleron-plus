@@ -163,7 +163,21 @@ interface Filters {
 
 const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", projectType: "all", classification: "all", client: "all", manager: "all", margin: "all", sort: "recent" };
 const FILTER_STORAGE_KEY = "pmt.projects.filters.v1";
-const PAGE = 30;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_PAGE_SIZE = 25;
+
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, "...", total];
+  }
+  if (current >= total - 3) {
+    return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, "...", current - 1, current, current + 1, "...", total];
+}
 
 function readStoredFilters(): Filters {
   try {
@@ -245,12 +259,12 @@ export function ProjectListClient({
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [restored, setRestored] = useState(false);
-  const [visible, setVisible] = useState(PAGE);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [today] = useState(() => parseISODate(todayISO())!);
 
   const searchRef = useRef<HTMLInputElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const deferredQuery = useDeferredValue(filters.q);
 
@@ -271,7 +285,7 @@ export function ProjectListClient({
 
   const update = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));
-    setVisible(PAGE);
+    setCurrentPage(1);
   }, []);
 
   // "/" to search, "n" for a new project.
@@ -374,7 +388,12 @@ export function ProjectListClient({
     return list;
   }, [projects, deferredQuery, filters.status, filters.phase, filters.category, filters.classification, filters.client, filters.manager, filters.margin, filters.sort]);
 
-  const shown = filtered.slice(0, visible);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(filtered.length, startIndex + pageSize);
+  const shown = filtered.slice(startIndex, endIndex);
+
   const hasFilters =
     filters.q.trim() !== "" ||
     filters.status !== "all" ||
@@ -384,18 +403,6 @@ export function ProjectListClient({
     filters.client !== "all" ||
     filters.manager !== "all" ||
     filters.margin !== "all";
-
-  // Draw more rows as the end of the list comes into view.
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || visible >= filtered.length) return;
-    const observer = new IntersectionObserver(
-      (entries) => entries[0]?.isIntersecting && setVisible((v) => v + PAGE),
-      { rootMargin: "600px 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [visible, filtered.length]);
 
   // ── Editing managers ──────────────────────────────────────────
   const anchorRef = useRef<HTMLElement | null>(null);
@@ -758,7 +765,7 @@ export function ProjectListClient({
               type="button"
               onClick={() => {
                 setFilters((f) => ({ ...DEFAULT_FILTERS, sort: f.sort }));
-                setVisible(PAGE);
+                setCurrentPage(1);
               }}
               className="cursor-pointer rounded-md px-2 py-1 font-semibold text-navy-600 transition-colors hover:bg-navy-900/6 hover:text-navy-900"
             >
@@ -816,16 +823,17 @@ export function ProjectListClient({
             <thead>
                <tr>
                 {[
-                  ["Project", "w-[260px]"],
-                  ["Client", "w-[140px]"],
+                  ["Project", "w-[250px]"],
+                  ["Client", "w-[130px]"],
                   ["Phase", "w-[95px]"],
                   ["Class", "w-[85px]"],
-                  ["Category & Type", "w-[150px]"],
-                  ["Status", "w-[100px]"],
-                  ["Project managers", "w-[150px]"],
-                  ["Start & End Date", "w-[140px]"],
+                  ["Category & Type", "w-[140px]"],
+                  ["Status", "w-[95px]"],
+                  ["Project managers", "w-[140px]"],
+                  ["Start & End Date", "w-[130px]"],
                   ["Order Value", "text-right w-[110px]"],
-                  ["Target Cost / Margin", "text-right w-[135px]"],
+                  ["Balance", "text-right w-[110px]"],
+                  ["Target Cost / Margin", "text-right w-[140px]"],
                 ].map(([label, cls], i, all) => (
                   <th
                     key={label}
@@ -859,12 +867,104 @@ export function ProjectListClient({
               ))}
             </tbody>
           </table>
-          {visible < filtered.length && (
-            <div ref={sentinelRef} className="flex items-center justify-center gap-2 border-t border-navy-900/6 py-4 text-[12.5px] text-navy-400">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-navy-900/15 border-t-navy-500" />
-              Loading more…
+          {/* ── Structured Pagination Bar ── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-navy-900/10 px-4 py-3 bg-surface-2/60 rounded-b-xl">
+            {/* Left: Showing range */}
+            <div className="text-[12.5px] text-navy-500 font-medium">
+              {filtered.length === 0 ? (
+                "No projects to display"
+              ) : (
+                <>
+                  Showing <span className="font-semibold text-navy-800">{startIndex + 1}</span>–<span className="font-semibold text-navy-800">{endIndex}</span> of <span className="font-semibold text-navy-800">{filtered.length}</span> projects
+                </>
+              )}
             </div>
-          )}
+
+            {/* Center: Page Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  aria-label="Previous page"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors",
+                    safeCurrentPage === 1
+                      ? "border-navy-900/6 bg-transparent text-navy-300 cursor-not-allowed"
+                      : "border-navy-900/12 bg-surface text-navy-700 hover:bg-navy-900/6 hover:text-navy-900 active:bg-navy-900/10 shadow-2xs"
+                  )}
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 12L6 8l4-4" />
+                  </svg>
+                  Previous
+                </button>
+
+                {/* Number buttons with ellipsis */}
+                {getPageNumbers(safeCurrentPage, totalPages).map((p, idx) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-navy-400 font-medium select-none">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={`page-${p}`}
+                      type="button"
+                      onClick={() => setCurrentPage(p as number)}
+                      aria-current={safeCurrentPage === p ? "page" : undefined}
+                      className={cn(
+                        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-bold tabular-nums transition-colors shadow-2xs",
+                        safeCurrentPage === p
+                          ? "bg-navy-900 text-white shadow-sm"
+                          : "border border-navy-900/12 bg-surface text-navy-700 hover:bg-navy-900/6 hover:text-navy-900"
+                      )}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  aria-label="Next page"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors",
+                    safeCurrentPage === totalPages
+                      ? "border-navy-900/6 bg-transparent text-navy-300 cursor-not-allowed"
+                      : "border-navy-900/12 bg-surface text-navy-700 hover:bg-navy-900/6 hover:text-navy-900 active:bg-navy-900/10 shadow-2xs"
+                  )}
+                >
+                  Next
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            {/* Right: Page size selector */}
+            <div className="flex items-center gap-2 text-[12px] text-navy-500 font-medium">
+              <span>Per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                aria-label="Projects per page"
+                className="h-8 rounded-lg border border-navy-900/15 bg-surface px-2.5 text-[12px] font-semibold text-navy-800 shadow-2xs focus:border-navy-900 focus:outline-none"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1161,6 +1261,41 @@ const ProjectRow = memo(function ProjectRow({
         >
           {p.budgetInr ? compactCurrency(p.budgetInr, p.currency) : "—"}
         </span>
+      </td>
+
+      {/* Balance */}
+      <td className={cn(cell, "text-right")}>
+        {p.balanceAmount !== undefined && p.balanceAmount !== null ? (
+          <div>
+            <span
+              title={`Remaining Contract Balance: ${formatCurrency(Number(p.balanceAmount), p.currency)}${p.budgetInr && p.invoicedAmount ? ` (Order Value: ${formatCurrency(Number(p.budgetInr))} − Invoiced: ${formatCurrency(Number(p.invoicedAmount))})` : ""}`}
+              className={cn(
+                "text-[13px] font-semibold tabular-nums",
+                Number(p.balanceAmount) < 0
+                  ? "text-rose-600 font-bold"
+                  : Number(p.balanceAmount) === 0
+                  ? "text-navy-400"
+                  : "text-emerald-700"
+              )}
+            >
+              {compactCurrency(p.balanceAmount, p.currency)}
+            </span>
+            <span
+              className={cn(
+                "block text-[10px] font-medium",
+                Number(p.balanceAmount) < 0 ? "text-rose-500 font-semibold" : "text-navy-400"
+              )}
+            >
+              {Number(p.balanceAmount) < 0
+                ? "Over-billed"
+                : Number(p.balanceAmount) === 0
+                ? "Fully billed"
+                : "Remaining"}
+            </span>
+          </div>
+        ) : (
+          <span className="text-[13px] text-navy-300">—</span>
+        )}
       </td>
 
       {/* Target Cost & Margin */}

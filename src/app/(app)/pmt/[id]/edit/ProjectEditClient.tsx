@@ -556,6 +556,31 @@ export function ProjectEditClient({ project, permissions }: { project: Project, 
                       placeholder="e.g. 10"
                       hint="Applied to labor costs for overhead loading."
                     />
+
+                    {/* Remaining Balance */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-navy-500 mb-1">
+                        Remaining Contract Balance
+                      </label>
+                      <div className="flex flex-col justify-center rounded-xl border border-navy-200 bg-surface-2 p-3 min-h-[58px]">
+                        <div className="flex items-center justify-between">
+                          <span className={cn(
+                            "text-base font-bold tabular-nums",
+                            project.balanceAmount !== undefined && Number(project.balanceAmount) < 0 ? "text-rose-600" : "text-navy-900"
+                          )}>
+                            {project.balanceAmount !== undefined && project.balanceAmount !== null
+                              ? formatCurrency(Number(project.balanceAmount))
+                              : "—"}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10.5px] font-bold uppercase tracking-wider bg-navy-100 text-navy-700 border border-navy-200">
+                            {project.invoicedAmount ? `Billed: ${formatCurrency(Number(project.invoicedAmount))}` : "Unbilled"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-navy-500">
+                          Order Value − Invoiced Amount (from sales orders)
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
