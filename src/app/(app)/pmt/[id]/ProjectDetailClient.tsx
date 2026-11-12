@@ -142,8 +142,19 @@ export function ProjectDetailClient({
   // WBS Comments Modal state
   const [activeCommentWbsItem, setActiveCommentWbsItem] = useState<WBSItem | null>(null);
 
-  // Tab grouping
+  // Tab grouping & selection
   const [activeGroup, setActiveGroup] = useState<string>("all");
+  const [selectedTab, setSelectedTab] = useState<string | undefined>(undefined);
+
+  const handleGoToChangeRequests = () => {
+    setActiveGroup("all");
+    setSelectedTab("change_requests");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "change_requests");
+      window.history.pushState({}, "", url.toString());
+    }
+  };
 
   // Scope & Solution Approach Modal states
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
@@ -442,12 +453,30 @@ export function ProjectDetailClient({
           {permissions.canViewFinancials && (
             <>
               <MetaItem
-                label="Order Value (INR)"
+                label="Total Order Value"
                 value={project.budgetInr ? formatCurrency(Number(project.budgetInr), "INR") : "—"}
                 subtext={
                   project.initialOrderValueInr && project.crValueInr && Number(project.crValueInr) > 0
                     ? `Initial: ${formatCurrency(Number(project.initialOrderValueInr))} + CR: ${formatCurrency(Number(project.crValueInr))}`
-                    : undefined
+                    : "Contract baseline"
+                }
+              />
+              <MetaItem
+                label="Change Value (CR)"
+                value={
+                  project.crValueInr && Number(project.crValueInr) > 0
+                    ? `+${formatCurrency(Number(project.crValueInr), "INR")}`
+                    : "₹0"
+                }
+                valueClassName={
+                  project.crValueInr && Number(project.crValueInr) > 0
+                    ? "text-blue-700 font-bold"
+                    : "text-neutral-400"
+                }
+                subtext={
+                  project.initialOrderValueInr && project.crValueInr && Number(project.crValueInr) > 0
+                    ? `Breakdown: Initial ${formatCurrency(Number(project.initialOrderValueInr))} + CR ${formatCurrency(Number(project.crValueInr))}`
+                    : "No change requests"
                 }
               />
               <MetaItem
@@ -484,6 +513,38 @@ export function ProjectDetailClient({
             <MetaItem label="PO Details" value={project.poDetails} />
           )}
         </div>
+
+        {/* Order Value & Change Breakdown banner */}
+        {permissions.canViewFinancials && project.crValueInr && Number(project.crValueInr) > 0 && (
+          <div className="mt-4 pt-3 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-3 bg-blue-50/70 border border-blue-200/60 p-3 rounded-lg text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-blue-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Order Value Breakdown:
+              </span>
+              <span className="text-navy-700">
+                Initial Contract: <strong className="font-semibold text-navy-900">{formatCurrency(Number(project.initialOrderValueInr || 0), "INR")}</strong>
+              </span>
+              <span className="text-blue-500 font-bold">+</span>
+              <span className="text-blue-800">
+                Change Value (CR): <strong className="font-bold text-blue-700">+{formatCurrency(Number(project.crValueInr), "INR")}</strong>
+              </span>
+              <span className="text-blue-500 font-bold">=</span>
+              <span className="text-emerald-900">
+                Total Order Value: <strong className="font-bold text-emerald-800">{formatCurrency(Number(project.budgetInr || 0), "INR")}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleGoToChangeRequests}
+              className="text-xs font-semibold text-blue-700 hover:text-blue-900 underline flex items-center gap-1"
+            >
+              View Change Requests →
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Project End-to-End Flow Pipeline Banner */}
@@ -560,6 +621,8 @@ export function ProjectDetailClient({
       <Tabs
         key={activeGroup}
         tabs={tabs}
+        activeTab={selectedTab}
+        onTabChange={setSelectedTab}
         defaultTab={tabs[0]?.id}
         storageKey={`pmt_tab_${project.id}`}
         syncWithUrl={true}
@@ -713,11 +776,13 @@ export function ProjectDetailClient({
                   projectCode={project.code}
                   canManage={canManage}
                   currency={project.currency || "INR"}
-                  onOrderValueUpdated={(newOv) => {
+                  onOrderValueUpdated={(newOv, newCrVal, newInitVal) => {
                     setProject((prev) => ({
                       ...prev,
                       budgetInr: newOv,
                       totalOrderValueInr: newOv,
+                      ...(newCrVal !== undefined ? { crValueInr: newCrVal } : {}),
+                      ...(newInitVal !== undefined ? { initialOrderValueInr: newInitVal } : {}),
                     }));
                   }}
                 />
@@ -825,11 +890,13 @@ function MetaItem({
   value,
   subtext,
   isBadge,
+  valueClassName,
 }: {
   label: string;
-  value: string;
-  subtext?: string;
+  value: React.ReactNode;
+  subtext?: React.ReactNode;
   isBadge?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <div>
@@ -840,9 +907,11 @@ function MetaItem({
           {value}
         </span>
       ) : (
-        <p className="text-sm font-semibold text-navy-900 mt-0.5 truncate">{value}</p>
+        <p className={cn("text-sm font-semibold text-navy-900 mt-0.5 truncate", valueClassName)}>
+          {value}
+        </p>
       )}
-      {subtext && <p className="text-[10px] text-navy-500">{subtext}</p>}
+      {subtext && <div className="text-[10px] text-navy-500 mt-0.5 leading-snug">{subtext}</div>}
     </div>
   );
 }

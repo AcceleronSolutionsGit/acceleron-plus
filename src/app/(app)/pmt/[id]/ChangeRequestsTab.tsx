@@ -51,7 +51,7 @@ interface ChangeRequestsTabProps {
   projectCode: string;
   canManage: boolean;
   currency?: string;
-  onOrderValueUpdated?: (newOrderValue: number) => void;
+  onOrderValueUpdated?: (newOrderValue: number, newCrValue?: number, initialValue?: number) => void;
 }
 
 export function ChangeRequestsTab({
@@ -96,7 +96,11 @@ export function ChangeRequestsTab({
       setItems(data.changeRequests || []);
       setSummary(data.summary || null);
       if (data.summary && onOrderValueUpdated) {
-        onOrderValueUpdated(data.summary.totalOrderValueInr);
+        onOrderValueUpdated(
+          data.summary.totalOrderValueInr,
+          data.summary.crOrderValueInr,
+          data.summary.initialOrderValueInr
+        );
       }
     } catch (err: any) {
       console.error("loadChangeRequests error:", err);
@@ -277,7 +281,7 @@ export function ChangeRequestsTab({
           <Card className="p-4 border border-blue-500/20 bg-blue-50/40">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">
-                CR Value Added
+                Change Value (CR)
               </span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
                 +{summary.approvedCount} CR{summary.approvedCount === 1 ? "" : "s"}
@@ -287,7 +291,7 @@ export function ChangeRequestsTab({
               +{formatCurrency(summary.crOrderValueInr, currency)}
             </p>
             <p className="text-[11px] text-blue-600 mt-1">
-              Approved scope revisions
+              Approved change value additions
             </p>
           </Card>
 
@@ -298,14 +302,14 @@ export function ChangeRequestsTab({
                 Total Order Value
               </span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900">
-                Active Total
+                Reconciled
               </span>
             </div>
             <p className="text-2xl font-bold text-emerald-800 mt-1">
               {formatCurrency(summary.totalOrderValueInr, currency)}
             </p>
             <p className="text-[11px] text-emerald-700 mt-1 font-medium">
-              Initial ({formatCurrency(summary.initialOrderValueInr, currency)}) + CR ({formatCurrency(summary.crOrderValueInr, currency)})
+              Breakdown: Initial ({formatCurrency(summary.initialOrderValueInr, currency)}) + Change Value ({formatCurrency(summary.crOrderValueInr, currency)})
             </p>
           </Card>
 

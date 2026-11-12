@@ -1059,12 +1059,30 @@ const ProjectRow = memo(function ProjectRow({
 
       {/* Order Value */}
       <td className={cn(cell, "text-right")}>
-        <span
-          title={p.budgetInr ? formatCurrency(Number(p.budgetInr), p.currency) : undefined}
-          className={cn("text-[13px] font-semibold tabular-nums", p.budgetInr ? "text-navy-800" : "text-navy-300")}
-        >
-          {p.budgetInr ? compactCurrency(p.budgetInr, p.currency) : "—"}
-        </span>
+        {p.budgetInr ? (
+          <div>
+            <span
+              title={
+                p.crValueInr && Number(p.crValueInr) > 0
+                  ? `Total Order Value: ${formatCurrency(Number(p.budgetInr), p.currency)}\nBreakdown: Initial ${formatCurrency(Number(p.initialOrderValueInr || 0), p.currency)} + Change Value ${formatCurrency(Number(p.crValueInr), p.currency)}`
+                  : `Order Value: ${formatCurrency(Number(p.budgetInr), p.currency)}`
+              }
+              className="text-[13px] font-semibold tabular-nums text-navy-800"
+            >
+              {compactCurrency(p.budgetInr, p.currency)}
+            </span>
+            {p.crValueInr && Number(p.crValueInr) > 0 && (
+              <span
+                title={`Change Value (CR): +${formatCurrency(Number(p.crValueInr), p.currency)}`}
+                className="block text-[10.5px] font-medium tabular-nums text-blue-700"
+              >
+                +CR {compactCurrency(p.crValueInr, p.currency)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-[13px] font-semibold tabular-nums text-navy-300">—</span>
+        )}
       </td>
 
       {/* Target Cost */}

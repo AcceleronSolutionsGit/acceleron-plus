@@ -403,7 +403,7 @@ export function FinancialsTab({
           <div className="bg-white p-4">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
-                Order Value
+                Order Value (Total)
               </span>
               <span className="text-[10px] font-medium text-navy-400">Billable Value</span>
             </div>
@@ -411,9 +411,17 @@ export function FinancialsTab({
               {formatCurrency(costing.orderValue, currency)}
             </p>
             {data?.orderValue && data.orderValue.crValueInr > 0 ? (
-              <p className="text-[11px] text-emerald-700 font-semibold mt-1">
-                Initial: {formatCurrency(data.orderValue.initialValueInr, currency)} + CR: {formatCurrency(data.orderValue.crValueInr, currency)}
-              </p>
+              <div className="mt-1.5 space-y-0.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-navy-500 font-medium">Change Value:</span>
+                  <span className="font-bold text-blue-700">
+                    +{formatCurrency(data.orderValue.crValueInr, currency)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-navy-500">
+                  Initial: <span className="font-medium text-navy-700">{formatCurrency(data.orderValue.initialValueInr, currency)}</span> + CR: <span className="font-medium text-blue-700">{formatCurrency(data.orderValue.crValueInr, currency)}</span>
+                </p>
+              </div>
             ) : (
               <p className="text-[11.5px] text-navy-500 mt-1">
                 Contract billable revenue
@@ -520,16 +528,44 @@ export function FinancialsTab({
               {/* Row 1: Order Value */}
               <tr className="hover:bg-navy-50/30 transition-colors">
                 <td className="px-5 py-3.5 font-bold text-navy-900">
-                  Order Value
-                  {data?.orderValue && data.orderValue.crValueInr > 0 && (
-                    <span className="block text-[11px] font-normal text-emerald-700">
-                      Initial: {formatCurrency(data.orderValue.initialValueInr, currency)} + CR: {formatCurrency(data.orderValue.crValueInr, currency)} ({data.orderValue.crCount} approved)
-                    </span>
+                  <div>Order Value (Total)</div>
+                  {data?.orderValue && data.orderValue.crValueInr > 0 ? (
+                    <div className="mt-1 space-y-0.5 font-normal">
+                      <div className="text-xs font-semibold text-blue-700">
+                        Change Value (CR): +{formatCurrency(data.orderValue.crValueInr, currency)}
+                        {data.orderValue.crCount > 0 && (
+                          <span className="ml-1 text-[10.5px] font-medium text-blue-600">
+                            ({data.orderValue.crCount} approved)
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-navy-500">
+                        Initial Baseline: {formatCurrency(data.orderValue.initialValueInr, currency)}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-navy-400 font-normal">No change requests</span>
                   )}
                 </td>
-                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Billable Value</td>
+                <td className="px-5 py-3.5 font-mono text-xs text-navy-600">
+                  {data?.orderValue && data.orderValue.crValueInr > 0 ? (
+                    <div>
+                      <div className="font-semibold text-navy-800">Initial + Change Value</div>
+                      <div className="text-[11px] text-navy-500 mt-0.5">
+                        {formatCurrency(data.orderValue.initialValueInr, currency)} + {formatCurrency(data.orderValue.crValueInr, currency)}
+                      </div>
+                    </div>
+                  ) : (
+                    "Initial Contract Value"
+                  )}
+                </td>
                 <td className="px-5 py-3.5 text-right font-bold font-mono text-navy-900">
-                  {formatCurrency(costing.orderValue, currency)}
+                  <div>{formatCurrency(costing.orderValue, currency)}</div>
+                  {data?.orderValue && data.orderValue.crValueInr > 0 && (
+                    <div className="text-[11px] font-normal text-blue-700">
+                      Incl. +{formatCurrency(data.orderValue.crValueInr, currency)} CR
+                    </div>
+                  )}
                 </td>
                 <td className="px-5 py-3.5 text-center">
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
@@ -538,6 +574,11 @@ export function FinancialsTab({
                 </td>
                 <td className="px-5 py-3.5 text-xs text-navy-500">
                   Total contracted billable value of the project / order.
+                  {data?.orderValue && data.orderValue.crValueInr > 0 && (
+                    <span className="block text-navy-700 font-medium mt-1">
+                      Breakdown: Initial contract of {formatCurrency(data.orderValue.initialValueInr, currency)} plus {formatCurrency(data.orderValue.crValueInr, currency)} in approved change requests.
+                    </span>
+                  )}
                 </td>
               </tr>
 

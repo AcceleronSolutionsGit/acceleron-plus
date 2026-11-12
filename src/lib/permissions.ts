@@ -250,6 +250,9 @@ export function normaliseProjectRole(raw: string | null | undefined): ProjectRol
  */
 export const PROJECT_FINANCIAL_FIELDS = [
   "budgetInr",
+  "initialOrderValueInr",
+  "crValueInr",
+  "totalOrderValueInr",
   "targetMarginPercent",
   "targetCostInr",
   "marginSetByUserId",
