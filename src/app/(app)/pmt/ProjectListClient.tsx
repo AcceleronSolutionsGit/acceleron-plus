@@ -79,7 +79,60 @@ export function phaseColorClass(phase?: string) {
 // ─── Filters ────────────────────────────────────────────────────
 
 type StatusGroup = "all" | "active" | "pipeline" | "on_hold" | "closed";
-type SortKey = "recent" | "name" | "end" | "budget";
+type SortKey = "recent" | "name" | "end" | "budget" | "margin";
+
+export function getMarginColorInfo(marginPercent: number | null | undefined): {
+  tier: "green" | "yellow" | "orange" | "red" | "none";
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+  textClass: string;
+} {
+  if (marginPercent === null || marginPercent === undefined || !Number.isFinite(Number(marginPercent))) {
+    return {
+      tier: "none",
+      label: "Not set",
+      badgeClass: "bg-navy-50 text-navy-500 border-navy-200",
+      dotClass: "bg-navy-400",
+      textClass: "text-navy-400",
+    };
+  }
+  const m = Number(marginPercent);
+  if (m >= 25) {
+    return {
+      tier: "green",
+      label: "Healthy (≥25%)",
+      badgeClass: "bg-green-50 text-green-800 border-green-200",
+      dotClass: "bg-green-500",
+      textClass: "text-green-700",
+    };
+  }
+  if (m >= 15) {
+    return {
+      tier: "yellow",
+      label: "Moderate (15–24%)",
+      badgeClass: "bg-yellow-50 text-yellow-800 border-yellow-200",
+      dotClass: "bg-yellow-500",
+      textClass: "text-yellow-700",
+    };
+  }
+  if (m >= 5) {
+    return {
+      tier: "orange",
+      label: "Low (5–14%)",
+      badgeClass: "bg-orange-50 text-orange-800 border-orange-200",
+      dotClass: "bg-orange-500",
+      textClass: "text-orange-700",
+    };
+  }
+  return {
+    tier: "red",
+    label: "Critical (<5%)",
+    badgeClass: "bg-red-50 text-red-800 border-red-200",
+    dotClass: "bg-red-500",
+    textClass: "text-red-700",
+  };
+}
 
 const STATUS_GROUPS: Record<Exclude<StatusGroup, "all">, string[]> = {
   active: ["active"],
@@ -104,10 +157,11 @@ interface Filters {
   classification: string;
   client: string;
   manager: string; // "all" | "none" | a manager key
+  margin: string; // "all" | "green" | "yellow" | "orange" | "red"
   sort: SortKey;
 }
 
-const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", projectType: "all", classification: "all", client: "all", manager: "all", sort: "recent" };
+const DEFAULT_FILTERS: Filters = { q: "", status: "all", phase: "all", category: "all", projectType: "all", classification: "all", client: "all", manager: "all", margin: "all", sort: "recent" };
 const FILTER_STORAGE_KEY = "pmt.projects.filters.v1";
 const PAGE = 30;
 
@@ -283,6 +337,10 @@ export function ProjectListClient({
       if (filters.projectType !== "all" && (p.projectType || "").toLowerCase() !== filters.projectType.toLowerCase()) return false;
       if (filters.classification !== "all" && (p.classification || "non_group") !== filters.classification) return false;
       if (filters.client !== "all" && (p.clientCompanyName || "Internal") !== filters.client) return false;
+      if (filters.margin !== "all") {
+        const info = getMarginColorInfo(p.targetMarginPercent);
+        if (info.tier !== filters.margin) return false;
+      }
       const managers = p.managers ?? [];
       if (filters.manager === "none" && managers.length > 0) return false;
       if (filters.manager !== "all" && filters.manager !== "none" && !managers.some((m) => m.key === filters.manager)) {
@@ -307,11 +365,14 @@ export function ProjectListClient({
       case "budget":
         list.sort((a, b) => Number(b.budgetInr ?? -1) - Number(a.budgetInr ?? -1));
         break;
+      case "margin":
+        list.sort((a, b) => Number(b.targetMarginPercent ?? -999) - Number(a.targetMarginPercent ?? -999));
+        break;
       default:
         break; // already newest first from the server
     }
     return list;
-  }, [projects, deferredQuery, filters.status, filters.phase, filters.category, filters.classification, filters.client, filters.manager, filters.sort]);
+  }, [projects, deferredQuery, filters.status, filters.phase, filters.category, filters.classification, filters.client, filters.manager, filters.margin, filters.sort]);
 
   const shown = filtered.slice(0, visible);
   const hasFilters =
@@ -321,7 +382,8 @@ export function ProjectListClient({
     filters.category !== "all" ||
     filters.classification !== "all" ||
     filters.client !== "all" ||
-    filters.manager !== "all";
+    filters.manager !== "all" ||
+    filters.margin !== "all";
 
   // Draw more rows as the end of the list comes into view.
   useEffect(() => {
@@ -640,23 +702,56 @@ export function ProjectListClient({
             searchPlaceholder="Find a PM…"
             options={managerOptions}
           />
+          <Combobox
+            className="w-[140px] xl:w-[155px]"
+            value={filters.margin}
+            onChange={(v) => update("margin", v)}
+            placeholder="All margins"
+            searchThreshold={99}
+            options={[
+              { value: "all", label: "All margins" },
+              { value: "green", label: "🟢 Green (≥25%)" },
+              { value: "yellow", label: "🟡 Yellow (15–24%)" },
+              { value: "orange", label: "🟠 Orange (5–14%)" },
+              { value: "red", label: "🔴 Red (<5%)" },
+            ]}
+          />
         </div>
         </div>
       </div>
 
       {/* ── Result line ── */}
-      <div className="-mb-1 flex min-h-8 items-center justify-between px-1 text-[12.5px] text-navy-400">
-        <span>
-          {hasFilters ? (
-            <>
-              <span className="font-semibold text-navy-700">{filtered.length}</span> of {projects.length} projects
-            </>
-          ) : (
-            <>
-              <span className="font-semibold text-navy-700">{projects.length}</span> projects
-            </>
-          )}
-        </span>
+      <div className="-mb-1 flex min-h-8 items-center justify-between px-1 text-[12.5px] text-navy-400 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <span>
+            {hasFilters ? (
+              <>
+                <span className="font-semibold text-navy-700">{filtered.length}</span> of {projects.length} projects
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-navy-700">{projects.length}</span> projects
+              </>
+            )}
+          </span>
+
+          {/* Margin Health Legend */}
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium pl-3 border-l border-navy-900/10">
+            <span className="text-navy-400 text-[10.5px] uppercase font-semibold">Margin:</span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 text-green-800 border border-green-200 text-[10.5px] font-bold" title="Target Margin ≥ 25% (Healthy)">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> ≥25%
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-800 border border-yellow-200 text-[10.5px] font-bold" title="Target Margin 15% – 24% (Moderate)">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" /> 15–24%
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 text-[10.5px] font-bold" title="Target Margin 5% – 14% (Low)">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> 5–14%
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-800 border border-red-200 text-[10.5px] font-bold" title="Target Margin < 5% (Critical)">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> &lt;5%
+            </span>
+          </div>
+        </div>
         <span className="flex items-center gap-2">
           {hasFilters && (
             <button
@@ -682,6 +777,7 @@ export function ProjectListClient({
               { value: "name", label: "Name A–Z" },
               { value: "end", label: "Ending soonest" },
               { value: "budget", label: "Largest order value" },
+              { value: "margin", label: "Highest margin" },
             ]}
           />
         </span>
@@ -729,7 +825,7 @@ export function ProjectListClient({
                   ["Project managers", "w-[150px]"],
                   ["Start & End Date", "w-[140px]"],
                   ["Order Value", "text-right w-[110px]"],
-                  ["Target Cost", "text-right w-[115px]"],
+                  ["Target Cost / Margin", "text-right w-[135px]"],
                 ].map(([label, cls], i, all) => (
                   <th
                     key={label}
@@ -1059,45 +1155,36 @@ const ProjectRow = memo(function ProjectRow({
 
       {/* Order Value */}
       <td className={cn(cell, "text-right")}>
-        {p.budgetInr ? (
-          <div>
-            <span
-              title={
-                p.crValueInr && Number(p.crValueInr) > 0
-                  ? `Total Order Value: ${formatCurrency(Number(p.budgetInr), p.currency)}\nBreakdown: Initial ${formatCurrency(Number(p.initialOrderValueInr || 0), p.currency)} + Change Value ${formatCurrency(Number(p.crValueInr), p.currency)}`
-                  : `Order Value: ${formatCurrency(Number(p.budgetInr), p.currency)}`
-              }
-              className="text-[13px] font-semibold tabular-nums text-navy-800"
-            >
-              {compactCurrency(p.budgetInr, p.currency)}
-            </span>
-            {p.crValueInr && Number(p.crValueInr) > 0 && (
-              <span
-                title={`Change Value (CR): +${formatCurrency(Number(p.crValueInr), p.currency)}`}
-                className="block text-[10.5px] font-medium tabular-nums text-blue-700"
-              >
-                +CR {compactCurrency(p.crValueInr, p.currency)}
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-[13px] font-semibold tabular-nums text-navy-300">—</span>
-        )}
+        <span
+          title={p.budgetInr ? formatCurrency(Number(p.budgetInr), p.currency) : undefined}
+          className={cn("text-[13px] font-semibold tabular-nums", p.budgetInr ? "text-navy-800" : "text-navy-300")}
+        >
+          {p.budgetInr ? compactCurrency(p.budgetInr, p.currency) : "—"}
+        </span>
       </td>
 
-      {/* Target Cost */}
+      {/* Target Cost & Margin */}
       <td className={cn(cell, "text-right")}>
         {p.targetMarginPercent !== null && p.targetMarginPercent !== undefined && p.targetCostInr ? (
           <div>
             <span
               title={`Target Cost: ${formatCurrency(Number(p.targetCostInr), p.currency)}`}
-              className="text-[13px] font-semibold tabular-nums text-emerald-800"
+              className="text-[13px] font-semibold tabular-nums text-navy-800"
             >
               {compactCurrency(p.targetCostInr, p.currency)}
             </span>
-            <span className="block text-[10.5px] text-navy-400 font-medium">
-              {p.targetMarginPercent}% margin
-            </span>
+            <div className="mt-1 flex justify-end">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums border shadow-2xs",
+                  getMarginColorInfo(p.targetMarginPercent).badgeClass
+                )}
+                title={`Target Margin: ${p.targetMarginPercent}% (${getMarginColorInfo(p.targetMarginPercent).label})`}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getMarginColorInfo(p.targetMarginPercent).dotClass)} />
+                {p.targetMarginPercent}%
+              </span>
+            </div>
           </div>
         ) : (
           <div>
