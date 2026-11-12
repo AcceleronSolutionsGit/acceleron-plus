@@ -36,6 +36,7 @@ import { TraceabilityTab } from "./TraceabilityTab";
 import { ExportMenu } from "./ExportMenu";
 import { TeamTab } from "./TeamTab";
 import { ClientAccessTab } from "./ClientAccessTab";
+import { ChangeRequestsTab } from "./ChangeRequestsTab";
 import type { PreDeliveryStages, LifecycleStatus } from "@/lib/lifecycle";
 
 const PHASES = [
@@ -198,6 +199,7 @@ export function ProjectDetailClient({
     { id: "wbs",           label: "WBS Deliverables",      count: localWbsItems.length, group: "planning" },
     { id: "gantt",         label: "Gantt Timeline",       count: undefined, group: "planning" },
     { id: "milestones",    label: "Milestones",            count: milestones.length, group: "planning" },
+    { id: "change_requests", label: "Change Requests",     count: undefined, group: "planning" },
     // 2. Resourcing
     { id: "team",          label: "Team & Resources",      count: undefined, group: "planning" },
     // 3. Execution (Agile)
@@ -378,6 +380,14 @@ export function ProjectDetailClient({
               <span>Solution Approach</span>
             </button>
             <Link
+              href={`/pmt/${project.code || project.id}?tab=change_requests`}
+              className="px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-1.5 shadow-2xs"
+              title="Manage change requests, uploaded POs, and order value"
+            >
+              <span>📝</span>
+              <span>Change Requests</span>
+            </Link>
+            <Link
               href="/pmt/governance"
               className="px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded-lg text-navy-700 hover:bg-neutral-50 transition-colors"
             >
@@ -434,6 +444,11 @@ export function ProjectDetailClient({
               <MetaItem
                 label="Order Value (INR)"
                 value={project.budgetInr ? formatCurrency(Number(project.budgetInr), "INR") : "—"}
+                subtext={
+                  project.initialOrderValueInr && project.crValueInr && Number(project.crValueInr) > 0
+                    ? `Initial: ${formatCurrency(Number(project.initialOrderValueInr))} + CR: ${formatCurrency(Number(project.crValueInr))}`
+                    : undefined
+                }
               />
               <MetaItem
                 label="Target Cost (INR)"
@@ -689,6 +704,22 @@ export function ProjectDetailClient({
                   projectId={project.id}
                   initialMilestones={milestones}
                   canManage={canManage}
+                />
+              );
+            case "change_requests":
+              return (
+                <ChangeRequestsTab
+                  projectId={project.id}
+                  projectCode={project.code}
+                  canManage={canManage}
+                  currency={project.currency || "INR"}
+                  onOrderValueUpdated={(newOv) => {
+                    setProject((prev) => ({
+                      ...prev,
+                      budgetInr: newOv,
+                      totalOrderValueInr: newOv,
+                    }));
+                  }}
                 />
               );
             case "invoices":

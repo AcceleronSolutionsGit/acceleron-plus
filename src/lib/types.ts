@@ -79,6 +79,10 @@ export interface Project {
   actualEndDate?: string;
   description?: string;
   budgetInr?: number | string;
+  initialOrderValueInr?: number | string | null;
+  crValueInr?: number | string | null;
+  totalOrderValueInr?: number | string | null;
+  changeRequestsCount?: number;
   invoicedAmount?: number | string;
   balanceAmount?: number | string;
   currency?: string;

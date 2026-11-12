@@ -124,6 +124,16 @@ export function mapProjectRow(row: any, userMap?: Map<string, User>): Project {
   if (row.target_margin_percent !== undefined && row.target_margin_percent !== null) {
     p.targetMarginPercent = Number(row.target_margin_percent);
   }
+  if (row.initial_order_value_inr !== undefined && row.initial_order_value_inr !== null) {
+    p.initialOrderValueInr = Number(row.initial_order_value_inr);
+  } else if (p.budgetInr !== undefined && p.budgetInr !== null) {
+    p.initialOrderValueInr = Number(p.budgetInr);
+  }
+  if (row.cr_value_inr !== undefined && row.cr_value_inr !== null) {
+    p.crValueInr = Number(row.cr_value_inr);
+  }
+  p.totalOrderValueInr = Number(p.budgetInr || 0);
+
   if (p.budgetInr !== undefined && p.budgetInr !== null) {
     const ov = Number(p.budgetInr);
     const hasMargin =

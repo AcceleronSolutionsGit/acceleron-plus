@@ -97,6 +97,15 @@ interface CostSummaryData {
       count: number;
     }[];
   };
+  orderValue?: {
+    initialValueInr: number;
+    crValueInr: number;
+    totalOrderValueInr: number;
+    crCount: number;
+    totalPlannedCrHours?: number;
+    totalActualCrHours?: number;
+    changeRequests?: any[];
+  };
   costingSummary?: CostingMetrics;
   totals: {
     orderValueInr?: number;
@@ -401,9 +410,15 @@ export function FinancialsTab({
             <p className="text-2xl font-bold text-navy-900 mt-1">
               {formatCurrency(costing.orderValue, currency)}
             </p>
-            <p className="text-[11.5px] text-navy-500 mt-1">
-              Contract billable revenue
-            </p>
+            {data?.orderValue && data.orderValue.crValueInr > 0 ? (
+              <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                Initial: {formatCurrency(data.orderValue.initialValueInr, currency)} + CR: {formatCurrency(data.orderValue.crValueInr, currency)}
+              </p>
+            ) : (
+              <p className="text-[11.5px] text-navy-500 mt-1">
+                Contract billable revenue
+              </p>
+            )}
           </div>
 
           {/* 2. Target Cost */}
@@ -504,7 +519,14 @@ export function FinancialsTab({
             <tbody className="divide-y divide-navy-500/10">
               {/* Row 1: Order Value */}
               <tr className="hover:bg-navy-50/30 transition-colors">
-                <td className="px-5 py-3.5 font-bold text-navy-900">Order Value</td>
+                <td className="px-5 py-3.5 font-bold text-navy-900">
+                  Order Value
+                  {data?.orderValue && data.orderValue.crValueInr > 0 && (
+                    <span className="block text-[11px] font-normal text-emerald-700">
+                      Initial: {formatCurrency(data.orderValue.initialValueInr, currency)} + CR: {formatCurrency(data.orderValue.crValueInr, currency)} ({data.orderValue.crCount} approved)
+                    </span>
+                  )}
+                </td>
                 <td className="px-5 py-3.5 font-mono text-xs text-navy-600">Billable Value</td>
                 <td className="px-5 py-3.5 text-right font-bold font-mono text-navy-900">
                   {formatCurrency(costing.orderValue, currency)}

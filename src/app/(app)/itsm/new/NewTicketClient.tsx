@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { withBase } from "@/lib/base-path";
 
 const TICKET_PRIORITIES = [
   { value: "low", label: "Low" },
@@ -180,12 +181,13 @@ export function NewTicketClient({
         ...form,
         requesterId: form.requesterId || currentUser?.id || null,
         agentUserId: form.agentUserId || null,
+        projectId: selectedProject?.id || null,
         projectCode: form.projectCode || null,
         projectContextId: selectedProject?.itsmContextId || form.projectContextId || null,
         attachments: processedAttachments.length > 0 ? processedAttachments : undefined
       };
 
-      const res = await fetch("/api/itsm/tickets", {
+      const res = await fetch(withBase("/api/itsm/tickets"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

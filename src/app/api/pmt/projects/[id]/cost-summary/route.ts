@@ -6,6 +6,7 @@ import { projectDb, itsmDb } from "@/lib/db";
 import { requireProjectCapability } from "@/lib/auth";
 import { getProjectTeam } from "@/lib/staffing";
 import { calculateCostingMetrics } from "@/lib/costing";
+import { getProjectChangeRequests } from "@/lib/change-request-service";
 
 const DAILY_HOURS = 8;
 
@@ -71,9 +72,20 @@ export async function GET(
         .first()
     : null;
 
-  const budgetedFeeInr = project.budget_inr !== null && project.budget_inr !== undefined
-    ? parseFloat(project.budget_inr)
-    : (solutioningSession?.proposed_fee_inr ? parseFloat(solutioningSession.proposed_fee_inr) : 0);
+  // ── Fetch Change Requests for Order Value reconciliation ─────────
+  const crData = await getProjectChangeRequests(projectId).catch(() => null);
+
+  const initialFeeInr = crData?.summary.initialOrderValueInr
+    ?? (project.initial_order_value_inr !== null && project.initial_order_value_inr !== undefined
+      ? parseFloat(project.initial_order_value_inr)
+      : (project.budget_inr !== null && project.budget_inr !== undefined
+        ? parseFloat(project.budget_inr)
+        : (solutioningSession?.proposed_fee_inr ? parseFloat(solutioningSession.proposed_fee_inr) : 0)));
+
+  const crFeeInr = crData?.summary.crOrderValueInr
+    ?? (project.cr_value_inr !== null && project.cr_value_inr !== undefined ? parseFloat(project.cr_value_inr) : 0);
+
+  const budgetedFeeInr = crData?.summary.totalOrderValueInr ?? (initialFeeInr + crFeeInr);
   const poValue = project.po_id
     ? (await projectDb("purchase_orders").where("id", project.po_id).first())?.po_value_inr ?? 0
     : 0;
@@ -376,6 +388,15 @@ export async function GET(
         poValueInr:        parseFloat(poValue.toFixed(2)),
         totalPlannedHours: parseFloat(totalPlannedHours.toFixed(2)),
         currency:          "INR",
+      },
+      orderValue: {
+        initialValueInr:     parseFloat(initialFeeInr.toFixed(2)),
+        crValueInr:          parseFloat(crFeeInr.toFixed(2)),
+        totalOrderValueInr:  parseFloat(budgetedFeeInr.toFixed(2)),
+        crCount:             crData?.summary.approvedCount || 0,
+        totalPlannedCrHours: crData?.summary.totalPlannedHours || 0,
+        totalActualCrHours:  crData?.summary.totalActualHours || 0,
+        changeRequests:      crData?.changeRequests || [],
       },
       actuals: {
         totalProjectHoursLogged: parseFloat(totalProjectHours.toFixed(2)),

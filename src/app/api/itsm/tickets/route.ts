@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { itsmDb, identityDb } from "@/lib/db";
+import { itsmDb, identityDb, projectDb } from "@/lib/db";
 import { calculateSlaDueDate, autoAssignTicket } from "@/lib/itsm-engine";
-
+import { getSession } from "@/lib/auth";
 import { getTickets } from "@/lib/api";
 import { notifyAsync, events } from "@/lib/notifications";
 import { saveTicketAttachment } from "@/lib/ticket-attachment-storage";
@@ -59,22 +59,23 @@ export async function POST(req: Request) {
     let finalRequesterId = requesterId || null;
     if (!finalRequesterId) {
       try {
-        const cookieHeader = req.headers.get("cookie") || "";
-        const match = cookieHeader.match(/acceleron_session=([^;]+)/);
-        if (match) {
-          const sessionVal = decodeURIComponent(match[1]);
-          const session = JSON.parse(sessionVal);
-          const candidateId = session.userId || session.id;
+        const session = await getSession();
+        if (session) {
+          const candidateId = session.userId;
           const candidateEmail = session.email;
           if (candidateId) {
-            const reqUser = await itsmDb("requesters").where("id", candidateId).first();
+            const reqUser = await itsmDb("requesters").where("id", candidateId).first().catch(() => null);
             if (reqUser) {
               finalRequesterId = reqUser.id;
             } else if (candidateEmail) {
-              const reqByEmail = await itsmDb("requesters").where("email", candidateEmail).first();
+              const reqByEmail = await itsmDb("requesters").where("email", candidateEmail).first().catch(() => null);
               if (reqByEmail) {
                 finalRequesterId = reqByEmail.id;
+              } else {
+                finalRequesterId = candidateId;
               }
+            } else {
+              finalRequesterId = candidateId;
             }
           }
         }
@@ -85,9 +86,9 @@ export async function POST(req: Request) {
 
     // Ensure finalRequesterId exists in requesters table to prevent FK violation
     if (finalRequesterId) {
-      const exists = await itsmDb("requesters").where("id", finalRequesterId).first();
+      const exists = await itsmDb("requesters").where("id", finalRequesterId).first().catch(() => null);
       if (!exists) {
-        const userRec = await identityDb("users").where("id", finalRequesterId).first();
+        const userRec = await identityDb("users").where("id", finalRequesterId).first().catch(() => null);
         if (userRec) {
           const names = (userRec.full_name || "User").trim().split(" ");
           await itsmDb("requesters").insert({
@@ -99,28 +100,40 @@ export async function POST(req: Request) {
             company_id: companyId || "02479f1a-1032-442f-a8c4-22cb93afbd6e",
             is_active: true,
             source_system: "darwinbox",
-          });
+          }).catch(() => {});
         }
       }
     }
 
-    // Resolve projectContextId and projectCode
+    // Resolve projectId, projectContextId and projectCode seamlessly across PMT and ITSM
+    let finalProjectId = body.projectId || body.project_id || null;
     let finalProjectContextId = projectContextId || null;
     let finalProjectCode = projectCode || null;
 
-    if (finalProjectCode && !finalProjectContextId) {
-      const pCtx = await itsmDb("project_contexts")
-        .where("project_code", finalProjectCode)
-        .first();
-      if (pCtx) {
-        finalProjectContextId = pCtx.id;
+    if (finalProjectCode) {
+      if (!finalProjectId) {
+        const prj = await projectDb("projects").where("code", finalProjectCode).first().catch(() => null);
+        if (prj) finalProjectId = prj.id;
       }
-    } else if (finalProjectContextId && !finalProjectCode) {
-      const pCtx = await itsmDb("project_contexts")
-        .where("id", finalProjectContextId)
-        .first();
+      if (!finalProjectContextId) {
+        const pCtx = await itsmDb("project_contexts").where("project_code", finalProjectCode).first().catch(() => null);
+        if (pCtx) finalProjectContextId = pCtx.id;
+      }
+    } else if (finalProjectId) {
+      const prj = await projectDb("projects").where("id", finalProjectId).first().catch(() => null);
+      if (prj) {
+        finalProjectCode = prj.code;
+        if (!finalProjectContextId && prj.itsm_context_id) {
+          finalProjectContextId = prj.itsm_context_id;
+        }
+      }
+    } else if (finalProjectContextId) {
+      const pCtx = await itsmDb("project_contexts").where("id", finalProjectContextId).first().catch(() => null);
       if (pCtx) {
         finalProjectCode = pCtx.project_code;
+        if (!finalProjectId && pCtx.project_db_id) {
+          finalProjectId = pCtx.project_db_id;
+        }
       }
     }
 
@@ -177,6 +190,7 @@ export async function POST(req: Request) {
         item_id: itemId || null,
         impact_area_id: impactAreaId || null,
         agent_user_id: agentUserId || null,
+        project_id: finalProjectId,
         project_context_id: finalProjectContextId,
         project_code: finalProjectCode,
         ticket_type: ticketType,

@@ -390,12 +390,12 @@ test("5. Database Persistence & Project Cost Propagation", async () => {
     }
   } finally {
     // Clean up test records
-    await projectDb("project_team_members").where("employee_id", testEmpCode).del();
-    await projectDb("project_team_members").where("user_id", testUserId).del();
-    await identityDb("users").where("id", testUserId).del();
-    await identityDb("employee_salaries").whereIn("employee_id", [testEmpCode, "NEW_JOINER_001"]).del();
-    await identityDb("employee_master").where("employee_id", testEmpCode).del();
-    await identityDb.destroy();
-    await projectDb.destroy();
+    await projectDb("project_team_members").where("employee_id", testEmpCode).del().catch(() => {});
+    await projectDb("project_team_members").where("user_id", testUserId).del().catch(() => {});
+    await identityDb("users").where("id", testUserId).del().catch(() => {});
+    await identityDb("employee_salaries").whereIn("employee_id", [testEmpCode, "NEW_JOINER_001"]).del().catch(() => {});
+    await identityDb("employee_master").where("employee_id", testEmpCode).del().catch(() => {});
+    await identityDb.destroy().catch(() => {});
+    await projectDb.destroy().catch(() => {});
   }
 });
