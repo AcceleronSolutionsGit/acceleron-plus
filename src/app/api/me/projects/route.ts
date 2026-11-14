@@ -10,7 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { projectDb, identityDb } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
+import { requireSession, resolveUserIdentityKeys } from "@/lib/auth";
 import { readJson, serverError, validationError } from "@/lib/route-helpers";
 import { SELF_SELECTABLE_ROLES, PM, toTeamRole } from "@/lib/team-roles";
 
@@ -81,15 +81,34 @@ export async function GET() {
     const projects: Row[] =
       withRef ?? ((await live().select(...BASE).catch(() => [])) as Row[]);
 
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
+
     // Current allocations (active team memberships)
     const allocations = (await projectDb("project_team_members")
-      .where({ user_id: userId, is_active: true })
+      .where(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("is_active", true).orWhereNull("is_active");
+      })
       .select("project_id", "role_in_project", "allocation_percent", "start_date", "end_date")
       .catch(() => [])) as Record<string, unknown>[];
 
     // Pending or recent requests
     const requests = (await projectDb("project_allocation_requests")
-      .where("user_id", userId)
+      .where(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
       .orderBy("created_at", "desc")
       .select("id", "project_id", "requested_role", "requested_allocation_percent",
               "requested_start_date", "requested_end_date", "status", "review_notes", "reviewed_at")
@@ -203,8 +222,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Project not found or closed." }, { status: 404 });
     }
 
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const resolvedFullName = resolvedUser.fullName || fullName;
+
     const existing = (await projectDb("project_team_members")
-      .where({ project_id: projectId, user_id: userId })
+      .where("project_id", projectId)
+      .andWhere(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (resolvedFullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [resolvedFullName.trim().toLowerCase()]);
+        }
+      })
       .first()) as Record<string, unknown> | undefined;
     if (existing?.is_active) {
       return NextResponse.json(
@@ -213,20 +243,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const employeeId = await myEmployeeId(auth.session);
+    const employeeId = resolvedUser.employeeId || (await myEmployeeId(auth.session));
     const now = new Date();
 
     await projectDb.transaction(async (trx) => {
       if (existing) {
         // Back on a project you were on before (stood down, or removed).
-        // The unique (project_id, user_id) key means reactivate, not insert.
         await trx("project_team_members")
-          .where({ project_id: projectId, user_id: userId })
+          .where("id", String(existing.id))
           .update({
+            user_id: userId,
+            employee_id: employeeId || (existing.employee_id ? String(existing.employee_id) : null),
+            user_name: resolvedFullName || (existing.user_name ? String(existing.user_name) : null),
             is_active: true,
             role_in_project: role,
             allocation_percent: pct,
-            start_date: startDate ?? existing.start_date ?? null,
+            start_date: startDate ?? (existing.start_date as string | null) ?? null,
             end_date: endDate,
             updated_at: now,
           });
@@ -234,7 +266,7 @@ export async function POST(req: Request) {
         await trx("project_team_members").insert({
           project_id: projectId,
           user_id: userId,
-          user_name: fullName,
+          user_name: resolvedFullName,
           employee_id: employeeId,
           role_in_project: role,
           allocation_percent: pct,
@@ -297,24 +329,40 @@ export async function PATCH(req: Request) {
     }
     if (errors.length > 0) return validationError(errors);
 
-    // Keeping PM is fine for somebody who already is one; becoming one is not.
-    if (requestedRole === PM) {
-      const current = await projectDb("project_team_members")
-        .where({ project_id: projectId, user_id: userId, is_active: true })
-        .first<{ role_in_project: string | null } | undefined>();
-      if (toTeamRole(current?.role_in_project) !== PM) return pmSelfRefused();
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
+
+    const current = await projectDb("project_team_members")
+      .where("project_id", projectId)
+      .andWhere(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("is_active", true).orWhereNull("is_active");
+      })
+      .first<{ id: string; role_in_project: string | null } | undefined>();
+
+    if (!current) {
+      return NextResponse.json({ success: false, error: "You are not on this project." }, { status: 404 });
     }
 
-    const updates: Record<string, unknown> = { updated_at: new Date() };
+    // Keeping PM is fine for somebody who already is one; becoming one is not.
+    if (requestedRole === PM) {
+      if (toTeamRole(current.role_in_project) !== PM) return pmSelfRefused();
+    }
+
+    const updates: Record<string, unknown> = { updated_at: new Date(), user_id: userId };
     if (requestedRole !== undefined) updates.role_in_project = requestedRole;
     if (allocationPercent !== undefined) updates.allocation_percent = allocationPercent;
 
-    const count = await projectDb("project_team_members")
-      .where({ project_id: projectId, user_id: userId, is_active: true })
+    await projectDb("project_team_members")
+      .where("id", current.id)
       .update(updates);
-    if (!count) {
-      return NextResponse.json({ success: false, error: "You are not on this project." }, { status: 404 });
-    }
     return NextResponse.json({ success: true });
   } catch (err) {
     return serverError("me.projects.PATCH", err);
@@ -338,12 +386,31 @@ export async function DELETE(req: Request) {
     const projectId = (new URL(req.url).searchParams.get("projectId") ?? "").trim();
     if (!projectId) return validationError(["Which project?"]);
 
-    const count = await projectDb("project_team_members")
-      .where({ project_id: projectId, user_id: userId, is_active: true })
-      .update({ is_active: false, updated_at: new Date() });
-    if (!count) {
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
+
+    const current = await projectDb("project_team_members")
+      .where("project_id", projectId)
+      .andWhere(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("is_active", true).orWhereNull("is_active");
+      })
+      .first<{ id: string } | undefined>();
+
+    if (!current) {
       return NextResponse.json({ success: false, error: "You are not on this project." }, { status: 404 });
     }
+
+    await projectDb("project_team_members")
+      .where("id", current.id)
+      .update({ is_active: false, updated_at: new Date() });
     return NextResponse.json({ success: true });
   } catch (err) {
     return serverError("me.projects.DELETE", err);

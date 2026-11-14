@@ -14,6 +14,7 @@
 import { projectDb } from "./db";
 import { toDateInput } from "./dates";
 import { can, type AccessContext } from "./permissions";
+import { resolveUserIdentityKeys } from "./auth";
 
 export const ASSIGNMENT_STATUSES = [
   "not_started",
@@ -122,10 +123,20 @@ export async function tasksForUser(
   userId: string,
   options: { includeCompleted?: boolean } = {}
 ): Promise<MyTask[]> {
+  const resolved = await resolveUserIdentityKeys(userId).catch(() => null);
+  const userKeys = resolved?.userKeys ?? [userId];
+  const fullName = resolved?.fullName?.trim().toLowerCase();
+
   let query = projectDb("wbs_assignments as a")
     .join("wbs_items as w", "w.id", "a.wbs_item_id")
     .join("projects as p", "p.id", "a.project_id")
-    .where("a.user_id", userId)
+    .where(function () {
+      this.whereIn("a.user_id", userKeys);
+      this.orWhereIn("a.employee_id", userKeys);
+      if (fullName) {
+        this.orWhereRaw("lower(trim(a.user_name)) = ?", [fullName]);
+      }
+    })
     .whereNot("p.status", "cancelled")
     .select(
       "a.*",

@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
-import { requireProjectCapability, can } from "@/lib/auth";
+import { requireProjectCapability, can, resolveUserIdentityKeys } from "@/lib/auth";
 import { mapProjectTimesheetRow } from "@/lib/row-mapper";
 
 const DAILY_HOURS = 8;
@@ -157,8 +157,24 @@ export async function POST(
   }
 
   // ── Get user's rate band + WBS name (denormalized) ──────────────
+  const resolved = await resolveUserIdentityKeys(session.userId);
+  const userKeys = resolved.userKeys;
+  const fullName = resolved.fullName?.trim().toLowerCase();
+
   const [teamMember, wbsItem] = await Promise.all([
-    projectDb("project_team_members").where({ project_id: projectId, user_id: session.userId }).first(),
+    projectDb("project_team_members")
+      .where("project_id", projectId)
+      .andWhere(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("is_active", true).orWhereNull("is_active");
+      })
+      .first(),
     wbsItemId ? projectDb("wbs_items").where("id", wbsItemId).first() : Promise.resolve(null),
   ]);
 

@@ -69,7 +69,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // A project can have several PMs: the one named on the project, and
   // everyone holding the PM role on its team. The header lists them all.
   const teamPmNames = (await projectDb("project_team_members")
-    .where({ project_id: project.id, is_active: true, role_in_project: "PM" })
+    .where("project_id", project.id)
+    .andWhere(function () {
+      this.where("is_active", true).orWhereNull("is_active");
+    })
+    .whereRaw("lower(role_in_project) IN ('pm', 'project_manager')")
     .orderBy("user_name")
     .pluck("user_name")
     .catch(() => [])) as (string | null)[];

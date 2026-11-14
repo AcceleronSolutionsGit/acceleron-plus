@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
+import { requireSession, resolveUserIdentityKeys } from "@/lib/auth";
 import { readJson, validationError, serverError } from "@/lib/route-helpers";
 import { toISODate, toDateInput, parseISODate } from "@/lib/dates";
 import { tasksForUser } from "@/lib/assignments";
@@ -55,9 +55,22 @@ export async function GET(req: Request) {
     // Only the projects they are actually allocated to. A timesheet
     // that lets you book time to anything is a reconciliation problem
     // waiting to happen.
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
+
     const memberships = (await projectDb("project_team_members as m")
       .join("projects as p", "p.id", "m.project_id")
-      .where({ "m.user_id": userId, "m.is_active": true })
+      .where(function () {
+        this.whereIn("m.user_id", userKeys);
+        this.orWhereIn("m.employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(m.user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("m.is_active", true).orWhereNull("m.is_active");
+      })
       .whereNot("p.status", "cancelled")
       .select(
         "p.id",
@@ -152,8 +165,22 @@ export async function POST(req: Request) {
 
     // They must be on the project. This is the check that makes the
     // endpoint safe: without it, anybody could book time anywhere.
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
+
     const membership = await projectDb("project_team_members")
-      .where({ project_id: projectId, user_id: userId, is_active: true })
+      .where("project_id", projectId)
+      .andWhere(function () {
+        this.whereIn("user_id", userKeys);
+        this.orWhereIn("employee_id", userKeys);
+        if (fullName) {
+          this.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+        }
+      })
+      .andWhere(function () {
+        this.where("is_active", true).orWhereNull("is_active");
+      })
       .first();
     if (!membership) {
       return NextResponse.json(

@@ -277,6 +277,116 @@ export function sessionSeedFor(row: AuthUserRow): SessionSeed {
  * and treats the named project manager or sponsor as an owner even when
  * nobody remembered to add them to the team table.
  */
+export interface ResolvedUserKeys {
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  darwinboxRef: string | null;
+  employeeId: string | null;
+  roleCode: string | null;
+  userKeys: string[];
+}
+
+/**
+ * Resolves all identity tokens/keys associated with a given user ID across
+ * identity_db.users and identity_db.employee_master.
+ *
+ * Used to ensure team allocations, managed projects, and task assignments match
+ * whether recorded under a user UUID, Darwinbox employee ID, or employee email.
+ */
+export async function resolveUserIdentityKeys(
+  userId: string | null | undefined
+): Promise<ResolvedUserKeys> {
+  const empty: ResolvedUserKeys = {
+    userId: userId ?? "",
+    email: null,
+    fullName: null,
+    darwinboxRef: null,
+    employeeId: null,
+    roleCode: null,
+    userKeys: userId ? [userId, `user:${userId}`] : [],
+  };
+  if (!userId) return empty;
+
+  try {
+    let userRow: AuthUserRow | undefined;
+    try {
+      userRow = await loadUser(userId);
+    } catch {
+      userRow = await findAuthUserById(userId).catch(() => undefined);
+    }
+
+    if (!userRow) {
+      userRow = await identityDb("users")
+        .where("id", userId)
+        .select("id", "email", "full_name", "darwinbox_ref")
+        .first()
+        .catch(() => undefined);
+    }
+
+    if (!userRow) return empty;
+
+    const email = userRow.email ? String(userRow.email).trim() : null;
+    const fullName = userRow.full_name ? String(userRow.full_name).trim() : null;
+    const darwinboxRef = userRow.darwinbox_ref ? String(userRow.darwinbox_ref).trim() : null;
+    let employeeId: string | null = darwinboxRef;
+
+    // If darwinbox_ref is missing, check employee_master by email or full name
+    if (!employeeId && (email || fullName)) {
+      try {
+        let empMaster = email
+          ? await identityDb("employee_master")
+              .whereRaw("lower(trim(company_email_id)) = ?", [email.toLowerCase()])
+              .select("employee_id")
+              .first<{ employee_id: string } | undefined>()
+          : undefined;
+
+        if (!empMaster && fullName) {
+          empMaster = await identityDb("employee_master")
+            .whereRaw("lower(trim(full_name)) = ?", [fullName.toLowerCase()])
+            .select("employee_id")
+            .first<{ employee_id: string } | undefined>();
+        }
+
+        if (empMaster?.employee_id) {
+          employeeId = String(empMaster.employee_id).trim();
+        }
+      } catch {
+        // employee_master query optional
+      }
+    }
+
+    const keySet = new Set<string>();
+    keySet.add(userId);
+    keySet.add(`user:${userId}`);
+    if (employeeId) {
+      keySet.add(employeeId);
+      keySet.add(`emp:${employeeId}`);
+    }
+    if (darwinboxRef && darwinboxRef !== employeeId) {
+      keySet.add(darwinboxRef);
+      keySet.add(`emp:${darwinboxRef}`);
+    }
+    if (email) {
+      keySet.add(email);
+      keySet.add(email.toLowerCase());
+    }
+
+    return {
+      userId,
+      email,
+      fullName,
+      darwinboxRef,
+      employeeId,
+      roleCode: userRow.role_code ? String(userRow.role_code).trim() : null,
+      userKeys: Array.from(keySet).filter(Boolean),
+    };
+  } catch (err) {
+    console.error("[auth] resolveUserIdentityKeys error:", err);
+    return empty;
+  }
+}
+
 export async function getProjectAccess(
   projectId: string,
   session?: SessionPayload | null
@@ -313,18 +423,9 @@ export async function getProjectAccess(
   }
 
   try {
-    const user = await identityDb("users as u")
-      .where("u.id", current.userId)
-      .select("u.employee_id")
-      .first<{ employee_id: string | null } | undefined>()
-      .catch(() => undefined);
-
-    const userKeys = [
-      current.userId,
-      `user:${current.userId}`,
-      user?.employee_id,
-      user?.employee_id ? `emp:${user.employee_id}` : null,
-    ].filter(Boolean) as string[];
+    const resolvedUser = await resolveUserIdentityKeys(current.userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
 
     const [project, membership] = await Promise.all([
       projectDb("projects")
@@ -335,11 +436,14 @@ export async function getProjectAccess(
         .where("project_id", projectId)
         .andWhere((qb) => {
           qb.whereIn("user_id", userKeys);
-          if (user?.employee_id) {
-            qb.orWhereIn("employee_id", userKeys);
+          qb.orWhereIn("employee_id", userKeys);
+          if (fullName) {
+            qb.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
           }
         })
-        .andWhere("is_active", true)
+        .andWhere(function () {
+          this.where("is_active", true).orWhereNull("is_active");
+        })
         .select("role_in_project")
         .first<{ role_in_project: string | null } | undefined>(),
     ]);
@@ -396,25 +500,15 @@ export async function projectsManagedBy(
   const ids = new Set<string>();
   if (!userId) return ids;
   try {
-    const user = await identityDb("users as u")
-      .leftJoin("roles as r", "r.id", "u.role_id")
-      .where("u.id", userId)
-      .select("r.code as role_code", "u.employee_id")
-      .first<{ role_code: string | null; employee_id: string | null } | undefined>()
-      .catch(() => undefined);
-
+    const resolvedUser = await resolveUserIdentityKeys(userId);
     let checkDmOrPm = isDmOrPm;
     if (checkDmOrPm === undefined) {
-      const code = user?.role_code?.toLowerCase() || "";
+      const code = resolvedUser.roleCode?.toLowerCase() || "";
       checkDmOrPm = code === "pm" || code === "project_manager" || code === "delivery_manager";
     }
 
-    const userKeys = [
-      userId,
-      `user:${userId}`,
-      user?.employee_id,
-      user?.employee_id ? `emp:${user.employee_id}` : null,
-    ].filter(Boolean) as string[];
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
 
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const pmUserIds = userKeys.filter((k) => UUID_REGEX.test(k));
@@ -424,19 +518,25 @@ export async function projectsManagedBy(
         ? projectDb("projects")
             .whereIn("project_manager_user_id", pmUserIds)
             .pluck("id")
+            .catch(() => [])
         : Promise.resolve([]),
       projectDb("projects")
         .whereIn("delivery_manager_user_id", pmUserIds.length > 0 ? pmUserIds : userKeys)
-        .pluck("id"),
+        .pluck("id")
+        .catch(() => []),
       projectDb("project_team_members")
         .where((qb) => {
           qb.whereIn("user_id", userKeys);
-          if (user?.employee_id) {
-            qb.orWhereIn("employee_id", userKeys);
+          qb.orWhereIn("employee_id", userKeys);
+          if (fullName) {
+            qb.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
           }
         })
-        .andWhere("is_active", true)
-        .select("project_id", "role_in_project"),
+        .andWhere(function () {
+          this.where("is_active", true).orWhereNull("is_active");
+        })
+        .select("project_id", "role_in_project")
+        .catch(() => []),
     ]);
     for (const id of namedPm as string[]) ids.add(String(id));
     for (const id of namedDm as string[]) ids.add(String(id));
@@ -462,30 +562,69 @@ export async function projectsAllocatedTo(
   const ids = new Set<string>();
   if (!userId) return ids;
   try {
-    const user = await identityDb("users as u")
-      .where("u.id", userId)
-      .select("u.employee_id")
-      .first<{ employee_id: string | null } | undefined>()
-      .catch(() => undefined);
+    const resolvedUser = await resolveUserIdentityKeys(userId);
+    const userKeys = resolvedUser.userKeys;
+    const fullName = resolvedUser.fullName?.trim().toLowerCase();
 
-    const userKeys = [
-      userId,
-      `user:${userId}`,
-      user?.employee_id,
-      user?.employee_id ? `emp:${user.employee_id}` : null,
-    ].filter(Boolean) as string[];
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidKeys = userKeys.filter((k) => UUID_REGEX.test(k));
 
-    const rows = await projectDb("project_team_members")
-      .where((qb) => {
-        qb.whereIn("user_id", userKeys);
-        if (user?.employee_id) {
+    const [ptmRows, namedPm, namedDm, namedSponsor, wbsRows, reqRows] = await Promise.all([
+      projectDb("project_team_members")
+        .where((qb) => {
+          qb.whereIn("user_id", userKeys);
           qb.orWhereIn("employee_id", userKeys);
-        }
-      })
-      .andWhere("is_active", true)
-      .select("project_id");
+          if (fullName) {
+            qb.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+          }
+        })
+        .andWhere(function () {
+          this.where("is_active", true).orWhereNull("is_active");
+        })
+        .select("project_id")
+        .catch(() => []),
+      uuidKeys.length > 0
+        ? projectDb("projects").whereIn("project_manager_user_id", uuidKeys).pluck("id").catch(() => [])
+        : Promise.resolve([]),
+      projectDb("projects")
+        .whereIn("delivery_manager_user_id", uuidKeys.length > 0 ? uuidKeys : userKeys)
+        .pluck("id")
+        .catch(() => []),
+      uuidKeys.length > 0
+        ? projectDb("projects").whereIn("sponsor_user_id", uuidKeys).pluck("id").catch(() => [])
+        : Promise.resolve([]),
+      projectDb("wbs_assignments")
+        .where((qb) => {
+          qb.whereIn("user_id", userKeys);
+          qb.orWhereIn("employee_id", userKeys);
+          if (fullName) {
+            qb.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+          }
+        })
+        .select("project_id")
+        .catch(() => []),
+      projectDb("project_allocation_requests")
+        .where((qb) => {
+          qb.whereIn("user_id", userKeys);
+          if (fullName) {
+            qb.orWhereRaw("lower(trim(user_name)) = ?", [fullName]);
+          }
+        })
+        .whereIn("status", ["approved", "self_allocated"])
+        .select("project_id")
+        .catch(() => []),
+    ]);
 
-    for (const r of rows) {
+    for (const r of ptmRows as { project_id: string }[]) {
+      if (r.project_id) ids.add(String(r.project_id));
+    }
+    for (const id of namedPm as string[]) ids.add(String(id));
+    for (const id of namedDm as string[]) ids.add(String(id));
+    for (const id of namedSponsor as string[]) ids.add(String(id));
+    for (const r of wbsRows as { project_id: string }[]) {
+      if (r.project_id) ids.add(String(r.project_id));
+    }
+    for (const r of reqRows as { project_id: string }[]) {
       if (r.project_id) ids.add(String(r.project_id));
     }
   } catch (err) {
