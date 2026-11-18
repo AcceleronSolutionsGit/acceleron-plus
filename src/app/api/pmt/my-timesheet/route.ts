@@ -13,6 +13,7 @@ import { readJson, validationError, serverError } from "@/lib/route-helpers";
 import { toISODate, toDateInput, parseISODate } from "@/lib/dates";
 import { tasksForUser } from "@/lib/assignments";
 import { notify } from "@/lib/notifications";
+import { projectManagersByProject, reportingManagerUserIdFor } from "@/lib/reportees";
 
 export const runtime = "nodejs";
 
@@ -230,6 +231,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, deleted: Boolean(existing) });
     }
 
+    const now = new Date();
     const values = {
       project_id: projectId,
       user_id: userId,
@@ -240,7 +242,49 @@ export async function POST(req: Request) {
       activity_type: String(body.activityType ?? "development"),
       notes: String(body.notes ?? "").trim() || null,
       status: String(body.submit === true ? "submitted" : existing?.status ?? "draft"),
-      updated_at: new Date(),
+      submitted_at: body.submit === true ? now : (existing?.submitted_at ?? null),
+      updated_at: now,
+    };
+
+    const sendSubmissionNotice = async () => {
+      try {
+        const [pmMap, rmUserId] = await Promise.all([
+          projectManagersByProject([projectId]),
+          reportingManagerUserIdFor(userId),
+        ]);
+        const isSubmitterPm = pmMap.get(projectId)?.has(userId) ?? false;
+
+        if (isSubmitterPm) {
+          // PM self-approval is not allowed — route directly to their RM
+          if (rmUserId) {
+            await notify({
+              project: projectId,
+              eventType: "manual_update",
+              title: "PM timesheet awaiting RM approval",
+              message: `${auth.session.fullName || "A Project Manager"} submitted ${hours}h for ${logDate}. Routed to you as their Reporting Manager.`,
+              audience: [],
+              extraRecipients: [rmUserId],
+              actorUserId: userId,
+              actionUrl: `/admin/timesheets?project=${projectId}`,
+              dedupeKey: `timesheet_submit_rm:${projectId}:${userId}:${logDate}`,
+            });
+          }
+        } else {
+          await notify({
+            project: projectId,
+            eventType: "manual_update",
+            title: "Timesheet submitted for review",
+            message: `${auth.session.fullName || "A team member"} submitted ${hours}h for ${logDate}.`,
+            audience: ["pm"],
+            extraRecipients: rmUserId ? [rmUserId] : [],
+            actorUserId: userId,
+            actionUrl: `/admin/timesheets?project=${projectId}`,
+            dedupeKey: `timesheet_submit:${projectId}:${userId}:${logDate}`,
+          });
+        }
+      } catch {
+        // Never fail timesheet save due to notification error
+      }
     };
 
     if (existing) {
@@ -250,36 +294,18 @@ export async function POST(req: Request) {
         .returning("*");
 
       if (body.submit === true) {
-        void notify({
-          project: projectId,
-          eventType: "manual_update",
-          title: "Timesheet submitted for review",
-          message: `${auth.session.fullName || "A team member"} submitted ${hours}h for ${logDate}.`,
-          audience: ["pm"],
-          actorUserId: userId,
-          actionUrl: `/admin/timesheets?project=${projectId}`,
-          dedupeKey: `timesheet_submit:${projectId}:${userId}:${logDate}`,
-        }).catch(() => {});
+        void sendSubmissionNotice();
       }
 
       return NextResponse.json({ success: true, entry: updated });
     }
 
     const [created] = await projectDb("project_timesheets")
-      .insert({ ...values, created_at: new Date() })
+      .insert({ ...values, created_at: now })
       .returning("*");
 
     if (body.submit === true) {
-      void notify({
-        project: projectId,
-        eventType: "manual_update",
-        title: "Timesheet submitted for review",
-        message: `${auth.session.fullName || "A team member"} submitted ${hours}h for ${logDate}.`,
-        audience: ["pm"],
-        actorUserId: userId,
-        actionUrl: `/admin/timesheets?project=${projectId}`,
-        dedupeKey: `timesheet_submit:${projectId}:${userId}:${logDate}`,
-      }).catch(() => {});
+      void sendSubmissionNotice();
     }
 
     return NextResponse.json({ success: true, entry: created }, { status: 201 });

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { projectDb } from "@/lib/db";
 import { requireProjectCapability, can, resolveUserIdentityKeys } from "@/lib/auth";
 import { mapProjectTimesheetRow } from "@/lib/row-mapper";
+import { directReportUserIds, projectManagersByProject } from "@/lib/reportees";
 
 const DAILY_HOURS = 8;
 
@@ -77,18 +78,55 @@ export async function GET(
   const entries = rows.map(mapProjectTimesheetRow);
 
   // Attach rate band from project_team_members (privacy: band name only, not cost)
-  const memberMap = await projectDb("project_team_members")
-    .where("project_id", projectId)
-    .select("user_id", "rate_band_name", "rate_band_id");
+  const [memberMap, pmMap, reportees] = await Promise.all([
+    projectDb("project_team_members")
+      .where("project_id", projectId)
+      .select("user_id", "rate_band_name", "rate_band_id"),
+    projectManagersByProject([projectId]),
+    directReportUserIds(session.userId),
+  ]);
   const bandByUser: Record<string, { rateBandName?: string }> = {};
   for (const m of memberMap) {
     bandByUser[m.user_id] = { rateBandName: m.rate_band_name };
   }
 
-  const enriched = entries.map((e: any) => ({
-    ...e,
-    rateBandName: bandByUser[e.userId]?.rateBandName ?? null,
-  }));
+  const isAdmin =
+    session.role === "admin" ||
+    Boolean(session.additionalRoles?.includes("admin"));
+  const canApproveProject = can(access, "timesheet.approve");
+  const pmUserSet = pmMap.get(projectId) ?? new Set<string>();
+  const reporteeSet = new Set(reportees);
+
+  const enriched = entries.map((e: any) => {
+    const ownerId = String(e.userId);
+    const isOwn = ownerId === session.userId;
+    const isOwnerPm = pmUserSet.has(ownerId);
+    const isPending = e.status === "pending" || e.status === "submitted";
+
+    let canApproveEntry = false;
+    let approvalHint: string | null = null;
+
+    if (isPending) {
+      if (isOwn) {
+        canApproveEntry = false;
+        approvalHint = isOwnerPm ? "Routed to RM" : "Self-approval disabled";
+      } else if (isOwnerPm) {
+        canApproveEntry = isAdmin || reporteeSet.has(ownerId);
+        if (!canApproveEntry) approvalHint = "Routed to RM";
+      } else {
+        canApproveEntry = isAdmin || canApproveProject || reporteeSet.has(ownerId);
+      }
+    }
+
+    return {
+      ...e,
+      rateBandName: bandByUser[e.userId]?.rateBandName ?? null,
+      isOwnEntry: isOwn,
+      isPmEntry: isOwnerPm,
+      canApproveEntry,
+      approvalHint,
+    };
+  });
 
   const byStatusMap: Record<string, number> = {};
   for (const s of countByStatus) { byStatusMap[s.status] = parseInt(s.count); }
