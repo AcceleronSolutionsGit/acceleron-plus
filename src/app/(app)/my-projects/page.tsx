@@ -23,9 +23,7 @@ export default async function MyProjectsPage() {
     projectsAllocatedTo(session.userId),
   ]);
 
-  const allocatedProjects = isAdmin
-    ? projects
-    : projects.filter((p) => managed.has(p.id) || allocated.has(p.id));
+  const allocatedProjects = projects.filter((p) => managed.has(p.id) || allocated.has(p.id));
 
   const viewer = { role: session.role, additionalRoles: session.additionalRoles, userId: session.userId };
   const visible = allocatedProjects.map((p) =>
