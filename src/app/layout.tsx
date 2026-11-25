@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { withBase, fetchBasePathScript } from "@/lib/base-path";
 
@@ -8,6 +8,13 @@ import { withBase, fetchBasePathScript } from "@/lib/base-path";
 // build depend on being able to reach fonts.googleapis.com — a build
 // machine behind a firewall simply failed, with an error that pointed
 // at CSS rather than at the network. Nothing here reaches outside now.
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: "Acceleron Plus",

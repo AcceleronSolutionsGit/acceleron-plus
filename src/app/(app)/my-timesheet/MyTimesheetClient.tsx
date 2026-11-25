@@ -479,8 +479,158 @@ export function MyTimesheetClient() {
           </div>
         </Card>
       ) : (
-        <Card>
-          <div className="overflow-x-auto">
+        <>
+          {/* Mobile Card View (< md) */}
+          <div className="space-y-3 md:hidden">
+            {rows.map(({ key, project, task }) => {
+              const rowTotal = days.reduce(
+                (sum, day) => sum + (find(project.id, task?.id ?? null, day)?.hours ?? 0),
+                0
+              );
+              const dailyAlloc = project.dailyAllocatedHours ?? 8;
+              return (
+                <Card key={`mob-${key}`} className="p-3.5 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2 pb-2 border-b border-neutral-100">
+                    <div className="min-w-0">
+                      {task ? (
+                        <>
+                          <div className="text-xs font-semibold text-navy-900 truncate">
+                            {task.code && <span className="font-mono text-[10px] text-navy-500 mr-1">{task.code}</span>}
+                            {task.name}
+                          </div>
+                          <div className="text-[11px] text-navy-400 truncate">{project.code} · {project.name}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-sm font-semibold text-navy-900 truncate">
+                            <span className="font-mono text-[10px] text-navy-500 mr-1">{project.code}</span>
+                            {project.name}
+                          </div>
+                          <span className="inline-flex items-center text-[10px] font-semibold text-navy-600 bg-navy-100/80 px-1.5 py-0.5 rounded mt-0.5">
+                            {project.allocationPercent}% · {dailyAlloc}h/day
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-[10px] uppercase tracking-wider text-navy-400 block">Total</span>
+                      <span className="text-sm font-bold text-navy-900">{rowTotal > 0 ? `${rowTotal}h` : "—"}</span>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-neutral-100">
+                    {days.map((day, i) => {
+                      const entry = find(project.id, task?.id ?? null, day);
+                      const locked = entry?.status === "approved";
+                      const isFuture = day > today;
+                      const isToday = day === today;
+                      const cellKey = `${project.id}:${task?.id ?? "none"}:${day}`;
+                      const isEffectiveDate = day >= EXTRA_HOURS_START_DATE;
+                      const isDailyExtra = isEffectiveDate && (entry?.hours ?? 0) > dailyAlloc;
+                      return (
+                        <div
+                          key={day}
+                          className={cn(
+                            "flex items-center justify-between gap-2 py-2 px-1.5 rounded-lg",
+                            isToday && "bg-navy-900/[0.03]"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn("text-xs font-semibold w-9 shrink-0", isFuture ? "text-navy-300" : "text-navy-700")}>
+                              {DAY_NAMES[i]}
+                            </span>
+                            {isToday ? (
+                              <span className="rounded-full bg-red-600 px-1.5 py-px text-[10px] font-semibold text-white">today</span>
+                            ) : (
+                              <span className={cn("text-[11px]", isFuture ? "text-navy-300" : "text-navy-400")}>
+                                {day.slice(8)}/{day.slice(5, 7)}
+                              </span>
+                            )}
+                            {entry?.status === "approved" && (
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">Approved</span>
+                            )}
+                            {entry?.status === "submitted" && (
+                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">Submitted</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {entry && entry.extraHoursReason ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openExtraPrompt({
+                                    project,
+                                    task,
+                                    day,
+                                    hours: entry.hours,
+                                    activityType: entry.activityType,
+                                    existingReason: entry.extraHoursReason || "",
+                                    allocatedDaily: dailyAlloc,
+                                  })
+                                }
+                                className="max-w-[110px] px-1.5 py-1 rounded bg-amber-50 text-[10px] font-medium text-amber-800 border border-amber-200 truncate"
+                              >
+                                📝 {entry.extraHoursReason}
+                              </button>
+                            ) : entry && isDailyExtra ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openExtraPrompt({
+                                    project,
+                                    task,
+                                    day,
+                                    hours: entry.hours,
+                                    activityType: entry.activityType,
+                                    existingReason: "",
+                                    allocatedDaily: dailyAlloc,
+                                  })
+                                }
+                                className="px-1.5 py-1 rounded bg-red-50 text-[10px] font-semibold text-red-700 border border-red-200 whitespace-nowrap"
+                              >
+                                ⚠️ Reason
+                              </button>
+                            ) : null}
+
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                max={24}
+                                step={0.5}
+                                key={`mob-${cellKey}:${entry?.hours ?? ""}:${inputResetKey}`}
+                                defaultValue={entry?.hours ?? ""}
+                                disabled={locked || isFuture || saving === cellKey}
+                                onBlur={(e) => handleCellBlur(project, task, day, e.target.value)}
+                                className={cn(
+                                  "w-14 h-9 rounded-lg border px-1.5 text-center text-sm font-medium",
+                                  isFuture
+                                    ? "cursor-not-allowed border-transparent bg-neutral-50 text-navy-200"
+                                    : locked
+                                      ? "border-neutral-200 bg-neutral-100 text-navy-500"
+                                      : isDailyExtra
+                                        ? "border-amber-400 bg-amber-50/50 text-amber-900"
+                                        : "border-neutral-200 focus:border-navy-700 focus:outline-none"
+                                )}
+                              />
+                              <span className={cn("text-xs font-semibold whitespace-nowrap", isDailyExtra ? "text-amber-700" : "text-navy-400")}>
+                                / {dailyAlloc}h
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View (>= md) */}
+          <Card className="hidden md:block">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-neutral-50 border-b border-neutral-100">
@@ -748,6 +898,7 @@ export function MyTimesheetClient() {
             )}
           </div>
         </Card>
+        </>
       )}
 
       {/* ── Extra Hours Justification Modal ────────────────────── */}

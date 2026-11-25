@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { User } from "@/lib/types";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
@@ -9,6 +10,7 @@ import { NavItem, NavSection } from "@/components/ui/NavItem";
 import { deriveAppRole } from "@/lib/session";
 import { isPhase1Restricted } from "@/lib/rollout";
 import { isSalaryManager } from "@/lib/salary-auth-check";
+import { useMobileNav } from "./MobileNavProvider";
 
 // ─── Icons ─────────────────────────────────────────────────────────
 // All drawn on the same 24-grid at the same 1.75 stroke. Mixing filled
@@ -203,6 +205,15 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [comingSoonNotice, setComingSoonNotice] = useState<string | null>(null);
 
+  // Mobile nav drawer state
+  const { isOpen: mobileOpen, close: closeMobile } = useMobileNav();
+  const pathname = usePathname();
+
+  // Auto-close mobile drawer on route change
+  useEffect(() => {
+    closeMobile();
+  }, [pathname, closeMobile]);
+
   useEffect(() => {
     try {
       setIsCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
@@ -222,7 +233,7 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
     });
   };
 
-  return (
+  const sidebarContent = (
     <aside
       className={[
         isCollapsed ? "w-[76px]" : "w-[254px]",
@@ -231,6 +242,8 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
         // Not a flat navy panel: a vertical gradient with a red wash at
         // the very bottom, which is where the chevron's colour belongs.
         "bg-[linear-gradient(175deg,#2a3a72_0%,#212f60_45%,#1b2650_100%)]",
+        // Hidden on mobile — the drawer handles it there
+        "hidden md:flex",
       ].join(" ")}
     >
       {/* A hairline of brand red down the outer edge. One pixel, and it
@@ -550,5 +563,137 @@ export function Sidebar({ user, hasDirectReports = false }: { user: User; hasDir
         </div>
       )}
     </aside>
+  );
+
+  return (
+    <>
+      {sidebarContent}
+
+      {/* ─── Mobile Drawer Overlay ─────────────────────────── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-navy-950/60 backdrop-blur-xs"
+            onClick={closeMobile}
+            aria-hidden
+          />
+          {/* Drawer panel */}
+          <aside
+            className={[
+              "relative z-10 flex h-full w-[280px] max-w-[85vw] flex-col",
+              "bg-[linear-gradient(175deg,#2a3a72_0%,#212f60_45%,#1b2650_100%)]",
+              "shadow-2xl animate-in slide-in-from-left duration-200",
+            ].join(" ")}
+          >
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={closeMobile}
+              aria-label="Close navigation"
+              className="absolute top-4 right-3 z-20 grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white cursor-pointer transition-colors"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m4 4 8 8M12 4l-8 8" />
+              </svg>
+            </button>
+
+            {/* Identity */}
+            <div className="flex h-[72px] shrink-0 items-center border-b border-white/10 px-5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Logo variant="wordmark" tone="light" className="h-[22px]" />
+                <span className="h-5 w-px shrink-0 bg-white/20" aria-hidden />
+                <span className="text-display shrink-0 text-[13px] font-bold tracking-[-0.01em] text-white/75">
+                  Plus
+                </span>
+              </div>
+            </div>
+
+            {/* Nav links — reuse the same nav structure, always expanded */}
+            <nav
+              className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden py-2 px-3"
+            >
+              {isClient ? (
+                <>
+                  <NavSection label="Your projects" isCollapsed={false} />
+                  <NavItem href="/portal" icon={<FolderIcon />} label="Projects" isCollapsed={false} />
+                  <NavSection label="Support" isCollapsed={false} badge={!isAdmin ? "Coming Soon" : undefined} />
+                  <NavItem href="/itsm" icon={<TicketIcon />} label="Your Tickets" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  <NavItem href="/itsm/new" icon={<ChangeIcon />} label="Raise a Ticket" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                </>
+              ) : (
+                <>
+                  <NavSection label="My Work" isCollapsed={false} />
+                  {!phase1 && <NavItem href="/my-tasks" icon={<TaskIcon />} label="My Tasks" isCollapsed={false} />}
+                  <NavItem href="/my-projects" icon={<FolderPlusIcon />} label="My Projects" isCollapsed={false} />
+                  {!isPmOrAdmin && <NavItem href="/pmt/mis" icon={<ChartIcon />} label="Project MIS" isCollapsed={false} />}
+                  <NavItem href="/my-timesheet" icon={<ClockIcon />} label="My Timesheet" isCollapsed={false} />
+                  <NavItem href="/my-skills" icon={<SkillIcon />} label="My Skills" isCollapsed={false} />
+                  {phase1 && <NavItem href="/my-tasks" icon={<TaskIcon />} label="My Tasks" isCollapsed={false} comingSoon onComingSoonClick={setComingSoonNotice} />}
+                  {isPmOrAdmin && (
+                    <>
+                      <NavSection label="Project Management" isCollapsed={false} />
+                      <NavItem href="/pmt" icon={<FolderIcon />} label="Projects" isCollapsed={false} />
+                      <NavItem href="/pmt/mis" icon={<ChartIcon />} label="Project MIS" isCollapsed={false} />
+                      <NavItem href="/pmt/governance" icon={<ShieldIcon />} label="Governance" isCollapsed={false} />
+                    </>
+                  )}
+                  {showTeam && (
+                    <>
+                      <NavSection label="Team" isCollapsed={false} />
+                      <NavItem href="/admin/timesheets" icon={<ClipboardCheckIcon />} label="Timesheet Approvals" isCollapsed={false} />
+                      <NavItem href="/admin/allocation-requests" icon={<InboxIcon />} label="Team Allocations" isCollapsed={false} />
+                    </>
+                  )}
+                  <NavSection label="Service Desk" isCollapsed={false} badge={!isAdmin ? "Coming Soon" : undefined} />
+                  <NavItem href="/itsm" icon={<TicketIcon />} label="Tickets" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  <NavItem href="/itsm/changes" icon={<ChangeIcon />} label="Changes" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  <NavItem href="/itsm/releases" icon={<ReleaseIcon />} label="Releases" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  <NavItem href="/itsm/consultant-view" icon={<UserGroupIcon />} label="Consultant View" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  {canManageItsmMasters && (
+                    <NavItem href="/itsm/masters/groups" icon={<DatabaseIcon />} label="Assignment Groups" isCollapsed={false} comingSoon={!isAdmin} onComingSoonClick={setComingSoonNotice} />
+                  )}
+                </>
+              )}
+              {isAdmin && (
+                <>
+                  <NavSection label="Administration" isCollapsed={false} />
+                  <NavItem href="/admin/sales-orders" icon={<UploadCloudIcon />} label="Sales Orders & Invoicing" isCollapsed={false} />
+                  <NavItem href="/admin/allocations" icon={<ChartIcon />} label="Resource Allocation" isCollapsed={false} />
+                  <NavItem href="/admin/masters" icon={<DatabaseIcon />} label="Master Data" isCollapsed={false} />
+                  <NavItem href="/admin/roles" icon={<PeopleIcon />} label="People & Roles" isCollapsed={false} />
+                  {canManageSalaries && <NavItem href="/admin/salaries" icon={<SalaryIcon />} label="Employee Salaries" isCollapsed={false} />}
+                  <NavItem href="/admin/external-users" icon={<UserPlusIcon />} label="Non-Darwinbox Users" isCollapsed={false} />
+                  <NavItem href="/admin/skills" icon={<SkillIcon />} label="Skills" isCollapsed={false} />
+                  <NavItem href="/admin/audit-logs" icon={<ActivityIcon />} label="Audit Logs" isCollapsed={false} />
+                  <NavItem href="/admin/settings" icon={<SettingsIcon />} label="Settings" isCollapsed={false} />
+                </>
+              )}
+              {!isAdmin && canManageSalaries && (
+                <>
+                  <NavSection label="Compensation" isCollapsed={false} />
+                  <NavItem href="/admin/salaries" icon={<SalaryIcon />} label="Employee Salaries" isCollapsed={false} />
+                </>
+              )}
+            </nav>
+
+            {/* User footer */}
+            <div className="shrink-0 border-t border-white/10 px-3 py-3">
+              <div className="flex items-center rounded-lg py-1.5 gap-2.5 px-1.5">
+                <Avatar name={user.fullName} size="sm" className="ring-white/15" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold leading-tight text-white">
+                    {user.fullName}
+                  </p>
+                  <p className="truncate text-[11px] leading-tight text-white/45">
+                    {user.role?.name}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

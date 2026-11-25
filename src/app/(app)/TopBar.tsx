@@ -9,6 +9,7 @@ import { NotificationBell } from "@/components/layout/NotificationBell";
 import { deriveAppRole } from "@/lib/session";
 import { GuideLauncher } from "@/components/guide/GuideLauncher";
 import { DropdownPanel } from "@/components/ui/DropdownPanel";
+import { useMobileNav } from "./MobileNavProvider";
 
 /**
  * Where you are, said in words.
@@ -112,6 +113,7 @@ export function TopBar({ user }: { user: User }) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const appRole = deriveAppRole(user.role?.code);
   const isClient = appRole === "client";
+  const { toggle: toggleMobileNav } = useMobileNav();
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -122,14 +124,28 @@ export function TopBar({ user }: { user: User }) {
   return (
     <header
       className={[
-        "flex h-[60px] shrink-0 items-center justify-between gap-4 px-6",
+        "flex h-[60px] shrink-0 items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6",
         // Translucent and blurred, so content scrolling underneath is
         // felt rather than cut off by an opaque bar.
         "relative z-30 border-b border-navy-900/8 bg-surface/85 backdrop-blur-md",
         "shadow-xs",
       ].join(" ")}
     >
-      <Breadcrumbs />
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={toggleMobileNav}
+          aria-label="Open navigation menu"
+          className="md:hidden grid h-9 w-9 shrink-0 place-items-center rounded-lg text-navy-700 hover:bg-navy-900/6 transition-colors cursor-pointer"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <Breadcrumbs />
+      </div>
 
       <div className="flex shrink-0 items-center gap-1">
         {/* Every role gets this, including clients — what differs is

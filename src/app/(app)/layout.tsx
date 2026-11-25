@@ -5,6 +5,7 @@ import { REQUIRE_PASSWORD } from "@/lib/auth-config";
 import { deriveAppRole } from "@/lib/session";
 import { isPhase1Restricted } from "@/lib/rollout";
 import { hasDirectReports } from "@/lib/reportees";
+import { MobileNavProvider } from "./MobileNavProvider";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { GuideProvider } from "@/components/guide/GuideProvider";
@@ -39,20 +40,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <GuideProvider>
-      <div className="flex h-screen overflow-hidden bg-canvas">
-        <Sidebar user={user} hasDirectReports={showApprovals} />
+      <MobileNavProvider>
+        <div className="flex h-screen overflow-hidden bg-canvas">
+          <Sidebar user={user} hasDirectReports={showApprovals} />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar user={user} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar user={user} />
 
-        {/* The content column is capped and centred so a 32-inch monitor
-            does not stretch a table to two feet wide, and the page gets
-            one orchestrated entrance rather than appearing all at once. */}
-          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6">
-            <div className="reveal reveal-1 mx-auto max-w-[1400px] w-full min-w-0">{children}</div>
-          </main>
+          {/* The content column is capped and centred so a 32-inch monitor
+              does not stretch a table to two feet wide, and the page gets
+              one orchestrated entrance rather than appearing all at once. */}
+            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4 md:px-6 md:py-6">
+              <div className="reveal reveal-1 mx-auto max-w-[1400px] w-full min-w-0">{children}</div>
+            </main>
+          </div>
         </div>
-      </div>
+      </MobileNavProvider>
     </GuideProvider>
   );
 }
