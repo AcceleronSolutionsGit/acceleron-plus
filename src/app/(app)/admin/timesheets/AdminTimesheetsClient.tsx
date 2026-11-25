@@ -39,24 +39,35 @@ interface EntryItem {
   activityType: string;
   wbsName: string | null;
   notes: string | null;
+  extraHoursReason?: string | null;
   status: string;
   submittedAt: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
   isPmOnProject: boolean;
   approvalVia: "rm" | "pm" | "admin";
+  allocatedDailyHours?: number;
+  isOverDailyAllocation?: boolean;
 }
 
 interface ProjectGroup {
   projectId: string;
   projectCode: string;
   projectName: string;
+  allocationPercent?: number;
+  dailyAllocatedHours?: number;
+  weeklyAllocatedHours?: number;
+  allocatedHours?: number;
+  filledHours?: number;
   totalHours: number;
   pendingHours: number;
   approvedHours: number;
   rejectedHours: number;
   pendingEntryIds: string[];
   isPmOnProject: boolean;
+  isOverAllocated?: boolean;
+  extraHours?: number;
+  extraHoursReasons?: string[];
   entries: EntryItem[];
 }
 
@@ -69,6 +80,11 @@ interface IndividualGroup {
   isDirectReport: boolean;
   hasPmRoutedEntries: boolean;
   totalHours: number;
+  totalAllocatedHours?: number;
+  isOverAllocated?: boolean;
+  extraHours?: number;
+  extraHoursCount?: number;
+  extraHoursReasons?: string[];
   pendingHours: number;
   approvedHours: number;
   rejectedHours: number;
@@ -86,6 +102,7 @@ interface ApprovalSummary {
   approvedHours: number;
   rejectedEntries: number;
   totalHours: number;
+  overAllocatedPeople?: number;
 }
 
 interface MissingProjectItem {
@@ -1085,6 +1102,15 @@ export function AdminTimesheetsClient() {
                                     PM → RM
                                   </span>
                                 )}
+                                {ind.extraHoursReasons && ind.extraHoursReasons.length > 0 && (
+                                  <span
+                                    title={`Extra hours justification: ${ind.extraHoursReasons.join(" | ")}`}
+                                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap flex items-center gap-1"
+                                  >
+                                    <span>📝</span>
+                                    <span>Justification provided</span>
+                                  </span>
+                                )}
                               </div>
                               {ind.designation && (
                                 <p className="text-[11px] text-navy-400 truncate">{ind.designation}</p>
@@ -1121,6 +1147,16 @@ export function AdminTimesheetsClient() {
                             <div className="text-sm font-bold text-navy-900">
                               {fmtHours(ind.totalHours)}
                             </div>
+                            {ind.totalAllocatedHours != null && ind.totalAllocatedHours > 0 && (
+                              <div className="text-[11px] text-navy-500 font-medium">
+                                / {fmtHours(ind.totalAllocatedHours)} alloc
+                              </div>
+                            )}
+                            {ind.isOverAllocated && (ind.extraHours ?? 0) > 0 && (
+                              <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                                +{fmtHours(ind.extraHours ?? 0)} extra
+                              </span>
+                            )}
                             {ind.pendingHours > 0 && ind.pendingHours !== ind.totalHours && (
                               <div className="text-[10px] text-blue-600 font-medium">
                                 {fmtHours(ind.pendingHours)} pending
@@ -1253,10 +1289,22 @@ export function AdminTimesheetsClient() {
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <div className="text-right">
-                                        <span className="text-sm font-bold text-navy-900">
-                                          {fmtHours(proj.totalHours)}
-                                        </span>
-                                        <span className="text-[11px] text-navy-400 ml-1.5">
+                                        <div className="flex items-baseline justify-end gap-1.5 flex-wrap">
+                                          <span className="text-sm font-bold text-navy-900">
+                                            {fmtHours(proj.totalHours)}
+                                          </span>
+                                          {proj.weeklyAllocatedHours != null && (
+                                            <span className="text-xs text-navy-500 font-medium">
+                                              / {fmtHours(proj.weeklyAllocatedHours)} alloc ({proj.allocationPercent ?? 100}%)
+                                            </span>
+                                          )}
+                                          {proj.isOverAllocated && (proj.extraHours ?? 0) > 0 && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                                              +{fmtHours(proj.extraHours ?? 0)} extra
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-[11px] text-navy-400">
                                           ({proj.entries.length}{" "}
                                           {proj.entries.length === 1 ? "day" : "days"})
                                         </span>
@@ -1292,6 +1340,23 @@ export function AdminTimesheetsClient() {
                                     </div>
                                   </div>
 
+                                  {/* Prominent Extra Hours Justification Banner */}
+                                  {proj.extraHoursReasons && proj.extraHoursReasons.length > 0 && (
+                                    <div className="mx-4 my-2 px-3 py-2 bg-amber-50/90 border border-amber-200/90 rounded-lg text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
+                                      <span className="font-bold text-amber-800 shrink-0 flex items-center gap-1 mt-0.5">
+                                        <span>⚠️</span>
+                                        <span>Extra Hours Justification:</span>
+                                      </span>
+                                      <div className="space-y-1">
+                                        {proj.extraHoursReasons.map((reason, idx) => (
+                                          <p key={idx} className="font-medium italic text-amber-950">
+                                            "{reason}"
+                                          </p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {/* Daily Entries Breakdown under Project */}
                                   {isProjOpen && (
                                     <div className="border-t border-neutral-100 overflow-x-auto">
@@ -1299,7 +1364,7 @@ export function AdminTimesheetsClient() {
                                         <thead>
                                           <tr className="bg-neutral-50/80 text-[10px] uppercase tracking-wider text-navy-400 border-b border-neutral-100">
                                             <th className="text-left px-4 py-2 font-semibold">Date</th>
-                                            <th className="text-right px-3 py-2 font-semibold">Hours</th>
+                                            <th className="text-right px-3 py-2 font-semibold">Hours / Alloc</th>
                                             <th className="text-left px-3 py-2 font-semibold">Activity / Task</th>
                                             <th className="text-left px-3 py-2 font-semibold">Notes / Reason</th>
                                             <th className="text-center px-3 py-2 font-semibold">Status</th>
@@ -1316,8 +1381,20 @@ export function AdminTimesheetsClient() {
                                                 <td className="px-4 py-2 font-medium text-navy-800 whitespace-nowrap">
                                                   {fmtDayDate(entry.logDate)}
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-bold text-navy-900 whitespace-nowrap">
-                                                  {fmtHours(entry.hours)}
+                                                <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                  <div className="font-bold text-navy-900">
+                                                    {fmtHours(entry.hours)}
+                                                  </div>
+                                                  {entry.allocatedDailyHours != null && (
+                                                    <div className="text-[10px] text-navy-400">
+                                                      / {fmtHours(entry.allocatedDailyHours)} alloc
+                                                    </div>
+                                                  )}
+                                                  {entry.isOverDailyAllocation && (
+                                                    <span className="inline-block text-[9px] font-bold px-1 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                                      +{fmtHours(Math.round(((entry.hours - (entry.allocatedDailyHours ?? 8)) + Number.EPSILON) * 100) / 100)} extra
+                                                    </span>
+                                                  )}
                                                 </td>
                                                 <td className="px-3 py-2 text-navy-600">
                                                   <span className="capitalize">
@@ -1329,16 +1406,25 @@ export function AdminTimesheetsClient() {
                                                     </span>
                                                   )}
                                                 </td>
-                                                <td className="px-3 py-2 text-navy-600 max-w-[260px]">
-                                                  {entry.rejectionReason ? (
-                                                    <span className="text-red-600">
+                                                <td className="px-3 py-2 text-navy-600 max-w-[280px]">
+                                                  {entry.rejectionReason && (
+                                                    <div className="text-red-600 font-semibold mb-1">
                                                       Rejected: {entry.rejectionReason}
-                                                    </span>
-                                                  ) : entry.notes ? (
-                                                    <span>{entry.notes}</span>
-                                                  ) : (
-                                                    <span className="text-navy-300">—</span>
+                                                    </div>
                                                   )}
+                                                  {entry.extraHoursReason && (
+                                                    <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-amber-950 text-[11px] mb-1">
+                                                      <span className="font-bold text-amber-800 block text-[10px] uppercase tracking-wider">
+                                                        Extra hour justification:
+                                                      </span>
+                                                      <span className="italic font-medium">"{entry.extraHoursReason}"</span>
+                                                    </div>
+                                                  )}
+                                                  {entry.notes ? (
+                                                    <span>{entry.notes}</span>
+                                                  ) : !entry.extraHoursReason && !entry.rejectionReason ? (
+                                                    <span className="text-navy-300">—</span>
+                                                  ) : null}
                                                 </td>
                                                 <td className="px-3 py-2 text-center">
                                                   <span

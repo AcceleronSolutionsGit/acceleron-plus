@@ -81,13 +81,18 @@ export async function GET(
   const [memberMap, pmMap, reportees] = await Promise.all([
     projectDb("project_team_members")
       .where("project_id", projectId)
-      .select("user_id", "rate_band_name", "rate_band_id"),
+      .select("user_id", "rate_band_name", "rate_band_id", "allocation_percent"),
     projectManagersByProject([projectId]),
     directReportUserIds(session.userId),
   ]);
-  const bandByUser: Record<string, { rateBandName?: string }> = {};
+  const bandByUser: Record<string, { rateBandName?: string; allocationPercent?: number; dailyAllocatedHours?: number }> = {};
   for (const m of memberMap) {
-    bandByUser[m.user_id] = { rateBandName: m.rate_band_name };
+    const allocPct = Number(m.allocation_percent ?? 100);
+    bandByUser[m.user_id] = {
+      rateBandName: m.rate_band_name,
+      allocationPercent: allocPct,
+      dailyAllocatedHours: Math.round((8 * (allocPct / 100)) * 100) / 100,
+    };
   }
 
   const isAdmin =
@@ -121,6 +126,8 @@ export async function GET(
     return {
       ...e,
       rateBandName: bandByUser[e.userId]?.rateBandName ?? null,
+      allocationPercent: bandByUser[e.userId]?.allocationPercent ?? 100,
+      dailyAllocatedHours: bandByUser[e.userId]?.dailyAllocatedHours ?? 8,
       isOwnEntry: isOwn,
       isPmEntry: isOwnerPm,
       canApproveEntry,
@@ -166,7 +173,20 @@ export async function POST(
   const projectId = project.id;
 
   const body = await req.json();
-  const { wbsItemId, logDate, hoursLogged, activityType = "development", notes } = body;
+  const {
+    wbsItemId,
+    logDate,
+    hoursLogged,
+    activityType = "development",
+    notes,
+    extraHoursReason,
+    extra_hours_reason,
+  } = body;
+  const cleanExtraHoursReason = extraHoursReason
+    ? String(extraHoursReason).trim()
+    : extra_hours_reason
+    ? String(extra_hours_reason).trim()
+    : null;
 
   // ── Validate ────────────────────────────────────────────────────
   const errors: { field: string; message: string }[] = [];
@@ -227,6 +247,7 @@ export async function POST(
     hours_logged:   hoursLogged,
     activity_type:  activityType,
     notes:          notes ?? null,
+    extra_hours_reason: cleanExtraHoursReason,
     status:         "pending",
   }).returning("*");
 

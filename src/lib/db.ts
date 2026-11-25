@@ -234,4 +234,6 @@ const MIGRATION_FOR_COLUMN: Record<string, string> = {
   invoice_value_inr: "src/lib/migrations/migrate-pmt-enhancements.js",
   invoice_date: "src/lib/migrations/migrate-pmt-enhancements.js",
   vendor_name: "src/lib/migrations/migrate-pmt-enhancements.js",
+  // migrate-timesheet-extra-hours
+  extra_hours_reason: "src/lib/migrations/migrate-timesheet-extra-hours.js",
 };

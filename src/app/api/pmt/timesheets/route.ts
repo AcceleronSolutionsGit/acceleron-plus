@@ -143,6 +143,7 @@ export async function GET(req: Request) {
         "ts.hours_logged",
         "ts.activity_type",
         "ts.notes",
+        "ts.extra_hours_reason",
         "ts.status",
         "ts.submitted_at",
         "ts.reviewed_by_user_id",
@@ -230,6 +231,46 @@ export async function GET(req: Request) {
       }
     }
 
+    // ── Resolve team member allocations for projects in view ──────
+    const teamAllocations =
+      rowProjectIds.length > 0
+        ? ((await projectDb("project_team_members")
+            .whereIn("project_id", rowProjectIds)
+            .andWhere(function () {
+              this.where("is_active", true).orWhereNull("is_active");
+            })
+            .select(
+              "project_id",
+              "user_id",
+              "employee_id",
+              "user_name",
+              "allocation_percent",
+              "planned_days"
+            )
+            .catch(() => [])) as Record<string, unknown>[])
+        : [];
+
+    const allocLookup = new Map<string, number>();
+    for (const m of teamAllocations) {
+      const pid = String(m.project_id);
+      const pct = Number(m.allocation_percent ?? 100);
+      if (m.user_id) allocLookup.set(`${pid}:uid:${m.user_id}`, pct);
+      if (m.employee_id) allocLookup.set(`${pid}:emp:${String(m.employee_id).trim()}`, pct);
+      if (m.user_name) allocLookup.set(`${pid}:name:${String(m.user_name).trim().toLowerCase()}`, pct);
+    }
+
+    const getAllocationPercent = (pid: string, uid: string): number => {
+      const uInfo = userInfoMap.get(uid);
+      if (allocLookup.has(`${pid}:uid:${uid}`)) return allocLookup.get(`${pid}:uid:${uid}`)!;
+      if (uInfo?.employeeId && allocLookup.has(`${pid}:emp:${uInfo.employeeId}`)) {
+        return allocLookup.get(`${pid}:emp:${uInfo.employeeId}`)!;
+      }
+      if (uInfo?.fullName && allocLookup.has(`${pid}:name:${uInfo.fullName.trim().toLowerCase()}`)) {
+        return allocLookup.get(`${pid}:name:${uInfo.fullName.trim().toLowerCase()}`)!;
+      }
+      return 100;
+    };
+
     // ── Format flat entries + group by Individual -> Project ───────
     interface EntryItem {
       id: string;
@@ -244,12 +285,15 @@ export async function GET(req: Request) {
       activityType: string;
       wbsName: string | null;
       notes: string | null;
+      extraHoursReason: string | null;
       status: string;
       submittedAt: string | null;
       reviewedAt: string | null;
       rejectionReason: string | null;
       isPmOnProject: boolean;
       approvalVia: "rm" | "pm" | "admin";
+      allocatedDailyHours: number;
+      isOverDailyAllocation: boolean;
     }
 
     const formattedEntries: EntryItem[] = [];
@@ -263,7 +307,7 @@ export async function GET(req: Request) {
       const projectName = String(r.project_name ?? "");
 
       if (search) {
-        const hay = `${userName} ${employeeId ?? ""} ${projectCode} ${projectName} ${r.notes ?? ""}`.toLowerCase();
+        const hay = `${userName} ${employeeId ?? ""} ${projectCode} ${projectName} ${r.notes ?? ""} ${r.extra_hours_reason ?? ""}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
 
@@ -274,6 +318,12 @@ export async function GET(req: Request) {
         ? "pm"
         : "admin";
 
+      const allocPct = getAllocationPercent(pid, uid);
+      const allocatedDailyHours = round2(8 * (allocPct / 100));
+      const hours = Number(r.hours_logged ?? 0);
+      const extraHoursReason = r.extra_hours_reason ? String(r.extra_hours_reason).trim() : null;
+      const isOverDailyAllocation = hours > allocatedDailyHours;
+
       formattedEntries.push({
         id: String(r.id),
         projectId: pid,
@@ -283,16 +333,19 @@ export async function GET(req: Request) {
         userName,
         employeeId,
         logDate: toDateInput(r.log_date as string),
-        hours: Number(r.hours_logged ?? 0),
+        hours,
         activityType: r.activity_type ? String(r.activity_type) : "development",
         wbsName: r.wbs_name ? String(r.wbs_name) : null,
         notes: r.notes ? String(r.notes) : null,
+        extraHoursReason,
         status: String(r.status ?? "submitted"),
         submittedAt: r.submitted_at ? new Date(String(r.submitted_at)).toISOString() : null,
         reviewedAt: r.reviewed_at ? new Date(String(r.reviewed_at)).toISOString() : null,
         rejectionReason: r.rejection_reason ? String(r.rejection_reason) : null,
         isPmOnProject,
         approvalVia,
+        allocatedDailyHours,
+        isOverDailyAllocation,
       });
     }
 
@@ -320,6 +373,9 @@ export async function GET(req: Request) {
             projectId: string;
             projectCode: string;
             projectName: string;
+            allocationPercent: number;
+            dailyAllocatedHours: number;
+            weeklyAllocatedHours: number;
             totalHours: number;
             pendingHours: number;
             approvedHours: number;
@@ -386,10 +442,16 @@ export async function GET(req: Request) {
 
       let proj = ind.projectMap.get(e.projectId);
       if (!proj) {
+        const allocPct = getAllocationPercent(e.projectId, e.userId);
+        const dailyAlloc = round2(8 * (allocPct / 100));
+        const weeklyAlloc = round2(40 * (allocPct / 100));
         proj = {
           projectId: e.projectId,
           projectCode: e.projectCode,
           projectName: e.projectName,
+          allocationPercent: allocPct,
+          dailyAllocatedHours: dailyAlloc,
+          weeklyAllocatedHours: weeklyAlloc,
           totalHours: 0,
           pendingHours: 0,
           approvedHours: 0,
@@ -415,26 +477,94 @@ export async function GET(req: Request) {
     }
 
     const individuals = [...individualMap.values()]
-      .map((ind) => ({
-        userId: ind.userId,
-        userName: ind.userName,
-        employeeId: ind.employeeId,
-        email: ind.email,
-        designation: ind.designation,
-        isDirectReport: ind.isDirectReport,
-        hasPmRoutedEntries: ind.hasPmRoutedEntries,
-        totalHours: ind.totalHours,
-        pendingHours: ind.pendingHours,
-        approvedHours: ind.approvedHours,
-        rejectedHours: ind.rejectedHours,
-        pendingEntryIds: ind.pendingEntryIds,
-        totalEntries: ind.totalEntries,
-        dateRange: ind.dateRange,
-        projectCount: ind.projectMap.size,
-        projects: [...ind.projectMap.values()].sort(
+      .map((ind) => {
+        const projList = [...ind.projectMap.values()].map((proj) => {
+          const allocatedHours = proj.weeklyAllocatedHours;
+          const filledHours = proj.totalHours;
+          const extraHoursReasons = Array.from(
+            new Set(
+              proj.entries
+                .map((en) => en.extraHoursReason)
+                .filter((r): r is string => Boolean(r && r.trim()))
+            )
+          );
+          const isOverAllocated =
+            filledHours > allocatedHours ||
+            proj.entries.some((en) => en.isOverDailyAllocation) ||
+            extraHoursReasons.length > 0;
+          const extraHours =
+            filledHours > allocatedHours ? round2(filledHours - allocatedHours) : 0;
+
+          return {
+            projectId: proj.projectId,
+            projectCode: proj.projectCode,
+            projectName: proj.projectName,
+            allocationPercent: proj.allocationPercent,
+            dailyAllocatedHours: proj.dailyAllocatedHours,
+            weeklyAllocatedHours: proj.weeklyAllocatedHours,
+            allocatedHours,
+            filledHours,
+            totalHours: proj.totalHours,
+            pendingHours: proj.pendingHours,
+            approvedHours: proj.approvedHours,
+            rejectedHours: proj.rejectedHours,
+            pendingEntryIds: proj.pendingEntryIds,
+            isPmOnProject: proj.isPmOnProject,
+            isOverAllocated,
+            extraHours,
+            extraHoursReasons,
+            entries: proj.entries,
+          };
+        }).sort(
           (a, b) => b.totalHours - a.totalHours || a.projectCode.localeCompare(b.projectCode)
-        ),
-      }))
+        );
+
+        const totalAllocatedHours = round2(
+          projList.reduce((sum, p) => sum + p.allocatedHours, 0)
+        );
+        const extraHoursReasons = Array.from(
+          new Set(projList.flatMap((p) => p.extraHoursReasons))
+        );
+        const isOverAllocated =
+          ind.totalHours > totalAllocatedHours ||
+          projList.some((p) => p.isOverAllocated);
+        const extraHours =
+          ind.totalHours > totalAllocatedHours
+            ? round2(ind.totalHours - totalAllocatedHours)
+            : round2(projList.reduce((sum, p) => sum + p.extraHours, 0));
+        const extraHoursCount = projList.reduce(
+          (sum, p) =>
+            sum +
+            p.entries.filter(
+              (en) => en.isOverDailyAllocation || Boolean(en.extraHoursReason)
+            ).length,
+          0
+        );
+
+        return {
+          userId: ind.userId,
+          userName: ind.userName,
+          employeeId: ind.employeeId,
+          email: ind.email,
+          designation: ind.designation,
+          isDirectReport: ind.isDirectReport,
+          hasPmRoutedEntries: ind.hasPmRoutedEntries,
+          totalHours: ind.totalHours,
+          totalAllocatedHours,
+          isOverAllocated,
+          extraHours,
+          extraHoursCount,
+          extraHoursReasons,
+          pendingHours: ind.pendingHours,
+          approvedHours: ind.approvedHours,
+          rejectedHours: ind.rejectedHours,
+          pendingEntryIds: ind.pendingEntryIds,
+          totalEntries: ind.totalEntries,
+          dateRange: ind.dateRange,
+          projectCount: ind.projectMap.size,
+          projects: projList,
+        };
+      })
       .sort(
         (a, b) =>
           b.pendingHours - a.pendingHours ||

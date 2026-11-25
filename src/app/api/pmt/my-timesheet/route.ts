@@ -79,6 +79,7 @@ export async function GET(req: Request) {
         "p.name",
         "m.role_in_project",
         "m.allocation_percent",
+        "m.planned_days",
         "m.start_date",
         "m.end_date"
       )
@@ -103,6 +104,7 @@ export async function GET(req: Request) {
       activityType: e.activity_type ? String(e.activity_type) : "development",
       status: e.status ? String(e.status) : "draft",
       notes: e.notes ? String(e.notes) : null,
+      extraHoursReason: e.extra_hours_reason ? String(e.extra_hours_reason) : null,
     }));
 
     const byDay: Record<string, number> = {};
@@ -113,18 +115,32 @@ export async function GET(req: Request) {
       success: true,
       weekStart: days[0],
       days,
-      projects: memberships.map((m) => ({
-        id: String(m.id),
-        code: String(m.code),
-        name: String(m.name),
-        roleInProject: m.role_in_project ? String(m.role_in_project) : null,
-        allocationPercent: Number(m.allocation_percent ?? 100),
-        // Their own work packages on this project, so time lands on
-        // something specific rather than on the project as a whole.
-        tasks: tasks
-          .filter((t) => t.projectCode === String(m.code))
-          .map((t) => ({ id: t.wbsItemId, code: t.wbsCode, name: t.wbsName })),
-      })),
+      projects: memberships.map((m) => {
+        const allocPct = Number(m.allocation_percent ?? 100);
+        const dailyAllocatedHours = Math.round((8 * (allocPct / 100)) * 100) / 100;
+        const weeklyAllocatedHours = Math.round((40 * (allocPct / 100)) * 100) / 100;
+        return {
+          id: String(m.id),
+          code: String(m.code),
+          name: String(m.name),
+          roleInProject: m.role_in_project ? String(m.role_in_project) : null,
+          allocationPercent: allocPct,
+          dailyAllocatedHours,
+          weeklyAllocatedHours,
+          plannedDays: m.planned_days != null ? Number(m.planned_days) : null,
+          // Their own work packages on this project, so time lands on
+          // something specific rather than on the project as a whole.
+          tasks: tasks
+            .filter((t) => t.projectCode === String(m.code))
+            .map((t) => ({
+              id: t.wbsItemId,
+              code: t.wbsCode,
+              name: t.wbsName,
+              plannedHours: t.plannedHours != null ? Number(t.plannedHours) : null,
+              loggedHours: t.loggedHours != null ? Number(t.loggedHours) : 0,
+            })),
+        };
+      }),
       entries: rows,
       totals: {
         byDay,
@@ -232,6 +248,14 @@ export async function POST(req: Request) {
     }
 
     const now = new Date();
+    const rawExtraReason =
+      body.extraHoursReason !== undefined
+        ? body.extraHoursReason
+        : body.extra_hours_reason !== undefined
+        ? body.extra_hours_reason
+        : (existing?.extra_hours_reason ?? null);
+    const extraHoursReason = rawExtraReason ? String(rawExtraReason).trim() : null;
+
     const values = {
       project_id: projectId,
       user_id: userId,
@@ -241,6 +265,7 @@ export async function POST(req: Request) {
       hours_logged: hours,
       activity_type: String(body.activityType ?? "development"),
       notes: String(body.notes ?? "").trim() || null,
+      extra_hours_reason: extraHoursReason,
       status: String(body.submit === true ? "submitted" : existing?.status ?? "draft"),
       submitted_at: body.submit === true ? now : (existing?.submitted_at ?? null),
       updated_at: now,

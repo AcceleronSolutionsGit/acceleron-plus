@@ -163,7 +163,7 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
             <tr>
               <th className="px-5 py-3">Date</th>
               <th className="px-5 py-3">Team Member</th>
-              <th className="px-5 py-3">Hours</th>
+              <th className="px-5 py-3">Hours / Alloc</th>
               <th className="px-5 py-3">Task/Ticket Ref</th>
               <th className="px-5 py-3">Status</th>
               {canApprove && <th className="px-5 py-3 text-right">Actions</th>}
@@ -176,6 +176,9 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
               const userVal = t.userName || t.user_name || "—";
               const hoursVal = t.hoursLogged ?? t.hours ?? 0;
               const taskVal = t.wbsName || t.task_description || t.notes || "—";
+              const extraReason = t.extraHoursReason || t.extra_hours_reason || null;
+              const dailyAlloc = t.dailyAllocatedHours != null ? Number(t.dailyAllocatedHours) : null;
+              const isExtra = dailyAlloc != null && hoursVal > dailyAlloc;
               const statusVal = t.status || "pending";
               const isPending = statusVal === "pending" || statusVal === "submitted";
               const canActOnRow = isPending && t.canApproveEntry === true;
@@ -191,9 +194,29 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-3 font-bold">{hoursVal}h</td>
+                  <td className="px-5 py-3">
+                    <span className="font-bold text-navy-900">{hoursVal}h</span>
+                    {dailyAlloc != null && (
+                      <span className="text-xs text-navy-400 block font-normal">
+                        / {dailyAlloc}h alloc
+                      </span>
+                    )}
+                    {isExtra && (
+                      <span className="inline-block text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300 mt-0.5">
+                        +{Math.round(((hoursVal - dailyAlloc) + Number.EPSILON) * 100) / 100}h extra
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3">
                     <span className="text-navy-900">{taskVal}</span>
+                    {extraReason && (
+                      <div className="mt-1 p-1.5 bg-amber-50 rounded border border-amber-200 text-xs text-amber-900 max-w-md">
+                        <span className="font-semibold block text-[10px] uppercase tracking-wider text-amber-800">
+                          Extra hour justification:
+                        </span>
+                        <span className="italic">"{extraReason}"</span>
+                      </div>
+                    )}
                     {(t.itsmTicketId || t.itsm_ticket_id) && (
                       <span className="block text-[10px] text-blue-600 mt-0.5">
                         Ticket: {t.itsmTicketId || t.itsm_ticket_id}
