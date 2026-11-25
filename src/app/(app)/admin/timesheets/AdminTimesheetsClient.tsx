@@ -1377,16 +1377,18 @@ export function AdminTimesheetsClient() {
                                                   {fmtDayDate(entry.logDate)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                  <div className="font-bold text-navy-900">
-                                                    {fmtHours(entry.hours)}
+                                                  <div className="flex items-baseline justify-end gap-1.5">
+                                                    <span className="font-bold text-navy-900">
+                                                      {fmtHours(entry.hours)}
+                                                    </span>
+                                                    {entry.allocatedDailyHours != null && (
+                                                      <span className="text-[11px] text-navy-500 font-medium">
+                                                        / {fmtHours(entry.allocatedDailyHours)} alloc
+                                                      </span>
+                                                    )}
                                                   </div>
-                                                  {entry.allocatedDailyHours != null && (
-                                                    <div className="text-[10px] text-navy-400">
-                                                      / {fmtHours(entry.allocatedDailyHours)} alloc
-                                                    </div>
-                                                  )}
                                                   {entry.isOverDailyAllocation && (
-                                                    <span className="inline-block text-[9px] font-bold px-1 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                                    <span className="inline-block mt-0.5 text-[9px] font-bold px-1 rounded bg-amber-100 text-amber-800 border border-amber-300">
                                                       +{fmtHours(Math.round(((entry.hours - (entry.allocatedDailyHours ?? 8)) + Number.EPSILON) * 100) / 100)} extra
                                                     </span>
                                                   )}

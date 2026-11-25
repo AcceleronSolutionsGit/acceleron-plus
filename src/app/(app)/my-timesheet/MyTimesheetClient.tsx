@@ -495,7 +495,7 @@ export function MyTimesheetClient() {
                       <th
                         key={day}
                         className={cn(
-                          "w-20 px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider",
+                          "w-28 min-w-[96px] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider",
                           isToday && "bg-navy-900/[0.05] text-navy-900",
                           !isToday && isFuture && "text-navy-300",
                           !isToday && !isFuture && isWeekend && "bg-navy-900/[0.02] text-navy-400",
@@ -588,40 +588,51 @@ export function MyTimesheetClient() {
                             )}
                           >
                             <div className="flex flex-col items-center justify-center">
-                              <input
-                                type="number"
-                                min={0}
-                                max={24}
-                                step={0.5}
-                                key={`${cellKey}:${entry?.hours ?? ""}:${inputResetKey}`}
-                                defaultValue={entry?.hours ?? ""}
-                                disabled={locked || isFuture || saving === cellKey}
-                                title={
-                                  isFuture
-                                    ? "Not yet — you cannot book time against a day that has not happened."
-                                    : locked
-                                      ? "Approved — ask your PM to reopen it"
-                                      : entry?.status === "submitted"
-                                        ? "Submitted for approval"
-                                        : undefined
-                                }
-                                onBlur={(e) => {
-                                  handleCellBlur(project, task, day, e.target.value);
-                                }}
-                                className={cn(
-                                  "w-14 rounded border px-1 py-1.5 text-center text-sm",
-                                  "transition-[border-color,box-shadow,background] duration-150",
-                                  isFuture
-                                    ? "cursor-not-allowed border-transparent bg-transparent text-navy-200"
-                                    : locked
-                                      ? "border-neutral-200 bg-neutral-100 text-navy-500"
-                                      : entry?.status === "submitted"
-                                        ? "border-info/30 bg-info-bg/60"
-                                        : isDailyExtra
-                                          ? "border-amber-400 bg-amber-50/50 text-amber-900 focus:border-amber-600 focus:outline-none"
-                                          : "border-neutral-200 focus:border-navy-700 focus:outline-none focus:shadow-[0_0_0_3px_rgb(33_47_96_/_0.1)]"
-                                )}
-                              />
+                              <div className="flex items-center justify-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={24}
+                                  step={0.5}
+                                  key={`${cellKey}:${entry?.hours ?? ""}:${inputResetKey}`}
+                                  defaultValue={entry?.hours ?? ""}
+                                  disabled={locked || isFuture || saving === cellKey}
+                                  title={
+                                    isFuture
+                                      ? "Not yet — you cannot book time against a day that has not happened."
+                                      : locked
+                                        ? "Approved — ask your PM to reopen it"
+                                        : entry?.status === "submitted"
+                                          ? "Submitted for approval"
+                                          : `Allocated: ${dailyAlloc}h/day`
+                                  }
+                                  onBlur={(e) => {
+                                    handleCellBlur(project, task, day, e.target.value);
+                                  }}
+                                  className={cn(
+                                    "w-12 rounded border px-1 py-1.5 text-center text-sm font-medium",
+                                    "transition-[border-color,box-shadow,background] duration-150",
+                                    isFuture
+                                      ? "cursor-not-allowed border-transparent bg-transparent text-navy-200"
+                                      : locked
+                                        ? "border-neutral-200 bg-neutral-100 text-navy-500"
+                                        : entry?.status === "submitted"
+                                          ? "border-info/30 bg-info-bg/60"
+                                          : isDailyExtra
+                                            ? "border-amber-400 bg-amber-50/50 text-amber-900 focus:border-amber-600 focus:outline-none"
+                                            : "border-neutral-200 focus:border-navy-700 focus:outline-none focus:shadow-[0_0_0_3px_rgb(33_47_96_/_0.1)]"
+                                  )}
+                                />
+                                <span
+                                  className={cn(
+                                    "text-xs font-semibold select-none whitespace-nowrap",
+                                    isDailyExtra ? "text-amber-700 font-bold" : "text-navy-400"
+                                  )}
+                                  title={`Daily allocated: ${dailyAlloc}h`}
+                                >
+                                  / {dailyAlloc}h
+                                </span>
+                              </div>
 
                               {/* Daily Extra Hours Reason indicator & prompt trigger */}
                               {entry && entry.extraHoursReason ? (
@@ -638,7 +649,7 @@ export function MyTimesheetClient() {
                                       allocatedDaily: dailyAlloc,
                                     })
                                   }
-                                  className="mt-1 flex items-center gap-0.5 max-w-[56px] px-1 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-[9px] font-medium text-amber-800 border border-amber-200/90 cursor-pointer"
+                                  className="mt-1 flex items-center gap-0.5 max-w-[80px] px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-[9px] font-medium text-amber-800 border border-amber-200/90 cursor-pointer shadow-2xs"
                                   title={`Extra hour note: "${entry.extraHoursReason}" (click to edit)`}
                                 >
                                   <span>📝</span>
@@ -658,7 +669,7 @@ export function MyTimesheetClient() {
                                       allocatedDaily: dailyAlloc,
                                     })
                                   }
-                                  className="mt-1 px-1 py-0.5 rounded bg-red-50 hover:bg-red-100 text-[9px] font-semibold text-red-700 border border-red-200 cursor-pointer whitespace-nowrap"
+                                  className="mt-1 px-1.5 py-0.5 rounded bg-red-50 hover:bg-red-100 text-[9px] font-semibold text-red-700 border border-red-200 cursor-pointer whitespace-nowrap shadow-2xs"
                                   title="Define what was done in the extra hour"
                                 >
                                   ⚠️ Add reason

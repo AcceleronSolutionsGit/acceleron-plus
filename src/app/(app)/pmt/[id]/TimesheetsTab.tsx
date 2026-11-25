@@ -197,12 +197,14 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
                     )}
                   </td>
                   <td className="px-5 py-3">
-                    <span className="font-bold text-navy-900">{hoursVal}h</span>
-                    {dailyAlloc != null && (
-                      <span className="text-xs text-navy-400 block font-normal">
-                        / {dailyAlloc}h alloc
-                      </span>
-                    )}
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="font-bold text-navy-900">{hoursVal}h</span>
+                      {dailyAlloc != null && (
+                        <span className="text-xs text-navy-400 font-normal">
+                          / {dailyAlloc}h alloc
+                        </span>
+                      )}
+                    </div>
                     {isExtra && (
                       <span className="inline-block text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300 mt-0.5">
                         +{Math.round(((hoursVal - (dailyAlloc ?? 8)) + Number.EPSILON) * 100) / 100}h extra
