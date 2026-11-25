@@ -1147,11 +1147,6 @@ export function AdminTimesheetsClient() {
                             <div className="text-sm font-bold text-navy-900">
                               {fmtHours(ind.totalHours)}
                             </div>
-                            {ind.totalAllocatedHours != null && ind.totalAllocatedHours > 0 && (
-                              <div className="text-[11px] text-navy-500 font-medium">
-                                / {fmtHours(ind.totalAllocatedHours)} alloc
-                              </div>
-                            )}
                             {ind.isOverAllocated && (ind.extraHours ?? 0) > 0 && (
                               <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                                 +{fmtHours(ind.extraHours ?? 0)} extra
@@ -1293,9 +1288,9 @@ export function AdminTimesheetsClient() {
                                           <span className="text-sm font-bold text-navy-900">
                                             {fmtHours(proj.totalHours)}
                                           </span>
-                                          {proj.weeklyAllocatedHours != null && (
+                                          {proj.dailyAllocatedHours != null && (
                                             <span className="text-xs text-navy-500 font-medium">
-                                              / {fmtHours(proj.weeklyAllocatedHours)} alloc ({proj.allocationPercent ?? 100}%)
+                                              ({fmtHours(proj.dailyAllocatedHours)}h/day alloc · {proj.allocationPercent ?? 100}%)
                                             </span>
                                           )}
                                           {proj.isOverAllocated && (proj.extraHours ?? 0) > 0 && (
@@ -1364,7 +1359,7 @@ export function AdminTimesheetsClient() {
                                         <thead>
                                           <tr className="bg-neutral-50/80 text-[10px] uppercase tracking-wider text-navy-400 border-b border-neutral-100">
                                             <th className="text-left px-4 py-2 font-semibold">Date</th>
-                                            <th className="text-right px-3 py-2 font-semibold">Hours / Alloc</th>
+                                            <th className="text-right px-3 py-2 font-semibold">Hours / Daily Alloc</th>
                                             <th className="text-left px-3 py-2 font-semibold">Activity / Task</th>
                                             <th className="text-left px-3 py-2 font-semibold">Notes / Reason</th>
                                             <th className="text-center px-3 py-2 font-semibold">Status</th>

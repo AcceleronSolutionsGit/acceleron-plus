@@ -256,6 +256,22 @@ export async function POST(req: Request) {
         : (existing?.extra_hours_reason ?? null);
     const extraHoursReason = rawExtraReason ? String(rawExtraReason).trim() : null;
 
+    // Check daily allocation enforcement: implemented from 2026-11-25 onwards.
+    // Previous submissions (< 2026-11-25) do not require justification.
+    const allocPct = Number(membership.allocation_percent ?? 100);
+    const dailyAllocatedHours = Math.round((8 * (allocPct / 100)) * 100) / 100;
+    const isEffectiveDate = logDate >= "2026-11-25";
+
+    if (isEffectiveDate && hours > dailyAllocatedHours && !extraHoursReason) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `You logged ${hours}h which exceeds your daily allocated ${dailyAllocatedHours}h/day. A one-liner justification is required for the extra hours.`,
+        },
+        { status: 422 }
+      );
+    }
+
     const values = {
       project_id: projectId,
       user_id: userId,

@@ -178,7 +178,9 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
               const taskVal = t.wbsName || t.task_description || t.notes || "—";
               const extraReason = t.extraHoursReason || t.extra_hours_reason || null;
               const dailyAlloc = t.dailyAllocatedHours != null ? Number(t.dailyAllocatedHours) : null;
-              const isExtra = dailyAlloc != null && hoursVal > dailyAlloc;
+              const isExtra =
+                t.isOverDailyAllocation ??
+                (dateVal ? dateVal >= "2026-11-25" && dailyAlloc != null && hoursVal > dailyAlloc : false);
               const statusVal = t.status || "pending";
               const isPending = statusVal === "pending" || statusVal === "submitted";
               const canActOnRow = isPending && t.canApproveEntry === true;
@@ -203,7 +205,7 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
                     )}
                     {isExtra && (
                       <span className="inline-block text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300 mt-0.5">
-                        +{Math.round(((hoursVal - dailyAlloc) + Number.EPSILON) * 100) / 100}h extra
+                        +{Math.round(((hoursVal - (dailyAlloc ?? 8)) + Number.EPSILON) * 100) / 100}h extra
                       </span>
                     )}
                   </td>

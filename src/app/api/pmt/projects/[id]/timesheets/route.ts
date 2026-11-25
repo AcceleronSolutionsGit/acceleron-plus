@@ -123,11 +123,18 @@ export async function GET(
       }
     }
 
+    const logDateStr = String(e.logDate || e.log_date || "");
+    const dailyAlloc = bandByUser[e.userId]?.dailyAllocatedHours ?? 8;
+    const hours = Number(e.hoursLogged ?? e.hours ?? 0);
+    const isEffectiveDate = logDateStr >= "2026-11-25";
+    const isOverDailyAllocation = isEffectiveDate && hours > dailyAlloc;
+
     return {
       ...e,
       rateBandName: bandByUser[e.userId]?.rateBandName ?? null,
       allocationPercent: bandByUser[e.userId]?.allocationPercent ?? 100,
-      dailyAllocatedHours: bandByUser[e.userId]?.dailyAllocatedHours ?? 8,
+      dailyAllocatedHours: dailyAlloc,
+      isOverDailyAllocation,
       isOwnEntry: isOwn,
       isPmEntry: isOwnerPm,
       canApproveEntry,
@@ -235,6 +242,21 @@ export async function POST(
       .first(),
     wbsItemId ? projectDb("wbs_items").where("id", wbsItemId).first() : Promise.resolve(null),
   ]);
+
+  // Check daily allocation enforcement: implemented from 2026-11-25 onwards.
+  const allocPct = Number(teamMember?.allocation_percent ?? 100);
+  const dailyAllocatedHours = Math.round((8 * (allocPct / 100)) * 100) / 100;
+  if (logDate >= "2026-11-25" && hoursLogged > dailyAllocatedHours && !cleanExtraHoursReason) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "VALIDATION_FAILED",
+        message: `Hours logged (${hoursLogged}h) exceed daily allocation (${dailyAllocatedHours}h). A one-liner justification is required for extra hours.`,
+        details: [{ field: "extraHoursReason", message: "A one-liner justification is required for extra hours." }],
+      },
+      { status: 422 }
+    );
+  }
 
   // ── Insert ──────────────────────────────────────────────────────
   const [row] = await projectDb("project_timesheets").insert({

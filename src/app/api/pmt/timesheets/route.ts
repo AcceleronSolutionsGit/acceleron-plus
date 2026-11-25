@@ -321,8 +321,11 @@ export async function GET(req: Request) {
       const allocPct = getAllocationPercent(pid, uid);
       const allocatedDailyHours = round2(8 * (allocPct / 100));
       const hours = Number(r.hours_logged ?? 0);
+      const logDate = toDateInput(r.log_date as string);
       const extraHoursReason = r.extra_hours_reason ? String(r.extra_hours_reason).trim() : null;
-      const isOverDailyAllocation = hours > allocatedDailyHours;
+      // Implemented from today (2026-11-25) onwards; previous submissions do not need justification
+      const isEffectiveDate = logDate >= "2026-11-25";
+      const isOverDailyAllocation = isEffectiveDate && hours > allocatedDailyHours;
 
       formattedEntries.push({
         id: String(r.id),
@@ -332,7 +335,7 @@ export async function GET(req: Request) {
         userId: uid,
         userName,
         employeeId,
-        logDate: toDateInput(r.log_date as string),
+        logDate,
         hours,
         activityType: r.activity_type ? String(r.activity_type) : "development",
         wbsName: r.wbs_name ? String(r.wbs_name) : null,
@@ -479,8 +482,6 @@ export async function GET(req: Request) {
     const individuals = [...individualMap.values()]
       .map((ind) => {
         const projList = [...ind.projectMap.values()].map((proj) => {
-          const allocatedHours = proj.weeklyAllocatedHours;
-          const filledHours = proj.totalHours;
           const extraHoursReasons = Array.from(
             new Set(
               proj.entries
@@ -488,12 +489,17 @@ export async function GET(req: Request) {
                 .filter((r): r is string => Boolean(r && r.trim()))
             )
           );
+          // Calculated strictly from daily over-allocations (effective from 2026-11-25)
+          const extraHours = round2(
+            proj.entries.reduce(
+              (sum, en) =>
+                sum + (en.isOverDailyAllocation ? Math.max(0, en.hours - en.allocatedDailyHours) : 0),
+              0
+            )
+          );
           const isOverAllocated =
-            filledHours > allocatedHours ||
             proj.entries.some((en) => en.isOverDailyAllocation) ||
             extraHoursReasons.length > 0;
-          const extraHours =
-            filledHours > allocatedHours ? round2(filledHours - allocatedHours) : 0;
 
           return {
             projectId: proj.projectId,
@@ -502,8 +508,6 @@ export async function GET(req: Request) {
             allocationPercent: proj.allocationPercent,
             dailyAllocatedHours: proj.dailyAllocatedHours,
             weeklyAllocatedHours: proj.weeklyAllocatedHours,
-            allocatedHours,
-            filledHours,
             totalHours: proj.totalHours,
             pendingHours: proj.pendingHours,
             approvedHours: proj.approvedHours,
@@ -520,18 +524,15 @@ export async function GET(req: Request) {
         );
 
         const totalAllocatedHours = round2(
-          projList.reduce((sum, p) => sum + p.allocatedHours, 0)
+          projList.reduce((sum, p) => sum + (p.weeklyAllocatedHours ?? 0), 0)
+        );
+        const extraHours = round2(
+          projList.reduce((sum, p) => sum + (p.extraHours ?? 0), 0)
         );
         const extraHoursReasons = Array.from(
-          new Set(projList.flatMap((p) => p.extraHoursReasons))
+          new Set(projList.flatMap((p) => p.extraHoursReasons ?? []))
         );
-        const isOverAllocated =
-          ind.totalHours > totalAllocatedHours ||
-          projList.some((p) => p.isOverAllocated);
-        const extraHours =
-          ind.totalHours > totalAllocatedHours
-            ? round2(ind.totalHours - totalAllocatedHours)
-            : round2(projList.reduce((sum, p) => sum + p.extraHours, 0));
+        const isOverAllocated = projList.some((p) => p.isOverAllocated);
         const extraHoursCount = projList.reduce(
           (sum, p) =>
             sum +

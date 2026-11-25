@@ -92,6 +92,8 @@ interface Entry {
   extraHoursReason?: string | null;
 }
 
+const EXTRA_HOURS_START_DATE = "2026-11-25";
+
 interface ExtraHourPromptState {
   project: Project;
   task: Task | null;
@@ -100,9 +102,6 @@ interface ExtraHourPromptState {
   activityType?: string;
   existingReason: string;
   allocatedDaily: number;
-  allocatedWeekly: number;
-  isExceedingDaily: boolean;
-  isExceedingWeekly: boolean;
 }
 
 export function MyTimesheetClient() {
@@ -191,6 +190,7 @@ export function MyTimesheetClient() {
 
   const [extraPrompt, setExtraPrompt] = useState<ExtraHourPromptState | null>(null);
   const [promptReason, setPromptReason] = useState("");
+  const [inputResetKey, setInputResetKey] = useState(0);
 
   const openExtraPrompt = (state: ExtraHourPromptState) => {
     setExtraPrompt(state);
@@ -260,18 +260,10 @@ export function MyTimesheetClient() {
     }
 
     const dailyAlloc = project.dailyAllocatedHours ?? 8;
-    const weeklyAlloc = project.weeklyAllocatedHours ?? 40;
+    const isEffectiveDate = day >= EXTRA_HOURS_START_DATE;
+    const isExceedingDaily = isEffectiveDate && nextHours > dailyAlloc;
 
-    // Check row total across all days for this project/task
-    const otherDaysHours = days
-      .filter((d) => d !== day)
-      .reduce((sum, d) => sum + (find(project.id, task?.id ?? null, d)?.hours ?? 0), 0);
-    const newRowTotal = otherDaysHours + nextHours;
-
-    const isExceedingDaily = nextHours > dailyAlloc;
-    const isExceedingWeekly = newRowTotal > weeklyAlloc;
-
-    if (isExceedingDaily || isExceedingWeekly) {
+    if (isExceedingDaily) {
       if (!currentEntry?.extraHoursReason) {
         openExtraPrompt({
           project,
@@ -281,9 +273,6 @@ export function MyTimesheetClient() {
           activityType: currentEntry?.activityType,
           existingReason: "",
           allocatedDaily: dailyAlloc,
-          allocatedWeekly: weeklyAlloc,
-          isExceedingDaily,
-          isExceedingWeekly,
         });
         return;
       }
@@ -299,17 +288,12 @@ export function MyTimesheetClient() {
       return;
     }
 
-    // Enforce one-liner reason on any draft entry exceeding allocation
+    // Enforce one-liner reason strictly on draft entries exceeding daily allocation from today (2026-11-25) onwards
     const missingReason = draft.find((entry) => {
+      if (entry.logDate < EXTRA_HOURS_START_DATE) return false;
       const proj = projects.find((p) => p.id === entry.projectId);
       const dailyAlloc = proj?.dailyAllocatedHours ?? 8;
-      const weeklyAlloc = proj?.weeklyAllocatedHours ?? 40;
-      const isDailyExceeded = entry.hours > dailyAlloc;
-      const projTotal = entries
-        .filter((e) => e.projectId === entry.projectId)
-        .reduce((sum, e) => sum + e.hours, 0);
-      const isWeeklyExceeded = projTotal > weeklyAlloc;
-      return (isDailyExceeded || isWeeklyExceeded) && !entry.extraHoursReason?.trim();
+      return entry.hours > dailyAlloc && !entry.extraHoursReason?.trim();
     });
 
     if (missingReason) {
@@ -324,9 +308,6 @@ export function MyTimesheetClient() {
           activityType: missingReason.activityType,
           existingReason: "",
           allocatedDaily: proj.dailyAllocatedHours ?? 8,
-          allocatedWeekly: proj.weeklyAllocatedHours ?? 40,
-          isExceedingDaily: missingReason.hours > (proj.dailyAllocatedHours ?? 8),
-          isExceedingWeekly: true,
         });
       }
       setError("Please write a one-liner to define what was being done in the extra hour(s) before submitting.");
@@ -449,39 +430,25 @@ export function MyTimesheetClient() {
       </div>
 
       {totals && (
-        <div className="flex gap-6 flex-wrap items-end">
+        <div className="flex gap-6 flex-wrap">
           <div>
             {/* Follows the week being looked at. It said "This week"
                 over somebody's back-dated total, which is the one
                 number on the page you must not mislabel. */}
             <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-              {weekName || "This week"} Logged
+              {weekName || "This week"}
             </p>
-            <div className="flex items-baseline gap-2">
-              <p
-                className={`text-xl font-bold ${
-                  totals.week > (projects.reduce((s, p) => s + (p.weeklyAllocatedHours ?? 40), 0) || 40)
-                    ? "text-amber-700"
-                    : "text-navy-900"
-                }`}
-              >
-                {totals.week}h
-              </p>
-              {projects.length > 0 && (
-                <span className="text-xs text-navy-500">
-                  / {round2(projects.reduce((s, p) => s + (p.weeklyAllocatedHours ?? 40), 0))}h allocated
-                  {totals.week > round2(projects.reduce((s, p) => s + (p.weeklyAllocatedHours ?? 40), 0)) && (
-                    <span className="ml-1.5 font-bold text-amber-700">
-                      (+{round2(totals.week - round2(projects.reduce((s, p) => s + (p.weeklyAllocatedHours ?? 40), 0)))}h extra)
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
+            <p
+              className={`text-xl font-bold ${
+                totals.week > 45 ? "text-amber-700" : "text-navy-900"
+              }`}
+            >
+              {totals.week}h
+            </p>
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-navy-500 font-semibold">
-              Allocated Projects
+              Projects
             </p>
             <p className="text-xl font-bold text-navy-900">{projects.length}</p>
           </div>
@@ -550,8 +517,8 @@ export function MyTimesheetClient() {
                       </th>
                     );
                   })}
-                  <th className="px-3 py-2.5 text-[10px] uppercase tracking-wider text-navy-500 font-semibold w-24 text-center">
-                    Total / Alloc
+                  <th className="px-3 py-2.5 text-[10px] uppercase tracking-wider text-navy-500 font-semibold w-16 text-center">
+                    Total
                   </th>
                 </tr>
               </thead>
@@ -561,8 +528,7 @@ export function MyTimesheetClient() {
                     (sum, day) => sum + (find(project.id, task?.id ?? null, day)?.hours ?? 0),
                     0
                   );
-                  const weeklyAlloc = project.weeklyAllocatedHours ?? 40;
-                  const isOverWeekly = rowTotal > weeklyAlloc;
+                  const dailyAlloc = project.dailyAllocatedHours ?? 8;
                   return (
                     <tr key={key} className={task ? "" : "bg-neutral-50/40"}>
                       <td className="px-4 py-2">
@@ -596,7 +562,7 @@ export function MyTimesheetClient() {
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className="inline-flex items-center text-[10px] font-semibold text-navy-600 bg-navy-100/80 px-1.5 py-0.5 rounded">
-                                {project.allocationPercent}% · {weeklyAlloc}h/wk ({project.dailyAllocatedHours ?? 8}h/day)
+                                {project.allocationPercent}% · {dailyAlloc}h/day
                               </span>
                             </div>
                           </div>
@@ -610,8 +576,8 @@ export function MyTimesheetClient() {
                         const isToday = day === today;
                         const isWeekend = i >= 5;
                         const cellKey = `${project.id}:${task?.id ?? "none"}:${day}`;
-                        const dailyAlloc = project.dailyAllocatedHours ?? 8;
-                        const isDailyExtra = (entry?.hours ?? 0) > dailyAlloc;
+                        const isEffectiveDate = day >= EXTRA_HOURS_START_DATE;
+                        const isDailyExtra = isEffectiveDate && (entry?.hours ?? 0) > dailyAlloc;
                         return (
                           <td
                             key={day}
@@ -627,7 +593,7 @@ export function MyTimesheetClient() {
                                 min={0}
                                 max={24}
                                 step={0.5}
-                                key={`${cellKey}:${entry?.hours ?? ""}`}
+                                key={`${cellKey}:${entry?.hours ?? ""}:${inputResetKey}`}
                                 defaultValue={entry?.hours ?? ""}
                                 disabled={locked || isFuture || saving === cellKey}
                                 title={
@@ -657,7 +623,7 @@ export function MyTimesheetClient() {
                                 )}
                               />
 
-                              {/* Extra Hours Reason indicator & prompt trigger */}
+                              {/* Daily Extra Hours Reason indicator & prompt trigger */}
                               {entry && entry.extraHoursReason ? (
                                 <button
                                   type="button"
@@ -670,9 +636,6 @@ export function MyTimesheetClient() {
                                       activityType: entry.activityType,
                                       existingReason: entry.extraHoursReason || "",
                                       allocatedDaily: dailyAlloc,
-                                      allocatedWeekly: weeklyAlloc,
-                                      isExceedingDaily: entry.hours > dailyAlloc,
-                                      isExceedingWeekly: isOverWeekly,
                                     })
                                   }
                                   className="mt-1 flex items-center gap-0.5 max-w-[56px] px-1 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-[9px] font-medium text-amber-800 border border-amber-200/90 cursor-pointer"
@@ -693,9 +656,6 @@ export function MyTimesheetClient() {
                                       activityType: entry.activityType,
                                       existingReason: "",
                                       allocatedDaily: dailyAlloc,
-                                      allocatedWeekly: weeklyAlloc,
-                                      isExceedingDaily: true,
-                                      isExceedingWeekly: isOverWeekly,
                                     })
                                   }
                                   className="mt-1 px-1 py-0.5 rounded bg-red-50 hover:bg-red-100 text-[9px] font-semibold text-red-700 border border-red-200 cursor-pointer whitespace-nowrap"
@@ -709,20 +669,8 @@ export function MyTimesheetClient() {
                         );
                       })}
 
-                      <td className="px-3 py-2 text-center align-middle font-medium">
-                        <div className="text-sm font-bold text-navy-900">
-                          {rowTotal > 0 ? `${rowTotal}h` : "—"}
-                        </div>
-                        {!task && (
-                          <div className="text-[10px] text-navy-400 mt-0.5">
-                            / {weeklyAlloc}h
-                          </div>
-                        )}
-                        {!task && isOverWeekly && (
-                          <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
-                            +{round2(rowTotal - weeklyAlloc)}h extra
-                          </span>
-                        )}
+                      <td className="px-3 py-2 text-center align-middle font-medium text-navy-900">
+                        {rowTotal > 0 ? `${rowTotal}h` : "—"}
                       </td>
                     </tr>
                   );
@@ -760,7 +708,7 @@ export function MyTimesheetClient() {
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-neutral-100 px-4 py-3 text-[11px] text-navy-500">
             <span>
-              Type hours and click away to save. Hours exceeding allocation require a one-liner justification.
+              Type hours and click away to save. From today onwards, daily hours exceeding allocation require a one-liner justification.
             </span>
             {(draftCount > 0 || submittedCount > 0 || approvedCount > 0) && (
               <span className="flex items-center gap-3">
@@ -797,7 +745,7 @@ export function MyTimesheetClient() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-navy-900/10 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold mb-2">
-                <span>⚠️ Extra Hours Logged</span>
+                <span>⚠️ Extra Daily Hours Logged</span>
               </div>
               <h2 className="text-lg font-bold text-navy-900">
                 Define what was done in the extra hour(s)
@@ -805,10 +753,8 @@ export function MyTimesheetClient() {
               <p className="text-xs text-navy-500 mt-1">
                 You logged <strong className="text-navy-900">{extraPrompt.hours}h</strong> on{" "}
                 <strong className="text-navy-900">{extraPrompt.day}</strong> for{" "}
-                <strong className="text-navy-900">{extraPrompt.project.name}</strong>.
-                {extraPrompt.isExceedingDaily
-                  ? ` This exceeds your allocated ${extraPrompt.allocatedDaily}h/day.`
-                  : ` This exceeds your allocated ${extraPrompt.allocatedWeekly}h/week.`}
+                <strong className="text-navy-900">{extraPrompt.project.name}</strong>. This exceeds your daily allocation of{" "}
+                <strong className="text-navy-900">{extraPrompt.allocatedDaily}h/day</strong>.
               </p>
             </div>
 
@@ -825,14 +771,17 @@ export function MyTimesheetClient() {
                 className="w-full rounded-lg border border-navy-900/20 px-3 py-2 text-xs text-navy-900 placeholder:text-navy-400 focus:border-navy-700 focus:outline-none focus:ring-1 focus:ring-navy-700"
               />
               <p className="text-[11px] text-navy-400 mt-1">
-                Your Project Manager &amp; Approver will review this note against your allocated hours.
+                Your Project Manager &amp; Approver will review this note on your daily timesheet entry.
               </p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
               <Button
                 variant="secondary"
-                onClick={() => setExtraPrompt(null)}
+                onClick={() => {
+                  setExtraPrompt(null);
+                  setInputResetKey((k) => k + 1);
+                }}
               >
                 Cancel
               </Button>
