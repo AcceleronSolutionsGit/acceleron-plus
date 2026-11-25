@@ -180,7 +180,7 @@ export function TimesheetsTab({ projectId, userRole }: { projectId: string; user
               const dailyAlloc = t.dailyAllocatedHours != null ? Number(t.dailyAllocatedHours) : null;
               const isExtra =
                 t.isOverDailyAllocation ??
-                (dateVal ? dateVal >= "2026-11-25" && dailyAlloc != null && hoursVal > dailyAlloc : false);
+                (dailyAlloc != null && hoursVal > dailyAlloc);
               const statusVal = t.status || "pending";
               const isPending = statusVal === "pending" || statusVal === "submitted";
               const canActOnRow = isPending && t.canApproveEntry === true;

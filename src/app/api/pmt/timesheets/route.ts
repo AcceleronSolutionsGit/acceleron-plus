@@ -343,9 +343,7 @@ export async function GET(req: Request) {
       const hours = Number(r.hours_logged ?? 0);
       const logDate = toDateInput(r.log_date as string);
       const extraHoursReason = r.extra_hours_reason ? String(r.extra_hours_reason).trim() : null;
-      // Implemented from today (2026-11-25) onwards; previous submissions do not need justification
-      const isEffectiveDate = logDate >= "2026-11-25";
-      const isOverDailyAllocation = isEffectiveDate && hours > allocatedDailyHours;
+      const isOverDailyAllocation = hours > allocatedDailyHours;
 
       formattedEntries.push({
         id: String(r.id),

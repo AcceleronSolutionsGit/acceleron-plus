@@ -1290,7 +1290,7 @@ export function AdminTimesheetsClient() {
                                           </span>
                                           {proj.dailyAllocatedHours != null && (
                                             <span className="text-xs text-navy-500 font-medium">
-                                              ({fmtHours(proj.dailyAllocatedHours)}h/day alloc · {proj.allocationPercent ?? 100}%)
+                                              ({fmtHours(proj.dailyAllocatedHours)}/day alloc · {proj.allocationPercent ?? 100}%)
                                             </span>
                                           )}
                                           {proj.isOverAllocated && (proj.extraHours ?? 0) > 0 && (

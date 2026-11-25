@@ -123,11 +123,9 @@ export async function GET(
       }
     }
 
-    const logDateStr = String(e.logDate || e.log_date || "");
     const dailyAlloc = bandByUser[e.userId]?.dailyAllocatedHours ?? 8;
     const hours = Number(e.hoursLogged ?? e.hours ?? 0);
-    const isEffectiveDate = logDateStr >= "2026-11-25";
-    const isOverDailyAllocation = isEffectiveDate && hours > dailyAlloc;
+    const isOverDailyAllocation = hours > dailyAlloc;
 
     return {
       ...e,
