@@ -130,32 +130,52 @@ export async function GET(req: Request) {
       });
     }
 
-    const rawRows = (await query
-      .select(
-        "ts.id",
-        "ts.project_id",
-        "p.code as project_code",
-        "p.name as project_name",
-        "ts.user_id",
-        "ts.user_name",
-        "ts.wbs_name",
-        "ts.log_date",
-        "ts.hours_logged",
-        "ts.activity_type",
-        "ts.notes",
-        "ts.extra_hours_reason",
-        "ts.status",
-        "ts.submitted_at",
-        "ts.reviewed_by_user_id",
-        "ts.reviewed_at",
-        "ts.rejection_reason",
-        "ts.wbs_item_id"
-      )
-      .orderBy([
-        { column: "ts.log_date", order: "desc" },
-        { column: "ts.submitted_at", order: "asc" },
-      ])
-      .catch(() => [])) as Record<string, unknown>[];
+    const selectCols = [
+      "ts.id",
+      "ts.project_id",
+      "p.code as project_code",
+      "p.name as project_name",
+      "ts.user_id",
+      "ts.user_name",
+      "ts.wbs_name",
+      "ts.log_date",
+      "ts.hours_logged",
+      "ts.activity_type",
+      "ts.notes",
+      "ts.extra_hours_reason",
+      "ts.status",
+      "ts.submitted_at",
+      "ts.reviewed_by_user_id",
+      "ts.reviewed_at",
+      "ts.rejection_reason",
+      "ts.wbs_item_id",
+    ];
+
+    let rawRows: Record<string, unknown>[] = [];
+    try {
+      rawRows = (await query
+        .clone()
+        .select(...selectCols)
+        .orderBy([
+          { column: "ts.log_date", order: "desc" },
+          { column: "ts.submitted_at", order: "asc" },
+        ])) as Record<string, unknown>[];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("extra_hours_reason")) {
+        await projectDb
+          .raw("ALTER TABLE project_timesheets ADD COLUMN IF NOT EXISTS extra_hours_reason text")
+          .catch(() => {});
+        rawRows = (await query
+          .clone()
+          .select(...selectCols.filter((c) => c !== "ts.extra_hours_reason"))
+          .orderBy([
+            { column: "ts.log_date", order: "desc" },
+            { column: "ts.submitted_at", order: "asc" },
+          ])
+          .catch(() => [])) as Record<string, unknown>[];
+      }
+    }
 
     // ── Determine which submitters are PMs on each project ─────────
     const rowProjectIds = [...new Set(rawRows.map((r) => String(r.project_id)))];
