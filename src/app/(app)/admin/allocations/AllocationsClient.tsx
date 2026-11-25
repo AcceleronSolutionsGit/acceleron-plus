@@ -22,6 +22,7 @@ const STATE: Record<
 };
 
 type SortKey = "employeeId" | "fullName" | "department" | "location" | "totalPercent";
+type AllocFilter = "all" | "under" | "full" | "over";
 
 export function AllocationsClient() {
   const [report, setReport] = useState<AllocationReport | null>(null);
@@ -34,6 +35,8 @@ export function AllocationsClient() {
   const [asOf, setAsOf] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [onlyProblems, setOnlyProblems] = useState(false);
+  const [allocFilter, setAllocFilter] = useState<AllocFilter>("all");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const [sortKey, setSortKey] = useState<SortKey>("employeeId");
   const [sortDesc, setSortDesc] = useState(false);
@@ -75,9 +78,17 @@ export function AllocationsClient() {
 
   const rows = useMemo(() => {
     if (!report) return [];
-    const list = onlyProblems
-      ? report.rows.filter((r) => r.state === "over" || r.state === "bench")
-      : report.rows;
+    let list = report.rows;
+    if (onlyProblems) {
+      list = list.filter((r) => r.state === "over" || r.state === "bench");
+    }
+    if (allocFilter === "under") {
+      list = list.filter((r) => r.totalPercent < 100);
+    } else if (allocFilter === "full") {
+      list = list.filter((r) => r.totalPercent === 100);
+    } else if (allocFilter === "over") {
+      list = list.filter((r) => r.totalPercent > 100);
+    }
 
     const direction = sortDesc ? -1 : 1;
     return [...list].sort((a, b) => {
@@ -88,9 +99,16 @@ export function AllocationsClient() {
       const bv = String(b[sortKey] ?? "");
       return av.localeCompare(bv) * direction;
     });
-  }, [report, onlyProblems, sortKey, sortDesc]);
+  }, [report, onlyProblems, allocFilter, sortKey, sortDesc]);
 
-  const slots = Math.max(1, report?.maxProjects ?? 1);
+  const toggleExpand = (employeeId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  };
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -221,18 +239,44 @@ export function AllocationsClient() {
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-5 border-t border-navy-900/8 pt-3.5">
+        <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-navy-900/8 pt-3.5">
+          {/* Allocation Level Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-neutral-100 p-1">
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "under", label: "Less than 100%" },
+                { id: "full", label: "100% Allocated" },
+                { id: "over", label: "More than 100%" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setAllocFilter(opt.id)}
+                className={cn(
+                  "px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+                  allocFilter === opt.id
+                    ? "bg-navy-900 text-white shadow-xs"
+                    : "text-navy-600 hover:text-navy-900 hover:bg-white/60"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           <Checkbox
-            label="Only the bench and the over-allocated"
+            label="Only bench & over-allocated"
             checked={onlyProblems}
             onChange={(e) => setOnlyProblems(e.target.checked)}
           />
           <Checkbox
-            label="Include people marked inactive"
+            label="Include inactive"
             checked={includeInactive}
             onChange={(e) => setIncludeInactive(e.target.checked)}
           />
-          {(department || location || search || asOf || onlyProblems || includeInactive) && (
+          {(department || location || search || asOf || onlyProblems || includeInactive || allocFilter !== "all") && (
             <button
               type="button"
               onClick={() => {
@@ -242,6 +286,7 @@ export function AllocationsClient() {
                 setAsOf("");
                 setOnlyProblems(false);
                 setIncludeInactive(false);
+                setAllocFilter("all");
               }}
               className="cursor-pointer text-[12.5px] font-semibold text-navy-500 underline-offset-2 transition-colors hover:text-navy-900 hover:underline"
             >
@@ -291,12 +336,7 @@ export function AllocationsClient() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  {/* Code and name share one sticky cell. Two sticky
-                      columns means matching a hard-coded `left` offset to
-                      a width the browser computes itself — and when they
-                      disagree by a pixel, the scrolling content shows
-                      through the gap. One column cannot drift. */}
-                  <Th sticky="left-0 z-20" className="min-w-[250px]">
+                  <Th className="min-w-[250px]">
                     <span className="inline-flex items-center gap-2">
                       <SortLink onClick={() => toggleSort("employeeId")} active={sortKey === "employeeId"} desc={sortDesc}>
                         Emp Code
@@ -313,17 +353,12 @@ export function AllocationsClient() {
                   <Th onClick={() => toggleSort("location")} active={sortKey === "location"} desc={sortDesc}>
                     Location
                   </Th>
-                  {Array.from({ length: slots }).map((_, i) => (
-                    <Th key={i} className="min-w-[280px]">
-                      Project {i + 1}
-                    </Th>
-                  ))}
+                  <Th>Projects</Th>
                   <Th
                     onClick={() => toggleSort("totalPercent")}
                     active={sortKey === "totalPercent"}
                     desc={sortDesc}
-                    sticky="right-0 z-20"
-                    className="min-w-[178px] border-l border-navy-900/10"
+                    className="min-w-[178px] text-right"
                   >
                     Total Allocation
                   </Th>
@@ -331,7 +366,12 @@ export function AllocationsClient() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <Row key={row.employeeId} row={row} slots={slots} />
+                  <Row
+                    key={row.employeeId}
+                    row={row}
+                    isExpanded={expandedIds.has(row.employeeId)}
+                    onToggle={() => toggleExpand(row.employeeId)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -412,117 +452,158 @@ function Th({
   );
 }
 
-function Row({ row, slots }: { row: AllocationRow; slots: number }) {
+function Row({
+  row,
+  isExpanded,
+  onToggle,
+}: {
+  row: AllocationRow;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   const state = STATE[row.state];
 
-  // The whole row is tinted, not just the total, so a problem is
-  // visible while scanning rather than only when you reach the last
-  // column — which on a wide sheet may be off-screen.
-  // Solid, not an alpha: anything see-through here lets the middle of
-  // the table scroll visibly underneath the pinned columns.
   const tint =
     row.state === "over"
-      ? "bg-[#fdf1ee]"
+      ? "bg-[#fdf1ee] hover:bg-[#fbe8e3]"
       : row.state === "bench"
-        ? "bg-[#fdf7ec]"
-        : "bg-surface";
+        ? "bg-[#fdf7ec] hover:bg-[#fbf0da]"
+        : "bg-surface hover:bg-neutral-50/80";
 
   return (
-    <tr className={cn("group border-b border-navy-900/6 last:border-0", tint)}>
-      <td className={cn("sticky left-0 z-10 px-4 py-2.5", tint)}>
-        <div className="flex items-center gap-3">
-          <CodeChip className="shrink-0 whitespace-nowrap">{row.employeeId}</CodeChip>
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-navy-900">{row.fullName}</div>
-            {row.designation && (
-              <div className="truncate text-[11.5px] text-navy-400">
-                {row.designation}
-                {row.grade && <span className="text-navy-300"> · {row.grade}</span>}
-              </div>
-            )}
-          </div>
-        </div>
-      </td>
-      <td className="px-4 py-2.5 text-[13px] text-navy-700">{row.department ?? "—"}</td>
-      <td className="px-4 py-2.5 text-[13px] text-navy-700">{row.location ?? "—"}</td>
-
-      {Array.from({ length: slots }).map((_, i) => {
-        const p = row.projects[i];
-        if (!p) {
-          return (
-            <td key={i} className="px-4 py-2.5 text-center text-navy-200">
-              —
-            </td>
-          );
-        }
-        const hasPeriods = Array.isArray(p.allocationPeriods) && p.allocationPeriods.length > 0;
-        return (
-          <td key={i} className="px-4 py-2.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-navy-800" title={`[${p.projectCode}] ${p.projectName}`}>
-                  <Link
-                    href={`/pmt/${p.projectCode}?tab=team`}
-                    className="hover:text-navy-950 hover:underline"
-                  >
-                    <span className="font-mono text-xs font-semibold text-navy-600 mr-1.5">[{p.projectCode}]</span>
-                    {p.projectName}
-                  </Link>
+    <>
+      <tr
+        onClick={onToggle}
+        className={cn(
+          "group border-b border-navy-900/6 last:border-0 cursor-pointer transition-colors",
+          tint
+        )}
+      >
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <svg
+              className={cn(
+                "w-4 h-4 text-navy-400 transition-transform shrink-0",
+                isExpanded && "rotate-90 text-navy-900"
+              )}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <CodeChip className="shrink-0 whitespace-nowrap">{row.employeeId}</CodeChip>
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-navy-900">{row.fullName}</div>
+              {row.designation && (
+                <div className="truncate text-[11.5px] text-navy-400">
+                  {row.designation}
+                  {row.grade && <span className="text-navy-300"> · {row.grade}</span>}
                 </div>
-                {p.clientCompanyName && (
-                  <div className="text-[11px] font-medium text-navy-500 truncate mt-0.5">
-                    Client: <span className="text-navy-700">{p.clientCompanyName}</span>
-                  </div>
-                )}
-                {p.roleInProject && (
-                  <div className="text-[11px] text-navy-400 truncate">
-                    {p.roleInProject}
-                  </div>
-                )}
-                {hasPeriods ? (
-                  <div className="mt-1.5 space-y-1">
-                    {p.allocationPeriods!.map((period, pIdx) => (
-                      <div
-                        key={pIdx}
-                        className="flex items-center justify-between text-[10.5px] font-mono text-navy-600 bg-navy-50/70 px-2 py-0.5 rounded border border-navy-100"
-                      >
-                        <span>{period.startDate} → {period.endDate}</span>
-                        <span className="font-semibold text-navy-900 ml-2">{period.allocationPercent}%</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  (p.startDate || p.endDate) && (
-                    <div className="mt-1 text-[11px] font-mono text-navy-500">
-                      {p.startDate ?? "—"} → {p.endDate ?? "—"}
-                    </div>
-                  )
-                )}
-              </div>
-              <span className="shrink-0 text-[13px] font-bold tabular-nums text-navy-900 bg-navy-50 px-2 py-0.5 rounded border border-navy-200">
-                {p.allocationPercent}%
-              </span>
+              )}
             </div>
-          </td>
-        );
-      })}
-
-      <td className={cn("sticky right-0 z-10 border-l border-navy-900/10 px-4 py-2.5", tint)}>
-        <div className="flex items-center justify-end gap-2.5">
-          <span
-            className={cn(
-              "text-[15px] font-bold tabular-nums",
-              row.state === "over" ? "text-danger" : "text-navy-900"
-            )}
-          >
-            {row.totalPercent}%
+          </div>
+        </td>
+        <td className="px-4 py-3 text-[13px] text-navy-700">{row.department ?? "—"}</td>
+        <td className="px-4 py-3 text-[13px] text-navy-700">{row.location ?? "—"}</td>
+        <td className="px-4 py-3 text-[13px]">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-navy-50 text-navy-700 border border-navy-200/70">
+            {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
           </span>
-          <Badge variant={state.badge} size="sm" className="w-[96px] justify-center">
-            {state.label}
-          </Badge>
-        </div>
-      </td>
-    </tr>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-2.5">
+            <span
+              className={cn(
+                "text-[15px] font-bold tabular-nums",
+                row.state === "over" ? "text-danger" : "text-navy-900"
+              )}
+            >
+              {row.totalPercent}%
+            </span>
+            <Badge variant={state.badge} size="sm" className="w-[96px] justify-center">
+              {state.label}
+            </Badge>
+          </div>
+        </td>
+      </tr>
+
+      {isExpanded && (
+        <tr className="bg-neutral-50/70 border-b border-navy-900/8">
+          <td colSpan={5} className="px-4 py-3 sm:px-8">
+            {row.projects.length === 0 ? (
+              <div className="text-xs text-navy-500 py-2 italic">
+                No active project allocations for this resource.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {row.projects.map((p, idx) => {
+                  const hasPeriods = Array.isArray(p.allocationPeriods) && p.allocationPeriods.length > 0;
+                  return (
+                    <div
+                      key={`${p.projectCode}-${idx}`}
+                      className="rounded-lg border border-navy-900/10 bg-white p-3 shadow-2xs flex flex-col justify-between gap-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/pmt/${p.projectCode}?tab=team`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[13px] font-semibold text-navy-900 hover:underline block truncate"
+                            title={`[${p.projectCode}] ${p.projectName}`}
+                          >
+                            <span className="font-mono text-xs font-semibold text-navy-600 mr-1.5">
+                              [{p.projectCode}]
+                            </span>
+                            {p.projectName}
+                          </Link>
+                          {p.clientCompanyName && (
+                            <div className="text-[11px] font-medium text-navy-500 truncate mt-0.5">
+                              Client: <span className="text-navy-700">{p.clientCompanyName}</span>
+                            </div>
+                          )}
+                          {p.roleInProject && (
+                            <div className="text-[11px] text-navy-400 truncate">
+                              {p.roleInProject}
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-[13px] font-bold tabular-nums text-navy-900 bg-navy-50 px-2 py-0.5 rounded border border-navy-200">
+                          {p.allocationPercent}%
+                        </span>
+                      </div>
+
+                      {hasPeriods ? (
+                        <div className="space-y-1 pt-1 border-t border-neutral-100">
+                          {p.allocationPeriods!.map((period, pIdx) => (
+                            <div
+                              key={pIdx}
+                              className="flex items-center justify-between text-[10.5px] font-mono text-navy-600 bg-navy-50/70 px-2 py-0.5 rounded border border-navy-100"
+                            >
+                              <span>{period.startDate} → {period.endDate}</span>
+                              <span className="font-semibold text-navy-900 ml-2">{period.allocationPercent}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        (p.startDate || p.endDate) && (
+                          <div className="text-[11px] font-mono text-navy-500 pt-1 border-t border-neutral-100">
+                            {p.startDate ?? "—"} → {p.endDate ?? "—"}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

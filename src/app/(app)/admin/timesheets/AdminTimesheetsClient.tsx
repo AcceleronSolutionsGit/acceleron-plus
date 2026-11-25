@@ -1265,13 +1265,9 @@ export function AdminTimesheetsClient() {
                                       <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-navy-900/6 text-navy-700 shrink-0">
                                         {proj.projectCode}
                                       </span>
-                                      <Link
-                                        href={`/pmt/${proj.projectId}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-sm font-semibold text-navy-900 hover:underline truncate"
-                                      >
+                                      <span className="text-sm font-semibold text-navy-900 truncate">
                                         {proj.projectName}
-                                      </Link>
+                                      </span>
                                       {proj.isPmOnProject && (
                                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
                                           PM on project · RM Review
